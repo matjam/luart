@@ -18,7 +18,7 @@ const (
 	start    = "func (l *State) executeSwitch() {\n"
 	dispatch = "\t\tswitch i.opCode() {\n"
 	hook     = "\t\tif i.opCode() >= opJITCount { // patched in by the JIT; see jit.go\n" +
-		"\t\t\ti, ip = l.jitInstruction(closure.prototype, frame, constants, i, ip)\n" +
+		"\t\t\ti, ip = l.jitInstruction(closure, frame, constants, i, ip)\n" +
 		"\t\t}\n"
 )
 

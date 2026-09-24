@@ -42,6 +42,22 @@ type jitContext struct {
 	target    uintptr        // address to start at
 	exitPC    uint64         // pc to resume the interpreter at
 	budget    int64          // back-edges left
+	upValues  unsafe.Pointer // &closure.upValues[0], or nil
+	barrier   uint64         // nonzero while the GC write barrier is on
+}
+
+// writeBarrier is the runtime's flag that Go's own compiled code tests
+// before storing a pointer. The runtime changes it only while the world is
+// stopped, and a goroutine running generated code is never stopped, so a
+// value read on entry holds for the whole run. While it is off, generated
+// code stores any value directly, as Go does; while it is on, it stores
+// only between nil and scalar values and exits otherwise.
+//
+//go:linkname writeBarrier runtime.writeBarrier
+var writeBarrier struct {
+	enabled bool
+	pad     [3]byte
+	alignme uint64
 }
 
 // Reasons generated code returns.
@@ -94,11 +110,12 @@ func (p *prototype) patchJITCounters() {
 // slower on arithmetic.
 //
 //go:noinline
-func (l *State) jitInstruction(p *prototype, frame, constants []value, i instruction, ip pc) (instruction, pc) {
+func (l *State) jitInstruction(c *luaClosure, frame, constants []value, i instruction, ip pc) (instruction, pc) {
+	p := c.prototype
 	if i.opCode() == opJITCount {
 		l.countJIT(p)
 	} else if l.hookMask == 0 {
-		ip = l.runJIT(p.jit, frame, constants, ip-1) + 1
+		ip = l.runJIT(c, frame, constants, ip-1) + 1
 		l.callInfo.savedPC = ip
 	}
 	return p.jitOrig[ip-1], ip
@@ -202,7 +219,8 @@ func isExtraArg(code []instruction, ip int) bool {
 
 // runJIT runs compiled code from pc in frame and returns the pc the
 // interpreter continues at.
-func (l *State) runJIT(jc *jitCode, frame, constants []value, ip pc) pc {
+func (l *State) runJIT(c *luaClosure, frame, constants []value, ip pc) pc {
+	jc := c.prototype.jit
 	off := jc.offsets[ip]
 	if off < 0 {
 		return ip
@@ -213,12 +231,22 @@ func (l *State) runJIT(jc *jitCode, frame, constants []value, ip pc) pc {
 	if len(constants) > 0 {
 		ctx.constants = unsafe.Pointer(&constants[0])
 	}
+	ctx.upValues = nil
+	if len(c.upValues) > 0 {
+		ctx.upValues = unsafe.Pointer(&c.upValues[0])
+	}
+	ctx.barrier = 0
+	if writeBarrier.enabled {
+		ctx.barrier = 1
+		l.jitBarrierRuns++
+	}
 	ctx.target = jc.mem.Addr(int(off))
 	ctx.budget = jitBudget
 	reason := call.Call(jc.mem.Addr(0), unsafe.Pointer(ctx))
 	l.jitRuns++
 	runtime.KeepAlive(frame)
 	runtime.KeepAlive(constants)
+	runtime.KeepAlive(c)
 	if reason == jitExitBudget {
 		runtime.Gosched()
 	}
