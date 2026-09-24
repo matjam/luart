@@ -13,7 +13,7 @@ type dumpState struct {
 	err   error
 }
 
-func (d *dumpState) write(data interface{}) {
+func (d *dumpState) write(data any) {
 	if d.err == nil {
 		d.err = binary.Write(d.out, d.order, data)
 	}

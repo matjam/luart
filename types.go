@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-type value interface{}
+type value any
 type float8 int
 
 func debugValue(v value) string {
@@ -20,15 +20,16 @@ func debugValue(v value) string {
 			}
 			return debugValue(x)
 		}
-		s := fmt.Sprintf("table %#v {[", v)
+		var s strings.Builder
+		s.WriteString(fmt.Sprintf("table %#v {[", v))
 		for _, x := range v.array {
-			s += entry(x) + ", "
+			s.WriteString(entry(x) + ", ")
 		}
-		s += "], {"
+		s.WriteString("], {")
 		for k, x := range v.hash {
-			s += entry(k) + ": " + entry(x) + ", "
+			s.WriteString(entry(k) + ": " + entry(x) + ", ")
 		}
-		return s + "}}"
+		return s.String() + "}}"
 	case string:
 		return "'" + v + "'"
 	case float64:
@@ -75,7 +76,7 @@ type localVariable struct {
 
 type userData struct {
 	metaTable, env *table
-	data           interface{}
+	data           any
 }
 
 type upValueDesc struct {

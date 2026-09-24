@@ -13,7 +13,7 @@ func (l *State) pop() value {
 }
 
 type upValue struct {
-	home interface{}
+	home any
 }
 
 type closure interface {

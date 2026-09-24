@@ -30,7 +30,7 @@ var (
 	errCorrupted           = errors.New("lua: corrupted precompiled chunk")
 )
 
-func (state *loadState) read(data interface{}) error {
+func (state *loadState) read(data any) error {
 	return binary.Read(state.in, state.order, data)
 }
 

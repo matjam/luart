@@ -85,13 +85,13 @@ func protectedTestParser(l *State, t *testing.T, source string) {
 	compareClosures(t, src, bin)
 }
 
-func expectEqual(t *testing.T, x, y interface{}, m string) {
+func expectEqual(t *testing.T, x, y any, m string) {
 	if x != y {
 		t.Errorf("%s doesn't match: %v, %v\n", m, x, y)
 	}
 }
 
-func expectDeepEqual(t *testing.T, x, y interface{}, m string) bool {
+func expectDeepEqual(t *testing.T, x, y any, m string) bool {
 	if reflect.DeepEqual(x, y) {
 		return true
 	}

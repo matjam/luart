@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -390,12 +391,7 @@ func (s *scanner) readString() token {
 }
 
 func isReserved(s string) bool {
-	for _, reserved := range tokens[:reservedCount] {
-		if s == reserved {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(tokens[:reservedCount], s)
 }
 
 func (s *scanner) reservedOrName() token {

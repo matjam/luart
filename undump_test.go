@@ -82,13 +82,13 @@ func TestUndump(t *testing.T) {
 	}
 }
 
-func validate(expected, actual interface{}, description string, t *testing.T) {
+func validate(expected, actual any, description string, t *testing.T) {
 	if expected != actual {
 		t.Errorf("expected %v %s in main function but found %v", expected, description, actual)
 	}
 }
 
-func expectErrorFromUndump(expected error, data interface{}, t *testing.T) {
+func expectErrorFromUndump(expected error, data any, t *testing.T) {
 	l := NewState()
 	_, err := l.undump(readerOn(data, t), "test")
 	if err != expected {
@@ -96,7 +96,7 @@ func expectErrorFromUndump(expected error, data interface{}, t *testing.T) {
 	}
 }
 
-func readerOn(data interface{}, t *testing.T) io.Reader {
+func readerOn(data any, t *testing.T) io.Reader {
 	buf := new(bytes.Buffer)
 	if err := binary.Write(buf, endianness(), data); err != nil {
 		t.Fatal("couldn't serialize data -", err)

@@ -197,7 +197,7 @@ type Function func(state *State) int
 // TODO XMove(from, to State, n int)
 //
 // Set functions (stack -> Lua)
-// RawSetValue(index int, p interface{})
+// RawSetValue(index int, p any)
 //
 // Debug API
 // Local(activationRecord *Debug, index int) string
@@ -836,15 +836,22 @@ func (l *State) ToGoFunction(index int) Function {
 	return nil
 }
 
-// ToUserData returns an interface{} of the userdata of the value at index.
+// ToUserData returns the Go value held by the userdata at index.
 // Otherwise, it returns nil.
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_touserdata
-func (l *State) ToUserData(index int) interface{} {
+func (l *State) ToUserData(index int) any {
 	if d, ok := l.indexToValue(index).(*userData); ok {
 		return d.data
 	}
 	return nil
+}
+
+// UserData returns the Go value held by the userdata at index as a T. It
+// reports false when the value is not a userdata or does not hold a T.
+func (l *State) UserData[T any](index int) (T, bool) {
+	d, ok := l.ToUserData(index).(T)
+	return d, ok
 }
 
 // ToThread converts the value at index to a Lua thread (a State). This
@@ -858,7 +865,7 @@ func (l *State) ToThread(index int) *State {
 	return nil
 }
 
-// ToValue convertes the value at index into a generic Go interface{}.  The
+// ToValue converts the value at index into a Go value of type any. The
 // value can be a userdata, a table, a thread, a function, or Go string, bool
 // or float64 types. Otherwise, the function returns nil.
 //
@@ -868,7 +875,7 @@ func (l *State) ToThread(index int) *State {
 // Typically, this function is used only for debug information.
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_tovalue
-func (l *State) ToValue(index int) interface{} {
+func (l *State) ToValue(index int) any {
 	v := l.indexToValue(index)
 	switch v := v.(type) {
 	case string, float64, bool, *table, *luaClosure, *goClosure, *goFunction, *State:
@@ -896,7 +903,7 @@ func (l *State) PushString(s string) string { // TODO is it useful to return the
 // numeral), %d and %c (an integer as a byte).
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_pushfstring
-func (l *State) PushFString(format string, args ...interface{}) string {
+func (l *State) PushFString(format string, args ...any) string {
 	n, i := 0, 0
 	for {
 		e := strings.IndexRune(format, '%')
@@ -1022,7 +1029,7 @@ func (l *State) RawGetInt(index, key int) {
 // raw, as it doesn't invoke metamethods.
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_rawgetp
-func (l *State) RawGetValue(index int, p interface{}) {
+func (l *State) RawGetValue(index int, p any) {
 	t := l.indexToValue(index).(*table)
 	l.apiPush(t.at(p))
 }
@@ -1300,7 +1307,7 @@ func (l *State) upValue(f, n int) **upValue {
 // closures share upvalues. Lua closures that share an upvalue (that is, that
 // access a same external local variable) will return identical ids for those
 // upvalue indices.
-func UpValueId(l *State, f, n int) interface{} {
+func UpValueId(l *State, f, n int) any {
 	switch fun := l.indexToValue(f).(type) {
 	case *luaClosure:
 		return *l.upValue(f, n)
@@ -1452,15 +1459,15 @@ func (l *State) PushUnsigned(n uint) { l.apiPush(float64(n)) }
 func (l *State) PushBoolean(b bool) { l.apiPush(b) }
 
 // PushLightUserData pushes a light user data onto the stack. Userdata
-// represents Go values in Lua. A light userdata is an interface{}. Its
+// represents Go values in Lua. A light userdata is any Go value. Its
 // equality matches the Go rules (http://golang.org/ref/spec#Comparison_operators).
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_pushlightuserdata
-func (l *State) PushLightUserData(d interface{}) { l.apiPush(d) }
+func (l *State) PushLightUserData(d any) { l.apiPush(d) }
 
 // PushUserData is similar to PushLightUserData, but pushes a full userdata
 // onto the stack.
-func (l *State) PushUserData(d interface{}) { l.apiPush(&userData{data: d}) }
+func (l *State) PushUserData(d any) { l.apiPush(&userData{data: d}) }
 
 // Length of the value at index; it is equivalent to the # operator in
 // Lua. The result is pushed on the stack.
