@@ -1,0 +1,37 @@
+package lua
+
+import "testing"
+
+// Numeric code and calls into Go must not allocate, so scripts can run
+// every frame without feeding the garbage collector.
+func TestNumericFrameDoesNotAllocate(t *testing.T) {
+	l := NewState()
+	OpenLibraries(l)
+	var sum float64
+	l.Register("set", func(l *State) int {
+		v, _ := l.ToNumber(3)
+		sum += v
+		return 0
+	})
+	const src = `
+		local sin = math.sin
+		function frame(t)
+		  for y = 0, 9 do
+		    for x = 0, 19 do
+		      set(x, y, sin(x*0.1+t) + sin(y*0.07+t) % 1 - (x+y)^2 / 3)
+		    end
+		  end
+		end`
+	if err := DoString(l, src); err != nil {
+		t.Fatal(err)
+	}
+	frame := func() {
+		l.Global("frame")
+		l.PushNumber(1.5)
+		l.Call(1, 0)
+	}
+	frame()
+	if n := testing.AllocsPerRun(20, frame); n != 0 {
+		t.Fatalf("frame allocated %v times per run, want 0", n)
+	}
+}

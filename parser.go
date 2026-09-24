@@ -659,13 +659,13 @@ func (l *State) parse(r io.ByteReader, name string) *luaClosure {
 	p.mainFunction()
 	// TODO assertions about parser state
 	c := l.newLuaClosure(f.f)
-	l.push(c)
+	l.push(objectValue(c))
 	return c
 }
 
 func (l *State) checkMode(mode, x string) {
 	if mode != "" && !strings.Contains(mode, x[:1]) {
-		l.push(fmt.Sprintf("attempt to load a %s chunk (mode is '%s')", x, mode))
+		l.push(stringValue(fmt.Sprintf("attempt to load a %s chunk (mode is '%s')", x, mode)))
 		l.throw(SyntaxError)
 	}
 }

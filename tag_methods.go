@@ -61,7 +61,7 @@ var typeNames = []string{
 func (events *table) tagMethod(event tm, name string) value {
 	tm := events.atString(name)
 	//l.assert(event <= tmEq)
-	if tm == nil {
+	if tm.isNil() {
 		events.flags |= 1 << event
 	}
 	return tm
@@ -69,16 +69,16 @@ func (events *table) tagMethod(event tm, name string) value {
 
 func (l *State) tagMethodByObject(o value, event tm) value {
 	var mt *table
-	switch o := o.(type) {
+	switch x := o.o.(type) {
 	case *table:
-		mt = o.metaTable
+		mt = x.metaTable
 	case *userData:
-		mt = o.metaTable
+		mt = x.metaTable
 	default:
 		mt = l.global.metaTable(o)
 	}
 	if mt == nil {
-		return nil
+		return nilValue
 	}
 	return mt.atString(l.global.tagMethodNames[event])
 }

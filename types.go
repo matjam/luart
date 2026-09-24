@@ -9,14 +9,100 @@ import (
 	"strings"
 )
 
-type value any
+// value is a Lua value. Numbers and booleans keep their payload in n and a
+// zero-size tag type in o, so they never allocate. Every other value lives
+// in o, and n is zero. Values compare with == and work as map keys: numbers
+// compare as floats, so 0 and -0 are the same key, and strings compare by
+// content.
+type value struct {
+	o any
+	n float64
+}
+
+type (
+	numberTag struct{}
+	boolTag   struct{}
+	noneTag   struct{}
+)
+
+var (
+	nilValue = value{}
+	none     = value{o: (*noneTag)(nil)}
+	trueValue  = value{o: (*boolTag)(nil), n: 1}
+	falseValue = value{o: (*boolTag)(nil)}
+)
+
+func numberValue(f float64) value { return value{o: (*numberTag)(nil), n: f} }
+func stringValue(s string) value  { return value{o: s} }
+
+func boolValue(b bool) value {
+	if b {
+		return trueValue
+	}
+	return falseValue
+}
+
+// objectValue wraps a table, closure, userdata, thread or light userdata.
+func objectValue(x any) value { return value{o: x} }
+
+// valueOf converts a Go value into a Lua value. float64 becomes a number,
+// bool a boolean and string a string; anything else is stored as is.
+func valueOf(x any) value {
+	switch x := x.(type) {
+	case float64:
+		return numberValue(x)
+	case bool:
+		return boolValue(x)
+	case value:
+		return x
+	}
+	return value{o: x}
+}
+
+func (v value) isNil() bool    { return v.o == nil }
+func (v value) isNumber() bool { _, ok := v.o.(*numberTag); return ok }
+
+func (v value) number() (float64, bool) {
+	_, ok := v.o.(*numberTag)
+	return v.n, ok
+}
+
+func (v value) boolean() (b, ok bool) {
+	_, ok = v.o.(*boolTag)
+	return v.n != 0, ok
+}
+
+func (v value) str() (string, bool) {
+	s, ok := v.o.(string)
+	return s, ok
+}
+
+func (v value) table() *table {
+	t, _ := v.o.(*table)
+	return t
+}
+
+// toAny converts a Lua value into the Go value the public API exposes:
+// float64, bool, string, nil, or the object itself.
+func (v value) toAny() any {
+	switch v.o.(type) {
+	case *numberTag:
+		return v.n
+	case *boolTag:
+		return v.n != 0
+	case *noneTag:
+		return nil
+	}
+	return v.o
+}
+
 type float8 int
 
 func debugValue(v value) string {
-	switch v := v.(type) {
+	switch v := v.toAny().(type) {
 	case *table:
 		entry := func(x value) string {
-			if t, ok := x.(*table); ok {
+			if t, ok := x.o.(*table); ok {
 				return fmt.Sprintf("table %#v", t)
 			}
 			return debugValue(x)
@@ -63,11 +149,13 @@ func stack(s []value) string {
 }
 
 func isFalse(s value) bool {
-	if s == nil || s == none {
+	switch s.o.(type) {
+	case nil, *noneTag:
 		return true
+	case *boolTag:
+		return s.n == 0
 	}
-	b, isBool := s.(bool)
-	return isBool && !b
+	return false
 }
 
 type localVariable struct {
@@ -84,11 +172,6 @@ type upValueDesc struct {
 	name    string
 	isLocal bool
 	index   int
-}
-
-type stackLocation struct {
-	state *State
-	index int
 }
 
 type prototype struct {
@@ -169,11 +252,11 @@ func (p *prototype) objectName(reg int, lastPC pc) (name, kind string) {
 		case opGetUpValue:
 			return p.upValueName(i.b()), "upvalue"
 		case opLoadConstant:
-			if s, ok := p.constants[i.bx()].(string); ok {
+			if s, ok := p.constants[i.bx()].str(); ok {
 				return s, "constant"
 			}
 		case opLoadConstantEx:
-			if s, ok := p.constants[p.code[pc+1].ax()].(string); ok {
+			if s, ok := p.constants[p.code[pc+1].ax()].str(); ok {
 				return s, "constant"
 			}
 		case opSelf:
@@ -185,7 +268,7 @@ func (p *prototype) objectName(reg int, lastPC pc) (name, kind string) {
 
 func (p *prototype) constantName(k int, pc pc) string {
 	if isConstant(k) {
-		if s, ok := p.constants[constantIndex(k)].(string); ok {
+		if s, ok := p.constants[constantIndex(k)].str(); ok {
 			return s
 		}
 	} else if name, kind := p.objectName(k, pc); kind == "c" {
@@ -288,11 +371,11 @@ func (l *State) parseNumber(s string) (v float64, ok bool) { // TODO this is f*c
 }
 
 func (l *State) toNumber(r value) (v float64, ok bool) {
-	if v, ok = r.(float64); ok {
+	if v, ok = r.number(); ok {
 		return
 	}
 	var s string
-	if s, ok = r.(string); ok {
+	if s, ok = r.str(); ok {
 		if err := l.protectedCall(func() { v, ok = l.parseNumber(strings.TrimSpace(s)) }, l.top, l.errorFunction); err != nil {
 			l.pop() // Remove error message from the stack.
 			ok = false
@@ -303,7 +386,7 @@ func (l *State) toNumber(r value) (v float64, ok bool) {
 
 func (l *State) toString(index int) (s string, ok bool) {
 	if s, ok = toString(l.stack[index]); ok {
-		l.stack[index] = s
+		l.stack[index] = stringValue(s)
 	}
 	return
 }
@@ -313,27 +396,27 @@ func numberToString(f float64) string {
 }
 
 func toString(r value) (string, bool) {
-	switch r := r.(type) {
+	switch o := r.o.(type) {
 	case string:
-		return r, true
-	case float64:
-		return numberToString(r), true
+		return o, true
+	case *numberTag:
+		return numberToString(r.n), true
 	}
 	return "", false
 }
 
 func pairAsNumbers(p1, p2 value) (f1, f2 float64, ok bool) {
-	if f1, ok = p1.(float64); !ok {
+	if f1, ok = p1.number(); !ok {
 		return
 	}
-	f2, ok = p2.(float64)
+	f2, ok = p2.number()
 	return
 }
 
 func pairAsStrings(p1, p2 value) (s1, s2 string, ok bool) {
-	if s1, ok = p1.(string); !ok {
+	if s1, ok = p1.str(); !ok {
 		return
 	}
-	s2, ok = p2.(string)
+	s2, ok = p2.str()
 	return
 }

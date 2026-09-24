@@ -2,64 +2,69 @@ package lua
 
 import (
 	"fmt"
-	"math"
 	"strings"
 )
 
 func (l *State) arith(rb, rc value, op tm) value {
 	if b, ok := l.toNumber(rb); ok {
 		if c, ok := l.toNumber(rc); ok {
-			return arith(Operator(op-tmAdd)+OpAdd, b, c)
+			return numberValue(arith(Operator(op-tmAdd)+OpAdd, b, c))
 		}
 	}
 	if result, ok := l.callBinaryTagMethod(rb, rc, op); ok {
 		return result
 	}
 	l.arithError(rb, rc)
-	return nil
+	return nilValue
+}
+
+func isCallable(v value) bool {
+	switch v.o.(type) {
+	case closure, *goFunction:
+		return true
+	}
+	return false
 }
 
 func (l *State) tableAt(t value, key value) value {
 	for range maxTagLoop {
 		var tm value
-		if table, ok := t.(*table); ok {
-			if result := table.at(key); result != nil {
+		if table, ok := t.o.(*table); ok {
+			if result := table.at(key); !result.isNil() {
 				return result
-			} else if tm = l.fastTagMethod(table.metaTable, tmIndex); tm == nil {
-				return nil
+			} else if tm = l.fastTagMethod(table.metaTable, tmIndex); tm.isNil() {
+				return nilValue
 			}
-		} else if tm = l.tagMethodByObject(t, tmIndex); tm == nil {
+		} else if tm = l.tagMethodByObject(t, tmIndex); tm.isNil() {
 			l.typeError(t, "index")
 		}
-		switch tm.(type) {
-		case closure, *goFunction:
+		if isCallable(tm) {
 			return l.callTagMethod(tm, t, key)
 		}
 		t = tm
 	}
 	l.runtimeError("loop in table")
-	return nil
+	return nilValue
 }
 
 func (l *State) setTableAt(t value, key value, val value) {
 	for range maxTagLoop {
 		var tm value
-		if table, ok := t.(*table); ok {
+		if table, ok := t.o.(*table); ok {
 			if table.tryPut(l, key, val) {
 				// previous non-nil value ==> metamethod irrelevant
 				table.invalidateTagMethodCache()
 				return
-			} else if tm = l.fastTagMethod(table.metaTable, tmNewIndex); tm == nil {
+			} else if tm = l.fastTagMethod(table.metaTable, tmNewIndex); tm.isNil() {
 				// no metamethod
 				table.put(l, key, val)
 				table.invalidateTagMethodCache()
 				return
 			}
-		} else if tm = l.tagMethodByObject(t, tmNewIndex); tm == nil {
+		} else if tm = l.tagMethodByObject(t, tmNewIndex); tm.isNil() {
 			l.typeError(t, "index")
 		}
-		switch tm.(type) {
-		case closure, *goFunction:
+		if isCallable(tm) {
 			l.callTagMethodV(tm, t, key, val)
 			return
 		}
@@ -70,15 +75,15 @@ func (l *State) setTableAt(t value, key value, val value) {
 
 func (l *State) objectLength(v value) value {
 	var tm value
-	switch v := v.(type) {
+	switch o := v.o.(type) {
 	case *table:
-		if tm = l.fastTagMethod(v.metaTable, tmLen); tm == nil {
-			return float64(v.length())
+		if tm = l.fastTagMethod(o.metaTable, tmLen); tm.isNil() {
+			return numberValue(float64(o.length()))
 		}
 	case string:
-		return float64(len(v))
+		return numberValue(float64(len(o)))
 	default:
-		if tm = l.tagMethodByObject(v, tmLen); tm == nil {
+		if tm = l.tagMethodByObject(v, tmLen); tm.isNil() {
 			l.typeError(v, "get length of")
 		}
 	}
@@ -86,44 +91,47 @@ func (l *State) objectLength(v value) value {
 }
 
 func (l *State) equalTagMethod(mt1, mt2 *table, event tm) value {
-	if tm1 := l.fastTagMethod(mt1, event); tm1 == nil { // no metamethod
+	if tm1 := l.fastTagMethod(mt1, event); tm1.isNil() { // no metamethod
 	} else if mt1 == mt2 { // same metatables => same metamethods
 		return tm1
-	} else if tm2 := l.fastTagMethod(mt2, event); tm2 == nil { // no metamethod
+	} else if tm2 := l.fastTagMethod(mt2, event); tm2.isNil() { // no metamethod
 	} else if tm1 == tm2 { // same metamethods
 		return tm1
 	}
-	return nil
+	return nilValue
 }
 
 func (l *State) equalObjects(t1, t2 value) bool {
 	var tm value
-	switch t1 := t1.(type) {
+	switch o1 := t1.o.(type) {
+	case *numberTag:
+		n2, ok := t2.number()
+		return ok && t1.n == n2
 	case *userData:
 		if t1 == t2 {
 			return true
-		} else if t2, ok := t2.(*userData); ok {
-			tm = l.equalTagMethod(t1.metaTable, t2.metaTable, tmEq)
+		} else if o2, ok := t2.o.(*userData); ok {
+			tm = l.equalTagMethod(o1.metaTable, o2.metaTable, tmEq)
 		}
 	case *table:
 		if t1 == t2 {
 			return true
-		} else if t2, ok := t2.(*table); ok {
-			tm = l.equalTagMethod(t1.metaTable, t2.metaTable, tmEq)
+		} else if o2, ok := t2.o.(*table); ok {
+			tm = l.equalTagMethod(o1.metaTable, o2.metaTable, tmEq)
 		}
 	default:
 		return t1 == t2
 	}
-	return tm != nil && !isFalse(l.callTagMethod(tm, t1, t2))
+	return !tm.isNil() && !isFalse(l.callTagMethod(tm, t1, t2))
 }
 
 func (l *State) callBinaryTagMethod(p1, p2 value, event tm) (value, bool) {
 	tm := l.tagMethodByObject(p1, event)
-	if tm == nil {
+	if tm.isNil() {
 		tm = l.tagMethodByObject(p2, event)
 	}
-	if tm == nil {
-		return nil, false
+	if tm.isNil() {
+		return nilValue, false
 	}
 	return l.callTagMethod(tm, p1, p2), true
 }
@@ -134,12 +142,12 @@ func (l *State) callOrderTagMethod(left, right value, event tm) (bool, bool) {
 }
 
 func (l *State) lessThan(left, right value) bool {
-	if lf, ok := left.(float64); ok {
-		if rf, ok := right.(float64); ok {
+	if lf, ok := left.number(); ok {
+		if rf, ok := right.number(); ok {
 			return lf < rf
 		}
-	} else if ls, ok := left.(string); ok {
-		if rs, ok := right.(string); ok {
+	} else if ls, ok := left.str(); ok {
+		if rs, ok := right.str(); ok {
 			return ls < rs
 		}
 	}
@@ -151,12 +159,12 @@ func (l *State) lessThan(left, right value) bool {
 }
 
 func (l *State) lessOrEqual(left, right value) bool {
-	if lf, ok := left.(float64); ok {
-		if rf, ok := right.(float64); ok {
+	if lf, ok := left.number(); ok {
+		if rf, ok := right.number(); ok {
 			return lf <= rf
 		}
-	} else if ls, ok := left.(string); ok {
-		if rs, ok := right.(string); ok {
+	} else if ls, ok := left.str(); ok {
+		if rs, ok := right.str(); ok {
 			return ls <= rs
 		}
 	}
@@ -182,9 +190,9 @@ func (l *State) concat(total int) {
 	l.assert(total >= 2)
 	for total > 1 {
 		n := 2 // # of elements handled in this pass (at least 2)
-		s2, ok := t(2).(string)
+		s2, ok := t(2).str()
 		if !ok {
-			_, ok = t(2).(float64)
+			ok = t(2).isNumber()
 		}
 		if !ok {
 			concatTagMethod()
@@ -192,8 +200,8 @@ func (l *State) concat(total int) {
 			concatTagMethod()
 		} else if len(s1) == 0 {
 			v, _ := l.toString(l.top - 2)
-			put(2, v)
-		} else if s2, ok = t(2).(string); ok && len(s2) == 0 {
+			put(2, stringValue(v))
+		} else if s2, ok = t(2).str(); ok && len(s2) == 0 {
 			put(2, t(1))
 		} else {
 			// at least 2 non-empty strings; scarf as many as possible
@@ -209,7 +217,7 @@ func (l *State) concat(total int) {
 			for i, j := 0, len(ss)-1; i < j; i, j = i+1, j-1 {
 				ss[i], ss[j] = ss[j], ss[i]
 			}
-			put(len(ss), strings.Join(ss, ""))
+			put(len(ss), stringValue(strings.Join(ss, "")))
 		}
 		total -= n - 1 // created 1 new string from `n` strings
 		l.top -= n - 1 // popped `n` strings and pushed 1
@@ -262,7 +270,7 @@ func k(field int, constants []value, frame []value) value {
 func newFrame(l *State, ci *callInfo) (frame []value, closure *luaClosure, constants []value) {
 	// TODO l.assert(ci == l.callInfo)
 	frame = ci.frame
-	closure, _ = l.stack[ci.function].(*luaClosure)
+	closure, _ = l.stack[ci.function].o.(*luaClosure)
 	constants = closure.prototype.constants
 	return
 }
@@ -293,7 +301,7 @@ func (l *State) executeSwitch() {
 		case opLoadConstantEx:
 			frame[i.a()] = constants[expectNext(ci, opExtraArg).ax()]
 		case opLoadBool:
-			frame[i.a()] = i.b() != 0
+			frame[i.a()] = boolValue(i.b() != 0)
 			if i.c() != 0 {
 				ci.skip()
 			}
@@ -321,9 +329,9 @@ func (l *State) executeSwitch() {
 		case opNewTable:
 			a := i.a()
 			if b, c := float8(i.b()), float8(i.c()); b != 0 || c != 0 {
-				frame[a] = newTableWithSize(intFromFloat8(b), intFromFloat8(c))
+				frame[a] = objectValue(newTableWithSize(intFromFloat8(b), intFromFloat8(c)))
 			} else {
-				frame[a] = newTable()
+				frame[a] = objectValue(newTable())
 			}
 			clear(frame[a+1:])
 		case opSelf:
@@ -332,88 +340,69 @@ func (l *State) executeSwitch() {
 			frame = ci.frame
 			frame[a+1], frame[a] = t, tmp
 		case opAdd:
-			b := k(i.b(), constants, frame)
-			c := k(i.c(), constants, frame)
-			if nb, ok := b.(float64); ok {
-				if nc, ok := c.(float64); ok {
-					frame[i.a()] = nb + nc
-					break
-				}
+			b, c := k(i.b(), constants, frame), k(i.c(), constants, frame)
+			if b.isNumber() && c.isNumber() {
+				frame[i.a()] = numberValue(b.n + c.n)
+				break
 			}
 			tmp := l.arith(b, c, tmAdd)
 			frame = ci.frame
 			frame[i.a()] = tmp
 		case opSub:
-			b := k(i.b(), constants, frame)
-			c := k(i.c(), constants, frame)
-			if nb, ok := b.(float64); ok {
-				if nc, ok := c.(float64); ok {
-					frame[i.a()] = nb - nc
-					break
-				}
+			b, c := k(i.b(), constants, frame), k(i.c(), constants, frame)
+			if b.isNumber() && c.isNumber() {
+				frame[i.a()] = numberValue(b.n - c.n)
+				break
 			}
 			tmp := l.arith(b, c, tmSub)
 			frame = ci.frame
 			frame[i.a()] = tmp
 		case opMul:
-			b := k(i.b(), constants, frame)
-			c := k(i.c(), constants, frame)
-			if nb, ok := b.(float64); ok {
-				if nc, ok := c.(float64); ok {
-					frame[i.a()] = nb * nc
-					break
-				}
+			b, c := k(i.b(), constants, frame), k(i.c(), constants, frame)
+			if b.isNumber() && c.isNumber() {
+				frame[i.a()] = numberValue(b.n * c.n)
+				break
 			}
 			tmp := l.arith(b, c, tmMul)
 			frame = ci.frame
 			frame[i.a()] = tmp
 		case opDiv:
-			b := k(i.b(), constants, frame)
-			c := k(i.c(), constants, frame)
-			if nb, ok := b.(float64); ok {
-				if nc, ok := c.(float64); ok {
-					frame[i.a()] = nb / nc
-					break
-				}
+			b, c := k(i.b(), constants, frame), k(i.c(), constants, frame)
+			if b.isNumber() && c.isNumber() {
+				frame[i.a()] = numberValue(b.n / c.n)
+				break
 			}
 			tmp := l.arith(b, c, tmDiv)
 			frame = ci.frame
 			frame[i.a()] = tmp
 		case opMod:
-			b := k(i.b(), constants, frame)
-			c := k(i.c(), constants, frame)
-			if nb, ok := b.(float64); ok {
-				if nc, ok := c.(float64); ok {
-					frame[i.a()] = math.Mod(nb, nc)
-					break
-				}
+			b, c := k(i.b(), constants, frame), k(i.c(), constants, frame)
+			if b.isNumber() && c.isNumber() {
+				frame[i.a()] = numberValue(arith(OpMod, b.n, c.n))
+				break
 			}
 			tmp := l.arith(b, c, tmMod)
 			frame = ci.frame
 			frame[i.a()] = tmp
 		case opPow:
-			b := k(i.b(), constants, frame)
-			c := k(i.c(), constants, frame)
-			if nb, ok := b.(float64); ok {
-				if nc, ok := c.(float64); ok {
-					frame[i.a()] = math.Pow(nb, nc)
-					break
-				}
+			b, c := k(i.b(), constants, frame), k(i.c(), constants, frame)
+			if b.isNumber() && c.isNumber() {
+				frame[i.a()] = numberValue(arith(OpPow, b.n, c.n))
+				break
 			}
 			tmp := l.arith(b, c, tmPow)
 			frame = ci.frame
 			frame[i.a()] = tmp
 		case opUnaryMinus:
-			switch b := frame[i.b()].(type) {
-			case float64:
-				frame[i.a()] = -b
-			default:
+			if b := frame[i.b()]; b.isNumber() {
+				frame[i.a()] = numberValue(-b.n)
+			} else {
 				tmp := l.arith(b, b, tmUnaryMinus)
 				frame = ci.frame
 				frame[i.a()] = tmp
 			}
 		case opNot:
-			frame[i.a()] = isFalse(frame[i.b()])
+			frame[i.a()] = boolValue(isFalse(frame[i.b()]))
 		case opLength:
 			tmp := l.objectLength(frame[i.b()])
 			frame = ci.frame
@@ -523,7 +512,7 @@ func (l *State) executeSwitch() {
 				oci := nci.previous                    // caller frame
 				nfn, ofn := nci.function, oci.function // called & caller function
 				// last stack slot filled by 'precall'
-				lim := nci.base() + l.stack[nfn].(*luaClosure).prototype.parameterCount
+				lim := nci.base() + l.stack[nfn].o.(*luaClosure).prototype.parameterCount
 				if len(closure.prototype.prototypes) > 0 { // close all upvalues from previous call
 					l.close(oci.base())
 				}
@@ -561,11 +550,11 @@ func (l *State) executeSwitch() {
 			frame, closure, constants = newFrame(l, ci)
 		case opForLoop:
 			a := i.a()
-			index, limit, step := frame[a+0].(float64), frame[a+1].(float64), frame[a+2].(float64)
+			index, limit, step := frame[a+0].n, frame[a+1].n, frame[a+2].n
 			if index += step; (0 < step && index <= limit) || (step <= 0 && limit <= index) {
 				ci.jump(i.sbx())
-				frame[a+0] = index // update internal index...
-				frame[a+3] = index // ... and external index
+				frame[a+0] = numberValue(index) // update internal index...
+				frame[a+3] = numberValue(index) // ... and external index
 			}
 		case opForPrep:
 			a := i.a()
@@ -576,7 +565,7 @@ func (l *State) executeSwitch() {
 			} else if step, ok := l.toNumber(frame[a+2]); !ok {
 				l.runtimeError("'for' step must be a number")
 			} else {
-				frame[a+0], frame[a+1], frame[a+2] = init-step, limit, step
+				frame[a+0], frame[a+1], frame[a+2] = numberValue(init-step), numberValue(limit), numberValue(step)
 				ci.jump(i.sbx())
 			}
 		case opTForCall:
@@ -590,7 +579,7 @@ func (l *State) executeSwitch() {
 			i = expectNext(ci, opTForLoop) // go to next instruction
 			fallthrough
 		case opTForLoop:
-			if a := i.a(); frame[a+1] != nil { // continue loop?
+			if a := i.a(); !frame[a+1].isNil() { // continue loop?
 				frame[a] = frame[a+1] // save control variable
 				ci.jump(i.sbx())      // jump back
 			}
@@ -602,7 +591,7 @@ func (l *State) executeSwitch() {
 			if c == 0 {
 				c = expectNext(ci, opExtraArg).ax()
 			}
-			h := frame[a].(*table)
+			h := frame[a].o.(*table)
 			start := (c - 1) * listItemsPerFlush
 			last := start + n
 			if last > len(h.array) {
@@ -615,7 +604,7 @@ func (l *State) executeSwitch() {
 			if ncl := cached(p, closure.upValues, ci.base()); ncl == nil { // no match?
 				frame[a] = l.newClosure(p, closure.upValues, ci.base()) // create a new one
 			} else {
-				frame[a] = ncl
+				frame[a] = objectValue(ncl)
 			}
 			clear(frame[a+1:])
 		case opVarArg:
@@ -631,11 +620,11 @@ func (l *State) executeSwitch() {
 				}
 				frame = ci.frame
 			}
-			for j := 0; j < b; j++ {
+			for j := range b {
 				if j < n {
 					frame[a+j] = l.stack[ci.base()-n+j]
 				} else {
-					frame[a+j] = nil
+					frame[a+j] = nilValue
 				}
 			}
 		case opExtraArg:

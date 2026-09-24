@@ -12,8 +12,12 @@ func (l *State) pop() value {
 	return l.stack[l.top]
 }
 
+// upValue is open while state is non-nil, and then refers to
+// state.stack[index]. Closing it copies that slot into closed.
 type upValue struct {
-	home any
+	state  *State
+	index  int
+	closed value
 }
 
 type closure interface {
@@ -37,20 +41,13 @@ type goFunction struct {
 	Function
 }
 
-func (c *luaClosure) upValue(i int) value {
-	uv := c.upValues[i]
-	if home, ok := uv.home.(stackLocation); ok {
-		return home.state.stack[home.index]
-	}
-	return uv.home
-}
+func (c *luaClosure) upValue(i int) value { return c.upValues[i].value() }
 
 func (c *luaClosure) setUpValue(i int, v value) {
-	uv := c.upValues[i]
-	if home, ok := uv.home.(stackLocation); ok {
-		home.state.stack[home.index] = v
+	if uv := c.upValues[i]; uv.state != nil {
+		uv.state.stack[uv.index] = v
 	} else {
-		uv.home = v
+		uv.closed = v
 	}
 }
 
@@ -58,35 +55,32 @@ func (c *luaClosure) upValueCount() int        { return len(c.upValues) }
 func (c *goClosure) upValue(i int) value       { return c.upValues[i] }
 func (c *goClosure) setUpValue(i int, v value) { c.upValues[i] = v }
 func (c *goClosure) upValueCount() int         { return len(c.upValues) }
-func (l *State) newUpValue() *upValue          { return &upValue{home: nil} }
+func (l *State) newUpValue() *upValue          { return &upValue{} }
 
 func (uv *upValue) value() value {
-	if home, ok := uv.home.(stackLocation); ok {
-		return home.state.stack[home.index]
+	if uv.state != nil {
+		return uv.state.stack[uv.index]
 	}
-	return uv.home
+	return uv.closed
 }
 
 func (uv *upValue) close() {
-	if home, ok := uv.home.(stackLocation); ok {
-		uv.home = home.state.stack[home.index]
-	} else {
+	if uv.state == nil {
 		panic("attempt to close already-closed up value")
 	}
+	uv.closed, uv.state = uv.state.stack[uv.index], nil
 }
 
-func (uv *upValue) isInStackAt(level int) bool {
-	if home, ok := uv.home.(stackLocation); ok {
-		return home.index == level
-	}
-	return false
-}
+func (uv *upValue) isInStackAt(level int) bool    { return uv.state != nil && uv.index == level }
+func (uv *upValue) isInStackAbove(level int) bool { return uv.state != nil && uv.index >= level }
 
-func (uv *upValue) isInStackAbove(level int) bool {
-	if home, ok := uv.home.(stackLocation); ok {
-		return home.index >= level
+// sameHome reports whether uv and o refer to the same stack slot, or are
+// both closed over equal values.
+func (uv *upValue) sameHome(o *upValue) bool {
+	if uv.state != nil || o.state != nil {
+		return uv.state == o.state && uv.index == o.index
 	}
-	return false
+	return uv.closed == o.closed
 }
 
 type openUpValue struct {
@@ -95,7 +89,7 @@ type openUpValue struct {
 }
 
 func (l *State) newUpValueAt(level int) *upValue {
-	uv := &upValue{home: stackLocation{state: l, index: level}}
+	uv := &upValue{state: l, index: level}
 	l.upValues = &openUpValue{upValue: uv, next: l.upValues}
 	return uv
 }
@@ -231,7 +225,7 @@ func (l *State) newClosure(p *prototype, upValues []*upValue, base int) value {
 			c.upValues[i] = upValues[uv.index]
 		}
 	}
-	return c
+	return objectValue(c)
 }
 
 func cached(p *prototype, upValues []*upValue, base int) *luaClosure {
@@ -240,7 +234,7 @@ func cached(p *prototype, upValues []*upValue, base int) *luaClosure {
 		for i, uv := range p.upValues {
 			if uv.isLocal && !c.upValues[i].isInStackAt(base+uv.index) {
 				return nil
-			} else if !uv.isLocal && c.upValues[i].home != upValues[uv.index].home {
+			} else if !uv.isLocal && !c.upValues[i].sameHome(upValues[uv.index]) {
 				return nil
 			}
 		}
@@ -255,7 +249,7 @@ func (l *State) callGo(f value, function int, resultCount int) {
 		l.hook(HookCall, -1)
 	}
 	var n int
-	switch f := f.(type) {
+	switch f := f.o.(type) {
 	case *goClosure:
 		n = f.function(l)
 	case *goFunction:
@@ -267,12 +261,9 @@ func (l *State) callGo(f value, function int, resultCount int) {
 
 func (l *State) preCall(function int, resultCount int) bool {
 	for {
-		switch f := l.stack[function].(type) {
-		case *goClosure:
-			l.callGo(f, function, resultCount)
-			return true
-		case *goFunction:
-			l.callGo(f, function, resultCount)
+		switch f := l.stack[function].o.(type) {
+		case *goClosure, *goFunction:
+			l.callGo(l.stack[function], function, resultCount)
 			return true
 		case *luaClosure:
 			p := f.prototype
@@ -281,9 +272,7 @@ func (l *State) preCall(function int, resultCount int) bool {
 			if argCount < parameterCount {
 				extra := parameterCount - argCount
 				args := l.stack[l.top : l.top+extra]
-				for i := range args {
-					args[i] = nil
-				}
+				clear(args)
 				l.top += extra
 				argCount += extra
 			}
@@ -297,12 +286,12 @@ func (l *State) preCall(function int, resultCount int) bool {
 			}
 			return false
 		default:
-			tm := l.tagMethodByObject(f, tmCall)
-			switch tm.(type) {
+			tm := l.tagMethodByObject(l.stack[function], tmCall)
+			switch tm.o.(type) {
 			case closure:
 			case *goFunction:
 			default:
-				l.typeError(f, "call")
+				l.typeError(l.stack[function], "call")
 			}
 			// Slide the args + function up 1 slot and poke in the tag method
 			for p := l.top; p > function; p-- {
@@ -334,9 +323,7 @@ func (l *State) adjustVarArgs(p *prototype, argCount int) int {
 	base := l.top             // final position of first argument
 	fixedArgs := l.stack[fixed : fixed+fixedArgCount]
 	copy(l.stack[base:base+fixedArgCount], fixedArgs)
-	for i := range fixedArgs {
-		fixedArgs[i] = nil
-	}
+	clear(fixedArgs)
 	return base
 }
 
@@ -354,7 +341,7 @@ func (l *State) postCall(firstResult int) bool {
 		firstResult++
 	}
 	for ; i > 0; i-- {
-		l.stack[result] = nil
+		l.stack[result] = nilValue
 		result++
 	}
 	l.top = result
