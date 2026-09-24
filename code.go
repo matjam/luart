@@ -258,20 +258,6 @@ func abs(i int) int {
 	return i
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func not(b int) int {
 	if b == 0 {
 		return 1
@@ -297,7 +283,7 @@ func (e exprDesc) isNumeral() bool                      { return e.kind == kindN
 func (e exprDesc) isVariable() bool                     { return kindLocal <= e.kind && e.kind <= kindIndexed }
 func (e exprDesc) hasMultipleReturns() bool             { return e.kind == kindCall || e.kind == kindVarArg }
 
-func (f *function) assertEqual(a, b interface{}) {
+func (f *function) assertEqual(a, b any) {
 	if a != b {
 		panic(fmt.Sprintf("%v != %v", a, b))
 	}

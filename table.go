@@ -3,6 +3,7 @@ package lua
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
 type sortHelper struct {
@@ -54,11 +55,11 @@ var tableLibrary = []RegistryFunction{
 		} else {
 			last = CheckInteger(l, 4)
 		}
-		s := ""
+		var s strings.Builder
 		addField := func() {
 			l.RawGetInt(1, i)
 			if str, ok := l.ToString(-1); ok {
-				s += str
+				s.WriteString(str)
 			} else {
 				Errorf(l, fmt.Sprintf("invalid value (%s) at index %d in table for 'concat'", TypeNameOf(l, -1), i))
 			}
@@ -66,12 +67,12 @@ var tableLibrary = []RegistryFunction{
 		}
 		for ; i < last; i++ {
 			addField()
-			s += sep
+			s.WriteString(sep)
 		}
 		if i == last {
 			addField()
 		}
-		l.PushString(s)
+		l.PushString(s.String())
 		return 1
 	}},
 	{"insert", func(l *State) int {

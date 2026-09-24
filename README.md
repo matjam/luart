@@ -168,4 +168,4 @@ This exercises more of the bytecode interpreter’s inner loop. Here we see the 
 License
 -------
 
-luart is licensed under the [MIT license](LICENSE). It includes go-lua, which is licensed under the [MIT license](LICENSE-go-lua.md) by Shopify.
+luart is licensed under the [MIT license](LICENSE), with Shopify's original go-lua copyright retained.

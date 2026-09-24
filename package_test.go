@@ -2,12 +2,13 @@ package lua_test
 
 import (
 	"fmt"
+
 	lua "github.com/matjam/luart"
 )
 
 type step struct {
 	name     string
-	function interface{}
+	function any
 }
 
 func Example() {

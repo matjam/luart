@@ -210,7 +210,7 @@ func Where(l *State, level int) {
 //
 //	lua.Errorf(l, args)
 //	panic("unreachable")
-func Errorf(l *State, format string, a ...interface{}) {
+func Errorf(l *State, format string, a ...any) {
 	Where(l, 1)
 	l.PushFString(format, a...)
 	l.Concat(2)
@@ -270,7 +270,7 @@ func SetMetaTableNamed(l *State, name string) {
 	l.SetMetaTable(-2)
 }
 
-func TestUserData(l *State, index int, name string) interface{} {
+func TestUserData(l *State, index int, name string) any {
 	if d := l.ToUserData(index); d != nil {
 		if l.MetaTable(index) {
 			if MetaTableNamed(l, name); !l.RawEqual(-1, -2) {
@@ -286,8 +286,19 @@ func TestUserData(l *State, index int, name string) interface{} {
 // CheckUserData checks whether the function argument at index is a userdata
 // of the type name (see NewMetaTable) and returns the userdata (see
 // ToUserData).
-func CheckUserData(l *State, index int, name string) interface{} {
+func CheckUserData(l *State, index int, name string) any {
 	if d := TestUserData(l, index, name); d != nil {
+		return d
+	}
+	typeError(l, index, name)
+	panic("unreachable")
+}
+
+// CheckUserData checks whether the function argument at index is a userdata
+// of the type name (see NewMetaTable) holding a T, and returns it. It raises
+// a Lua error otherwise.
+func (l *State) CheckUserData[T any](index int, name string) T {
+	if d, ok := TestUserData(l, index, name).(T); ok {
 		return d
 	}
 	typeError(l, index, name)
@@ -386,7 +397,7 @@ func SetFunctions(l *State, functions []RegistryFunction, upValueCount uint8) {
 	uvCount := int(upValueCount)
 	CheckStackWithMessage(l, uvCount, "too many upvalues")
 	for _, r := range functions { // fill the table with given functions
-		for i := 0; i < uvCount; i++ { // copy upvalues to the top
+		for range uvCount { // copy upvalues to the top
 			l.PushValue(-uvCount)
 		}
 		l.PushGoClosure(r.Function, upValueCount) // closure with those upvalues
