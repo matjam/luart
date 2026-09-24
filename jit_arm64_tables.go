@@ -112,13 +112,25 @@ func (c *arm64Compiler) cachedSlot(ip int, withIndex bool) {
 }
 
 // getField stores the field of the table in rT that the instruction at ip
-// caches to dst, exiting unless the cache hits a non-nil value.
+// caches to dst, exiting unless the cache hits.
 func (c *arm64Compiler) getField(ip int, dst operand) {
 	c.cachedSlot(ip, true)
 	c.load(operand{rSlot, 0})
-	c.a.Cbz(rP, c.exit(ip))
+	c.absentIsNil(ip)
 	c.guardStore(dst, rP, ip)
 	c.store(dst)
+}
+
+// absentIsNil handles a nil just read from the table in rT, which the
+// interpreter looks up in the table's metatable: it exits at ip unless the
+// table has none, when nil is the result.
+func (c *arm64Compiler) absentIsNil(ip int) {
+	ok := c.a.NewLabel()
+	c.a.Cbnz(rP, ok)
+	c.a.Ldr(rTmp, rT, offTMeta)
+	c.a.Cbnz(rTmp, c.exit(ip))
+	c.a.Mov(rN, ZR)
+	c.a.Bind(ok)
 }
 
 // selfField compiles SELF with a constant string key: R(A+1) := R(B);
@@ -129,7 +141,7 @@ func (c *arm64Compiler) selfField(ip int, i instruction) {
 	c.tableOf(reg(i.b()), ip)
 	c.cachedSlot(ip, true)
 	c.load(operand{rSlot, 0})
-	a.Cbz(rP, c.exit(ip))
+	c.absentIsNil(ip)
 	c.guardStore(fn, rP, ip)
 	c.guardStore(self, rT, ip)
 	c.store(fn)
@@ -155,8 +167,7 @@ func (c *arm64Compiler) loadRK(field, ip int) bool {
 }
 
 // setField compiles SETTABLE, or SETTABUP when up is true, with a constant
-// string key, storing RK(C) to a slot that already holds a value, as
-// setField does.
+// string key, storing RK(C) to the cached slot as setField does.
 func (c *arm64Compiler) setField(ip int, i instruction, up bool) {
 	a := &c.a
 	if !c.loadRK(i.c(), ip) {
@@ -171,8 +182,17 @@ func (c *arm64Compiler) setField(ip int, i instruction, up bool) {
 	c.tableOf(t, ip)
 	c.cachedSlot(ip, false)
 	slot := operand{rSlot, 0}
+	// An absent key: setField stores it only in a table without a
+	// metatable and with a shared shape.
+	present := a.NewLabel()
 	a.Ldr(rTmp, rSlot, offP)
-	a.Cbz(rTmp, c.exit(ip)) // an absent key: setField checks for metamethods
+	a.Cbnz(rTmp, present)
+	a.Ldr(rTmp, rT, offTMeta)
+	a.Cbnz(rTmp, c.exit(ip))
+	a.Ldr(rTmp, rT, offTShape)
+	a.Ldrb(rTmp, rTmp, offShapeDict)
+	a.Cbnz(rTmp, c.exit(ip))
+	a.Bind(present)
 	c.guardStore(slot, rP, ip)
 	c.store(slot)
 	a.Strb(ZR, rT, offTFlags) // invalidateTagMethodCache
@@ -206,14 +226,14 @@ func (c *arm64Compiler) getIndex(ip int, i instruction) {
 	}
 	c.element(rT, offTArray, rIdx, rSlot, ip)
 	c.load(operand{rSlot, 0})
-	c.a.Cbz(rP, c.exit(ip)) // nil: the interpreter checks for __index
+	c.absentIsNil(ip)
 	dst := reg(i.a())
 	c.guardStore(dst, rP, ip)
 	c.store(dst)
 }
 
-// setIndex compiles SETTABLE storing a value over a non-nil element of the
-// table's array part, as tryPut does.
+// setIndex compiles SETTABLE storing a value to an element of the table's
+// array part, as tryPut, or put for a table without a metatable, does.
 func (c *arm64Compiler) setIndex(ip int, i instruction) {
 	a := &c.a
 	if !c.loadRK(i.c(), ip) {
@@ -226,9 +246,14 @@ func (c *arm64Compiler) setIndex(ip int, i instruction) {
 		return
 	}
 	c.element(rT, offTArray, rIdx, rSlot, ip)
-	slot := operand{rSlot, 0}
+	// A nil element: setTableAt stores over it when there is no
+	// metatable to consult for __newindex.
+	slot, present := operand{rSlot, 0}, a.NewLabel()
 	a.Ldr(rTmp, rSlot, offP)
-	a.Cbz(rTmp, c.exit(ip))
+	a.Cbnz(rTmp, present)
+	a.Ldr(rTmp, rT, offTMeta)
+	a.Cbnz(rTmp, c.exit(ip))
+	a.Bind(present)
 	c.guardStore(slot, rP, ip)
 	c.store(slot)
 	a.Strb(ZR, rT, offTFlags) // invalidateTagMethodCache

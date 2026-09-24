@@ -218,6 +218,26 @@ func TestJITTablesAndCalls(t *testing.T) {
 		{"deep recursion", `local function d(n) if n == 0 then return 0 end return 1 + d(n - 1) end; function run() return d(5000) end`},
 		{"closures in loops", `function run() local s = 0; for i = 1, 20 do local f = function(x) return x + i end; s = s + f(1) end; return s end`},
 		{"tail calls", `local function t(n, acc) if n == 0 then return acc end return t(n - 1, acc + n) end; function run() return t(100, 0) end`},
+		{"absent keys without a metatable", `function run() local t = {1, nil, 3, x = 1}; local n = 0; for i = 1, 4 do if t[i] == nil then n = n + 1 end; if t.y == nil then n = n + 10 end end; return n end`},
+		{"absent keys with a metatable", `
+			local t = setmetatable({1, nil, 3}, {__index = function(_, k) return k end})
+			function run() local s = 0; for i = 1, 3 do s = s + t[i] end; return s end`},
+		{"appends", `function run() local t = {}; for i = 1, 1000 do t[i] = i * 2 end; local s = 0; for i = 1, #t do s = s + t[i] end; return s, #t end`},
+		{"appends with __newindex", `
+			local log = {}
+			local t = setmetatable({}, {__newindex = function(t, k, v) log[#log + 1] = k; rawset(t, k, v) end})
+			function run() for i = 1, 5 do t[i] = i end; return #log, t[5] end`},
+		{"new fields on shaped tables", `function run() local s = 0; for i = 1, 10 do local t = {}; t.a = i; t.b = i * 2; s = s + t.a + t.b end; return s end`},
+		{"dictionary tables", `
+			function run()
+			  local t = {}
+			  for i = 1, 100 do t["k" .. i] = i end
+			  for i = 1, 100, 2 do t["k" .. i] = nil end
+			  local s = 0; for i = 1, 10 do t.k1 = i; s = s + t.k1 + (t.k3 or 0) + t.k2 end
+			  return s
+			end`},
+		{"captured loop variables", `function run() local fs = {}; for i = 1, 10 do fs[i] = function() return i end end; local s = 0; for i = 1, 10 do s = s + fs[i]() end; return s end`},
+		{"while with captured locals", `function run() local fs, i = {}, 0; while i < 5 do i = i + 1; local j = i; fs[i] = function() return j end end; return fs[1]() + fs[5]() end`},
 		{"sort with comparator", `function run() local t = {5, 3, 9, 1, 7}; table.sort(t, function(a, b) return a > b end); return t[1], t[5] end`},
 	}
 	for _, tt := range tests {
