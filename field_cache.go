@@ -86,9 +86,10 @@ func (c *fieldCache) fill(tt *table, k value) (value, bool) {
 	return v, !v.isNil()
 }
 
-// setField stores t[key] = v for a constant string key when the field
-// already holds a non-nil value, so no __newindex metamethod applies. It
-// reports false when the caller must take the generic path.
+// setField stores t[key] = v for a constant string key whose slot exists
+// when no __newindex metamethod can apply: the field already holds a value,
+// or the table has no metatable. It reports false when the caller must take
+// the generic path.
 func setField(t value, key value, v value, c *fieldCache) bool {
 	tt, ok := t.o.(*table)
 	if !ok || v.isNil() {
@@ -106,7 +107,9 @@ func setField(t value, key value, v value, c *fieldCache) bool {
 		*c = fieldCache{shape: s, slot: i}
 	}
 	if tt.slots[c.slot].isNil() {
-		return false
+		if tt.metaTable != nil || s.dict {
+			return false
+		}
 	}
 	tt.slots[c.slot] = v
 	tt.invalidateTagMethodCache()

@@ -8,29 +8,112 @@ import (
 // String keys live in slots, laid out by shape (see shape.go), and all
 // remaining keys live in hash, which is allocated on first write.
 type table struct {
-	array         []value
-	shape         *shape  // nil until the first string key
-	slots         []value // len(slots) == len(shape.keys)
+	array     []value
+	shape     *shape  // nil until the first string key
+	slots     []value // len(slots) == len(shape.keys)
+	hash      map[value]value
+	metaTable *table
+	site      *fieldCache // the NEWTABLE that made the table, which learns its shape
+	extra     *tableExtra // allocated on first use
+	flags     byte
+}
+
+// tableExtra holds table state that most tables never need.
+type tableExtra struct {
 	dead          int     // nil slots in a dictionary shape
-	hash          map[value]value
-	metaTable     *table
-	flags         byte
 	iterationKeys []value // snapshot of hash keys for next
 	iterationNext int     // index in iterationKeys after the key next last returned
 }
+
+// Tables with a few string keys are allocated together with their slots.
+type (
+	table1 struct {
+		table
+		inline [1]value
+	}
+	table2 struct {
+		table
+		inline [2]value
+	}
+	table4 struct {
+		table
+		inline [4]value
+	}
+	table8 struct {
+		table
+		inline [8]value
+	}
+)
 
 const minCompactSlots = 8
 
 func newTable() *table                     { return &table{} }
 func (t *table) invalidateTagMethodCache() { t.flags = 0 }
 
-func newTableWithSize(arraySize, hashSize int) *table {
+func (t *table) ext() *tableExtra {
+	if t.extra == nil {
+		t.extra = &tableExtra{}
+	}
+	return t.extra
+}
+
+func (t *table) invalidateIteration() {
+	if t.extra != nil {
+		t.extra.iterationKeys = nil
+	}
+}
+
+// newTableWithSlots returns an empty table with room for slotCount string
+// keys, in one allocation when slotCount is small.
+func newTableWithSlots(slotCount int) *table {
+	switch {
+	case slotCount <= 0:
+		return new(table)
+	case slotCount == 1:
+		x := new(table1)
+		x.slots = x.inline[:0]
+		return &x.table
+	case slotCount == 2:
+		x := new(table2)
+		x.slots = x.inline[:0]
+		return &x.table
+	case slotCount <= 4:
+		x := new(table4)
+		x.slots = x.inline[:0]
+		return &x.table
+	case slotCount <= 8:
+		x := new(table8)
+		x.slots = x.inline[:0]
+		return &x.table
+	}
 	t := new(table)
+	t.slots = make([]value, 0, slotCount)
+	return t
+}
+
+func newTableWithSize(arraySize, hashSize int) *table {
+	t := newTableWithSlots(hashSize)
 	if arraySize > 0 {
 		t.array = make([]value, arraySize)
 	}
-	if hashSize > 0 {
-		t.slots = make([]value, 0, hashSize)
+	return t
+}
+
+// newTableAt creates a table for a NEWTABLE instruction whose cache is site.
+// It starts in the shape the site's previous table reached, with every slot
+// nil. Nil slots read as absent keys, so this is invisible to Lua, but the
+// constructor's stores then fill slots without changing shape.
+func newTableAt(site *fieldCache, arraySize, hashSize int) *table {
+	s := site.shape
+	if s == nil {
+		t := newTableWithSize(arraySize, hashSize)
+		t.site = site
+		return t
+	}
+	t := newTableWithSlots(len(s.keys))
+	t.shape, t.slots, t.site = s, t.slots[:len(s.keys)], site
+	if arraySize > 0 {
+		t.array = make([]value, arraySize)
 	}
 	return t
 }
@@ -53,9 +136,9 @@ func (t *table) putString(root *shape, k value, key string, v value) {
 			t.slots[i] = v
 			if t.shape.dict {
 				if old.isNil() && !v.isNil() {
-					t.dead--
+					t.ext().dead--
 				} else if !old.isNil() && v.isNil() {
-					t.dead++
+					t.ext().dead++
 				}
 			}
 			return
@@ -67,19 +150,26 @@ func (t *table) putString(root *shape, k value, key string, v value) {
 	s := t.shape
 	if s == nil {
 		s = root
-	} else if s.dict && t.dead > minCompactSlots && t.dead > len(t.slots)/2 {
+	} else if s.dict && t.extra != nil && t.extra.dead > minCompactSlots && t.extra.dead > len(t.slots)/2 {
 		t.compact()
 		s = t.shape
 	}
 	t.shape = s.with(k, key)
 	t.slots = append(t.slots, v)
-	t.iterationKeys = nil // invalidate iterations when adding an entry
+	t.invalidateIteration() // adding an entry invalidates iterations
+	if t.site != nil {
+		if t.shape.dict {
+			t.site.shape = nil // do not pre-shape tables as dictionaries
+		} else {
+			t.site.shape = t.shape
+		}
+	}
 }
 
 // compact drops the nil slots of a dictionary. The new shape invalidates
 // slots that instructions cached for the old one.
 func (t *table) compact() {
-	live := len(t.slots) - t.dead
+	live := len(t.slots) - t.extra.dead
 	d := &shape{slots: make(map[string]int32, live), keys: make([]value, 0, live), dict: true}
 	slots := make([]value, 0, live)
 	for i, v := range t.slots {
@@ -90,7 +180,7 @@ func (t *table) compact() {
 			slots = append(slots, v)
 		}
 	}
-	t.shape, t.slots, t.dead = d, slots, 0
+	t.shape, t.slots, t.extra.dead = d, slots, 0
 }
 
 func (l *State) fastTagMethod(table *table, event tm) value {
@@ -154,7 +244,7 @@ func (t *table) addOrInsertHash(k, v value) {
 		t.hash = make(map[value]value)
 	}
 	if _, ok := t.hash[k]; !ok {
-		t.iterationKeys = nil // invalidate iterations when adding an entry
+		t.invalidateIteration() // adding an entry invalidates iterations
 	}
 	t.hash[k] = v
 }
@@ -221,7 +311,7 @@ func (t *table) tryPut(l *State, k, v value) bool {
 		}
 		if i, ok := t.shape.slot(o); ok && !t.slots[i].isNil() {
 			if v.isNil() && t.shape.dict {
-				t.dead++
+				t.ext().dead++
 			}
 			t.slots[i] = v
 			return true
@@ -328,23 +418,27 @@ func (l *State) next(t *table, key int) bool {
 			return true
 		}
 	}
-	if t.iterationKeys == nil {
+	if len(t.hash) == 0 {
+		return false
+	}
+	if t.extra == nil || t.extra.iterationKeys == nil {
 		t.snapshotKeys()
 	}
 	return l.nextMapKey(t, key, 0)
 }
 
 func (l *State) nextHashKey(t *table, key int, k value) bool {
-	if t.iterationKeys == nil {
+	if t.extra == nil || t.extra.iterationKeys == nil {
 		if _, ok := t.hash[k]; !ok {
 			l.runtimeError("invalid key to 'next'")
 		}
 		t.snapshotKeys()
 	}
-	if j := t.iterationNext - 1; 0 <= j && j < len(t.iterationKeys) && t.iterationKeys[j] == k {
+	x := t.extra
+	if j := x.iterationNext - 1; 0 <= j && j < len(x.iterationKeys) && x.iterationKeys[j] == k {
 		return l.nextMapKey(t, key, j+1)
 	}
-	for j, hk := range t.iterationKeys {
+	for j, hk := range x.iterationKeys {
 		if hk == k {
 			return l.nextMapKey(t, key, j+1)
 		}
@@ -358,16 +452,18 @@ func (t *table) snapshotKeys() {
 	for hk := range t.hash {
 		keys = append(keys, hk)
 	}
-	t.iterationKeys, t.iterationNext = keys, 0
+	x := t.ext()
+	x.iterationKeys, x.iterationNext = keys, 0
 }
 
 // nextMapKey pushes the first key from iterationKeys[from:] still present.
 func (l *State) nextMapKey(t *table, key, from int) bool {
-	for j := from; j < len(t.iterationKeys); j++ {
-		hk := t.iterationKeys[j]
+	x := t.extra
+	for j := from; j < len(x.iterationKeys); j++ {
+		hk := x.iterationKeys[j]
 		if v := t.hash[hk]; !v.isNil() {
 			l.stack[key], l.stack[key+1] = hk, v
-			t.iterationNext = j + 1
+			x.iterationNext = j + 1
 			return true
 		}
 	}

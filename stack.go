@@ -13,11 +13,14 @@ func (l *State) pop() value {
 }
 
 // upValue is open while state is non-nil, and then refers to
-// state.stack[index]. Closing it copies that slot into closed.
+// state.stack[index]. Closing it copies that slot into closed. Open upvalues
+// form a list through next, sorted by index from the top of the stack down,
+// as in C Lua.
 type upValue struct {
 	state  *State
 	index  int
 	closed value
+	next   *upValue
 }
 
 type closure interface {
@@ -29,6 +32,8 @@ type closure interface {
 type luaClosure struct {
 	prototype *prototype
 	upValues  []*upValue
+	inline    [2]*upValue // backs upValues for closures with up to two
+	own       upValue     // storage for the first upvalue this closure opens
 }
 
 type goClosure struct {
@@ -72,8 +77,7 @@ func (uv *upValue) close() {
 	uv.closed, uv.state = uv.state.stack[uv.index], nil
 }
 
-func (uv *upValue) isInStackAt(level int) bool    { return uv.state != nil && uv.index == level }
-func (uv *upValue) isInStackAbove(level int) bool { return uv.state != nil && uv.index >= level }
+func (uv *upValue) isInStackAt(level int) bool { return uv.state != nil && uv.index == level }
 
 // sameHome reports whether uv and o refer to the same stack slot, or are
 // both closed over equal values.
@@ -84,29 +88,12 @@ func (uv *upValue) sameHome(o *upValue) bool {
 	return uv.closed == o.closed
 }
 
-type openUpValue struct {
-	upValue *upValue
-	next    *openUpValue
-}
-
-func (l *State) newUpValueAt(level int) *upValue {
-	uv := &upValue{state: l, index: level}
-	l.upValues = &openUpValue{upValue: uv, next: l.upValues}
-	return uv
-}
-
+// close closes the open upvalues at or above stack index level, which head
+// the sorted list.
 func (l *State) close(level int) {
-	// TODO this seems really inefficient - how can we terminate early?
-	var p *openUpValue
-	for e := l.upValues; e != nil; e, p = e.next, e {
-		if e.upValue.isInStackAbove(level) {
-			e.upValue.close()
-			if p != nil {
-				p.next = e.next
-			} else {
-				l.upValues = e.next
-			}
-		}
+	for uv := l.upValues; uv != nil && uv.index >= level; uv = l.upValues {
+		l.upValues, uv.next = uv.next, nil
+		uv.close()
 	}
 }
 
@@ -211,24 +198,45 @@ func (ci *luaCallInfo) step() instruction {
 }
 
 func (l *State) newLuaClosure(p *prototype) *luaClosure {
-	return &luaClosure{prototype: p, upValues: make([]*upValue, len(p.upValues))}
+	c := &luaClosure{prototype: p}
+	if n := len(p.upValues); n <= len(c.inline) {
+		c.upValues = c.inline[:n]
+	} else {
+		c.upValues = make([]*upValue, n)
+	}
+	return c
 }
 
-func (l *State) findUpValue(level int) *upValue {
-	for e := l.upValues; e != nil; e = e.next {
-		if e.upValue.isInStackAt(level) {
-			return e.upValue
+// findUpValue returns the open upvalue for stack index level, creating it
+// in sorted position if there is none. A new upvalue uses storage when it
+// is non-nil.
+func (l *State) findUpValue(level int, storage *upValue) *upValue {
+	link := &l.upValues
+	for uv := *link; uv != nil && uv.index >= level; uv = *link {
+		if uv.index == level {
+			return uv
 		}
+		link = &uv.next
 	}
-	return l.newUpValueAt(level)
+	uv := storage
+	if uv == nil {
+		uv = new(upValue)
+	}
+	*uv = upValue{state: l, index: level, next: *link}
+	*link = uv
+	return uv
 }
 
 func (l *State) newClosure(p *prototype, upValues []*upValue, base int) value {
 	c := l.newLuaClosure(p)
 	p.cache = c
+	storage := &c.own
 	for i, uv := range p.upValues {
 		if uv.isLocal { // upValue refers to local variable
-			c.upValues[i] = l.findUpValue(base + uv.index)
+			c.upValues[i] = l.findUpValue(base+uv.index, storage)
+			if c.upValues[i] == storage {
+				storage = nil // used
+			}
 		} else { // get upValue from enclosing function
 			c.upValues[i] = upValues[uv.index]
 		}

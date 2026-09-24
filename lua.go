@@ -235,7 +235,7 @@ type State struct {
 	baseHookCount         int
 	hookCount             int
 	hooker                Hook
-	upValues              *openUpValue
+	upValues              *upValue // open upvalues, sorted by stack index, highest first
 	errorFunction         int      // current error handling function (stack index)
 	baseCallInfo          callInfo // callInfo for first level (go calling lua)
 	protectFunction       func()

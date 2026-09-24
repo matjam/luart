@@ -368,11 +368,8 @@ func (l *State) executeSwitch() {
 			frame = ci.frame
 		case opNewTable:
 			a := i.a()
-			if b, c := float8(i.b()), float8(i.c()); b != 0 || c != 0 {
-				frame[a] = objectValue(newTableWithSize(intFromFloat8(b), intFromFloat8(c)))
-			} else {
-				frame[a] = objectValue(newTable())
-			}
+			b, c := float8(i.b()), float8(i.c())
+			frame[a] = objectValue(newTableAt(&closure.prototype.fields[ip-1], intFromFloat8(b), intFromFloat8(c)))
 			clear(frame[a+1:])
 		case opSelf:
 			a, t := i.a(), frame[i.b()]

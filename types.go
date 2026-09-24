@@ -396,8 +396,13 @@ func (l *State) toString(index int) (s string, ok bool) {
 	return
 }
 
+// numberToString formats f as Lua's "%.14g" does. Integers below 1e14 take a
+// fast path that skips fmt.
 func numberToString(f float64) string {
-	return fmt.Sprintf("%.14g", f)
+	if i := int64(f); float64(i) == f && -1e14 < f && f < 1e14 && !(f == 0 && math.Signbit(f)) {
+		return strconv.FormatInt(i, 10)
+	}
+	return strconv.FormatFloat(f, 'g', 14, 64)
 }
 
 func toString(r value) (string, bool) {
