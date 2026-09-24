@@ -26,8 +26,25 @@ const (
 	opSetFieldUp // SETTABUP with key B
 	opSelfField  // SELF with key C
 
+	// A MULRK whose result is the B operand of the ADDRR that follows it, as
+	// in x*0.1 + t. See fuseMulAdd.
+	opMulAddRKR
+
 	opCount
 )
+
+// fuseMulAdd marks each MULRK that feeds the ADDRR after it, so the
+// interpreter runs both in one dispatch when every operand is a number. The
+// ADDRR stays in place, so jumps to it and the unfused path still run it.
+// Fusing arithmetic pairs in general measured slower: decoding the second
+// instruction cost more than the dispatch it saved.
+func fuseMulAdd(exec []instruction) {
+	for pc := 0; pc+1 < len(exec); pc++ {
+		if i, next := exec[pc], exec[pc+1]; i.opCode() == opMulRK && next.opCode() == opAddRR && next.b() == i.a() {
+			exec[pc].setOpCode(opMulAddRKR)
+		}
+	}
+}
 
 func init() {
 	if opCount > 1<<sizeOp {
@@ -131,5 +148,6 @@ func specialise(code []instruction, constants []value) ([]instruction, []fieldCa
 		}
 		exec[pc] = s
 	}
+	fuseMulAdd(exec)
 	return exec, fields
 }

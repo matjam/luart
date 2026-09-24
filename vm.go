@@ -503,6 +503,19 @@ func (l *State) executeSwitch() {
 			} else {
 				frame = l.arithInto(ci, i.a(), b, c, tmAdd)
 			}
+		case opMulAddRKR:
+			if b, c := frame[i.b()], constants[i.c()]; b.isNumber() && c.isNumber() {
+				r := b.n * c.n
+				frame[i.a()] = numberValue(r)
+				if j := code[ip]; l.hookMask&(MaskLine|MaskCount) == 0 {
+					if d := frame[j.c()]; d.isNumber() {
+						frame[j.a()] = numberValue(r + d.n)
+						ip++
+					}
+				}
+			} else {
+				frame = l.arithInto(ci, i.a(), b, c, tmMul)
+			}
 		case opSubRR:
 			if b, c := frame[i.b()], frame[i.c()]; b.isNumber() && c.isNumber() {
 				frame[i.a()] = numberValue(b.n - c.n)
