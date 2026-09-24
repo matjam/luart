@@ -1,171 +1,102 @@
 [![ci](https://github.com/matjam/luart/actions/workflows/ci.yml/badge.svg)](https://github.com/matjam/luart/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/matjam/luart.svg)](https://pkg.go.dev/github.com/matjam/luart)
 
-luart
-=====
+# luart
 
-luart is a fork of [Shopify/go-lua](https://github.com/Shopify/go-lua), a Lua 5.2 VM in pure Go. The fork targets real-time scripting, such as per-frame visualisers, where interpreter speed and allocation per frame matter. [`bench/`](bench/README.md) holds the benchmark that motivates it.
+luart ("Lua RT") is a Lua 5.2 VM in pure Go, built for real-time use such as
+per-frame scripts in games, visualisers and audio tools. It is a fork of
+[Shopify/go-lua](https://github.com/Shopify/go-lua).
 
-The rest of this README is upstream's, with import paths updated.
+## Goals
 
-A Lua VM in pure Go
-===================
+- **Real-time performance.** Fix the interpreter's obvious performance
+  problems and avoid allocation wherever possible, so a script can run every
+  frame without putting pressure on the garbage collector.
+- **Modern Go.** Bring the code up to Go 1.27 idioms and use newer language
+  features, such as generic methods, where they improve the API.
 
-go-lua is a port of the Lua 5.2 VM to pure Go. It is compatible with binary files dumped by `luac`, from the [Lua reference implementation](http://www.lua.org/).
+A newer Lua version may follow later. It comes second to performance and
+modernisation.
 
-The motivation is to enable simple scripting of Go applications. For example, it is used to describe flows in [Shopify's](http://www.shopify.com/) load generation tool, Genghis.
+## Status
 
-Usage
------
+| | |
+|---|---|
+| Lua version | 5.2, compatible with `luac` 5.2 binary chunks |
+| Go | 1.27.1 or later, `CGO_ENABLED=0` |
+| API | go-lua's API, under the module path `github.com/matjam/luart` |
 
-go-lua is intended to be used as a Go package. It does not include a command to run the interpreter. To start using the library, run:
+Work so far:
+
+- Go 1.27 modernisation (`any`, range-over-int, builtin `min`/`max`/`clear`)
+- `switch` dispatch in place of go-lua's closure jump table
+- Generic accessors `(*State).UserData[T]` and `(*State).CheckUserData[T]`
+- Exact constant folding of `10^n` on current Go
+
+Inherited from go-lua:
+
+- Most core libraries are implemented. The main gaps are regular
+  expressions, coroutines and `string.dump`.
+- Weak tables are not supported. Go's `weak` package (Go 1.24) could make
+  them possible.
+
+## Performance
+
+[`bench/`](bench/README.md) runs one frame of a 200×100 per-pixel plasma
+effect in several pure-Go scripting runtimes. On an Apple M1 Pro at the time
+of the fork:
+
+| Runtime | Time per frame | Memory per frame | Allocations per frame |
+|---|---|---|---|
+| Native Go | 0.33 ms | 0 | 0 |
+| go-lua / luart at fork | 5.7 ms | 2.1 MiB | 280,000 |
+
+Almost all of the allocation comes from boxing each number result into a Go
+interface. Removing it is the next step.
+
+## Usage
+
 ```sh
 go get github.com/matjam/luart
 ```
 
-To develop & test go-lua, you'll also need the [lua-tests](https://github.com/Shopify/lua-tests) submodule checked out:
-```sh
-git submodule update --init
-```
-
-You can then develop with the usual Go commands, e.g.:
-```sh
-go build
-go test -cover
-```
-
-A simple example that loads & runs a Lua script is:
 ```go
 package main
 
 import lua "github.com/matjam/luart"
 
 func main() {
-  l := lua.NewState()
-  lua.OpenLibraries(l)
-  if err := lua.DoFile(l, "hello.lua"); err != nil {
-    panic(err)
-  }
+	l := lua.NewState()
+	lua.OpenLibraries(l)
+	if err := lua.DoFile(l, "hello.lua"); err != nil {
+		panic(err)
+	}
 }
 ```
 
-Status
-------
+Userdata can be read back with its Go type:
 
-go-lua has been used in production in Shopify's load generation tool, Genghis, since May 2014, and is also part of Shopify's resiliency tooling.
+```go
+type point struct{ x, y float64 }
 
-The core VM and compiler has been ported and tested. The compiler is able to correctly process all Lua source files from the [Lua test suite](https://github.com/Shopify/lua-tests). The VM has been tested to correctly execute over a third of the Lua test cases.
-
-Most core Lua libraries are at least partially implemented. Prominent exceptions are regular expressions, coroutines and `string.dump`.
-
-Weak reference tables are not and will not be supported. go-lua uses the Go heap for Lua objects, and Go does not support weak references.
-
-Benchmarks
-----------
-
-Benchmark results shown here are taken from a Mid 2012 MacBook Pro Retina with a 2.6 GHz Core i7 CPU running OS X 10.10.2, go 1.4.2 and Lua 5.2.2.
-
-The Fibonacci function can be written a few different ways to evaluate different performance characteristics of a language interpreter. The simplest way is as a recursive function:
-```lua
-  function fib(n)
-    if n == 0 then
-      return 0
-    elseif n == 1 then
-      return 1
-    end
-    return fib(n-1) + fib(n-2)
-  end
+l.Register("norm", func(l *lua.State) int {
+	p := l.CheckUserData[*point](1, "point")
+	l.PushNumber(math.Hypot(p.x, p.y))
+	return 1
+})
 ```
 
-This exercises the call stack implementation. When computing `fib(35)`, go-lua is about 6x slower than the C Lua interpreter. [Gopher-lua](https://github.com/yuin/gopher-lua) is about 20% faster than go-lua. Much of the performance difference between go-lua and gopher-lua comes from the inclusion of debug hooks in go-lua. The remainder is due to the call stack implementation - go-lua heap-allocates Lua stack frames with a separately allocated variant struct, as outlined above. Although it caches recently used stack frames, it is outperformed by the simpler statically allocated call stacks in gopher-lua.
-```
-  $ time lua fibr.lua
-  real  0m2.807s
-  user  0m2.795s
-  sys   0m0.006s
-  
-  $ time glua fibr.lua
-  real  0m14.528s
-  user  0m14.513s
-  sys   0m0.031s
-  
-  $ time go-lua fibr.lua
-  real  0m17.411s
-  user  0m17.514s
-  sys   0m1.287s
+## Development
+
+```sh
+git submodule update --init   # lua-tests
+go test ./...
+cd bench && go test -bench . -benchmem
 ```
 
-The recursive Fibonacci function can be transformed into a tail-recursive variant:
-```lua
-  function fibt(n0, n1, c)
-    if c == 0 then
-      return n0
-    else if c == 1 then
-      return n1
-    end
-    return fibt(n1, n0+n1, c-1)
-  end
-  
-  function fib(n)
-    fibt(0, 1, n)
-  end
-```
+The parser and dump tests compare against `luac` 5.2 and skip when it is not
+installed. CI installs it.
 
-The Lua interpreter detects and optimizes tail calls. This exhibits similar relative performance between the 3 interpreters, though gopher-lua edges ahead a little due to its simpler stack model and reduced bookkeeping.
-```
-  $ time lua fibt.lua
-  real  0m0.099s
-  user  0m0.096s
-  sys   0m0.002s
+## Licence
 
-  $ time glua fibt.lua
-  real  0m0.489s
-  user  0m0.484s
-  sys   0m0.005s
-
-  $ time go-lua fibt.lua
-  real  0m0.607s
-  user  0m0.610s
-  sys   0m0.068s
-```
-
-Finally, we can write an explicitly iterative implementation:
-```lua
-  function fib(n)
-    if n == 0 then
-      return 0
-    else if n == 1 then
-      return 1
-    end
-    local n0, n1 = 0, 1
-    for i = n, 2, -1 do
-      local tmp = n0 + n1
-      n0 = n1
-      n1 = tmp
-    end
-    return n1
-  end
-```
-
-This exercises more of the bytecode interpreter’s inner loop. Here we see the performance impact of Go’s `switch` implementation. Both go-lua and gopher-lua are an order of magnitude slower than the C Lua interpreter.
-```
-  $ time lua fibi.lua
-  real  0m0.023s
-  user  0m0.020s
-  sys   0m0.003s
-
-  $ time glua fibi.lua
-  real  0m0.242s
-  user  0m0.235s
-  sys   0m0.005s
-
-  $ time go-lua fibi.lua
-  real  0m0.242s
-  user  0m0.240s
-  sys   0m0.028s
-```
-
-License
--------
-
-luart is licensed under the [MIT license](LICENSE), with Shopify's original go-lua copyright retained.
+MIT, with Shopify's original go-lua copyright retained. See [LICENSE](LICENSE).
