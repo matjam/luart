@@ -69,12 +69,11 @@ func (events *table) tagMethod(event tm, name string) value {
 
 func (l *State) tagMethodByObject(o value, event tm) value {
 	var mt *table
-	switch x := o.o.(type) {
-	case *table:
-		mt = x.metaTable
-	case *userData:
-		mt = x.metaTable
-	default:
+	if t := o.table(); t != nil {
+		mt = t.metaTable
+	} else if d := o.userData(); d != nil {
+		mt = d.metaTable
+	} else {
 		mt = l.global.metaTable(o)
 	}
 	if mt == nil {

@@ -85,7 +85,7 @@ func (uv *upValue) sameHome(o *upValue) bool {
 	if uv.state != nil || o.state != nil {
 		return uv.state == o.state && uv.index == o.index
 	}
-	return uv.closed == o.closed
+	return uv.closed.identical(o.closed)
 }
 
 // close closes the open upvalues at or above stack index level, which head
@@ -263,11 +263,10 @@ func (l *State) callGo(f value, function int, resultCount int) {
 		l.hook(HookCall, -1)
 	}
 	var n int
-	switch f := f.o.(type) {
-	case *goClosure:
-		n = f.function(l)
-	case *goFunction:
-		n = f.Function(l)
+	if c := f.goClosure(); c != nil {
+		n = c.function(l)
+	} else {
+		n = f.goFunction().Function(l)
 	}
 	apiCheckStackSpace(l, n)
 	l.postCall(l.top - n)
@@ -275,11 +274,12 @@ func (l *State) callGo(f value, function int, resultCount int) {
 
 func (l *State) preCall(function int, resultCount int) bool {
 	for {
-		switch f := l.stack[function].o.(type) {
-		case *goClosure, *goFunction:
-			l.callGo(l.stack[function], function, resultCount)
+		switch fv := l.stack[function]; fv.kind() {
+		case vkGoClosure, vkGoFunction:
+			l.callGo(fv, function, resultCount)
 			return true
-		case *luaClosure:
+		case vkLuaClosure:
+			f := fv.luaClosure()
 			p := f.prototype
 			l.checkStack(p.maxStackSize)
 			argCount, parameterCount := l.top-function-1, p.parameterCount
@@ -301,10 +301,7 @@ func (l *State) preCall(function int, resultCount int) bool {
 			return false
 		default:
 			tm := l.tagMethodByObject(l.stack[function], tmCall)
-			switch tm.o.(type) {
-			case closure:
-			case *goFunction:
-			default:
+			if !tm.isFunction() {
 				l.typeError(l.stack[function], "call")
 			}
 			// Slide the args + function up 1 slot and poke in the tag method

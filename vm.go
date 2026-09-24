@@ -18,18 +18,12 @@ func (l *State) arith(rb, rc value, op tm) value {
 	return nilValue
 }
 
-func isCallable(v value) bool {
-	switch v.o.(type) {
-	case closure, *goFunction:
-		return true
-	}
-	return false
-}
+func isCallable(v value) bool { return v.isFunction() }
 
 func (l *State) tableAt(t value, key value) value {
 	for range maxTagLoop {
 		var tm value
-		if table, ok := t.o.(*table); ok {
+		if table := t.table(); table != nil {
 			if result := table.at(key); !result.isNil() {
 				return result
 			} else if tm = l.fastTagMethod(table.metaTable, tmIndex); tm.isNil() {
@@ -50,7 +44,7 @@ func (l *State) tableAt(t value, key value) value {
 func (l *State) setTableAt(t value, key value, val value) {
 	for range maxTagLoop {
 		var tm value
-		if table, ok := t.o.(*table); ok {
+		if table := t.table(); table != nil {
 			if table.tryPut(l, key, val) {
 				// previous non-nil value ==> metamethod irrelevant
 				table.invalidateTagMethodCache()
@@ -75,14 +69,13 @@ func (l *State) setTableAt(t value, key value, val value) {
 
 func (l *State) objectLength(v value) value {
 	var tm value
-	switch o := v.o.(type) {
-	case *table:
+	if o := v.table(); o != nil {
 		if tm = l.fastTagMethod(o.metaTable, tmLen); tm.isNil() {
 			return numberValue(float64(o.length()))
 		}
-	case string:
-		return numberValue(float64(len(o)))
-	default:
+	} else if s, ok := v.str(); ok {
+		return numberValue(float64(len(s)))
+	} else {
 		if tm = l.tagMethodByObject(v, tmLen); tm.isNil() {
 			l.typeError(v, "get length of")
 		}
@@ -95,7 +88,7 @@ func (l *State) equalTagMethod(mt1, mt2 *table, event tm) value {
 	} else if mt1 == mt2 { // same metatables => same metamethods
 		return tm1
 	} else if tm2 := l.fastTagMethod(mt2, event); tm2.isNil() { // no metamethod
-	} else if tm1 == tm2 { // same metamethods
+	} else if rawEqual(tm1, tm2) { // same metamethods
 		return tm1
 	}
 	return nilValue
@@ -103,24 +96,21 @@ func (l *State) equalTagMethod(mt1, mt2 *table, event tm) value {
 
 func (l *State) equalObjects(t1, t2 value) bool {
 	var tm value
-	switch o1 := t1.o.(type) {
-	case *numberTag:
-		n2, ok := t2.number()
-		return ok && t1.n == n2
-	case *userData:
-		if t1 == t2 {
+	switch t1.kind() {
+	case vkUserData:
+		if t1.identical(t2) {
 			return true
-		} else if o2, ok := t2.o.(*userData); ok {
-			tm = l.equalTagMethod(o1.metaTable, o2.metaTable, tmEq)
+		} else if o2 := t2.userData(); o2 != nil {
+			tm = l.equalTagMethod(t1.userData().metaTable, o2.metaTable, tmEq)
 		}
-	case *table:
-		if t1 == t2 {
+	case vkTable:
+		if t1.identical(t2) {
 			return true
-		} else if o2, ok := t2.o.(*table); ok {
-			tm = l.equalTagMethod(o1.metaTable, o2.metaTable, tmEq)
+		} else if o2 := t2.table(); o2 != nil {
+			tm = l.equalTagMethod(t1.table().metaTable, o2.metaTable, tmEq)
 		}
 	default:
-		return t1 == t2
+		return rawEqual(t1, t2)
 	}
 	return !tm.isNil() && !isFalse(l.callTagMethod(tm, t1, t2))
 }
@@ -434,7 +424,7 @@ func (l *State) executeSwitch() {
 		case opAdd:
 			b, c := k(i.b(), constants, frame), k(i.c(), constants, frame)
 			if b.isNumber() && c.isNumber() {
-				frame[i.a()] = numberValue(b.n + c.n)
+				frame[i.a()] = numberValue(b.f() + c.f())
 				break
 			}
 			tmp := l.arith(b, c, tmAdd)
@@ -443,7 +433,7 @@ func (l *State) executeSwitch() {
 		case opSub:
 			b, c := k(i.b(), constants, frame), k(i.c(), constants, frame)
 			if b.isNumber() && c.isNumber() {
-				frame[i.a()] = numberValue(b.n - c.n)
+				frame[i.a()] = numberValue(b.f() - c.f())
 				break
 			}
 			tmp := l.arith(b, c, tmSub)
@@ -452,7 +442,7 @@ func (l *State) executeSwitch() {
 		case opMul:
 			b, c := k(i.b(), constants, frame), k(i.c(), constants, frame)
 			if b.isNumber() && c.isNumber() {
-				frame[i.a()] = numberValue(b.n * c.n)
+				frame[i.a()] = numberValue(b.f() * c.f())
 				break
 			}
 			tmp := l.arith(b, c, tmMul)
@@ -461,7 +451,7 @@ func (l *State) executeSwitch() {
 		case opDiv:
 			b, c := k(i.b(), constants, frame), k(i.c(), constants, frame)
 			if b.isNumber() && c.isNumber() {
-				frame[i.a()] = numberValue(b.n / c.n)
+				frame[i.a()] = numberValue(b.f() / c.f())
 				break
 			}
 			tmp := l.arith(b, c, tmDiv)
@@ -470,7 +460,7 @@ func (l *State) executeSwitch() {
 		case opMod:
 			b, c := k(i.b(), constants, frame), k(i.c(), constants, frame)
 			if b.isNumber() && c.isNumber() {
-				frame[i.a()] = numberValue(arith(OpMod, b.n, c.n))
+				frame[i.a()] = numberValue(arith(OpMod, b.f(), c.f()))
 				break
 			}
 			tmp := l.arith(b, c, tmMod)
@@ -479,7 +469,7 @@ func (l *State) executeSwitch() {
 		case opPow:
 			b, c := k(i.b(), constants, frame), k(i.c(), constants, frame)
 			if b.isNumber() && c.isNumber() {
-				frame[i.a()] = numberValue(arith(OpPow, b.n, c.n))
+				frame[i.a()] = numberValue(arith(OpPow, b.f(), c.f()))
 				break
 			}
 			tmp := l.arith(b, c, tmPow)
@@ -487,29 +477,29 @@ func (l *State) executeSwitch() {
 			frame[i.a()] = tmp
 		case opAddRR:
 			if b, c := frame[i.b()], frame[i.c()]; b.isNumber() && c.isNumber() {
-				frame[i.a()] = numberValue(b.n + c.n)
+				frame[i.a()] = numberValue(b.f() + c.f())
 			} else {
 				frame = l.arithInto(ci, i.a(), b, c, tmAdd)
 			}
 		case opAddRK:
 			if b, c := frame[i.b()], constants[i.c()]; b.isNumber() && c.isNumber() {
-				frame[i.a()] = numberValue(b.n + c.n)
+				frame[i.a()] = numberValue(b.f() + c.f())
 			} else {
 				frame = l.arithInto(ci, i.a(), b, c, tmAdd)
 			}
 		case opAddKR:
 			if b, c := constants[i.b()], frame[i.c()]; b.isNumber() && c.isNumber() {
-				frame[i.a()] = numberValue(b.n + c.n)
+				frame[i.a()] = numberValue(b.f() + c.f())
 			} else {
 				frame = l.arithInto(ci, i.a(), b, c, tmAdd)
 			}
 		case opMulAddRKR:
 			if b, c := frame[i.b()], constants[i.c()]; b.isNumber() && c.isNumber() {
-				r := b.n * c.n
+				r := b.f() * c.f()
 				frame[i.a()] = numberValue(r)
 				if j := code[ip]; l.hookMask&(MaskLine|MaskCount) == 0 {
 					if d := frame[j.c()]; d.isNumber() {
-						frame[j.a()] = numberValue(r + d.n)
+						frame[j.a()] = numberValue(r + d.f())
 						ip++
 					}
 				}
@@ -518,61 +508,61 @@ func (l *State) executeSwitch() {
 			}
 		case opSubRR:
 			if b, c := frame[i.b()], frame[i.c()]; b.isNumber() && c.isNumber() {
-				frame[i.a()] = numberValue(b.n - c.n)
+				frame[i.a()] = numberValue(b.f() - c.f())
 			} else {
 				frame = l.arithInto(ci, i.a(), b, c, tmSub)
 			}
 		case opSubRK:
 			if b, c := frame[i.b()], constants[i.c()]; b.isNumber() && c.isNumber() {
-				frame[i.a()] = numberValue(b.n - c.n)
+				frame[i.a()] = numberValue(b.f() - c.f())
 			} else {
 				frame = l.arithInto(ci, i.a(), b, c, tmSub)
 			}
 		case opSubKR:
 			if b, c := constants[i.b()], frame[i.c()]; b.isNumber() && c.isNumber() {
-				frame[i.a()] = numberValue(b.n - c.n)
+				frame[i.a()] = numberValue(b.f() - c.f())
 			} else {
 				frame = l.arithInto(ci, i.a(), b, c, tmSub)
 			}
 		case opMulRR:
 			if b, c := frame[i.b()], frame[i.c()]; b.isNumber() && c.isNumber() {
-				frame[i.a()] = numberValue(b.n * c.n)
+				frame[i.a()] = numberValue(b.f() * c.f())
 			} else {
 				frame = l.arithInto(ci, i.a(), b, c, tmMul)
 			}
 		case opMulRK:
 			if b, c := frame[i.b()], constants[i.c()]; b.isNumber() && c.isNumber() {
-				frame[i.a()] = numberValue(b.n * c.n)
+				frame[i.a()] = numberValue(b.f() * c.f())
 			} else {
 				frame = l.arithInto(ci, i.a(), b, c, tmMul)
 			}
 		case opMulKR:
 			if b, c := constants[i.b()], frame[i.c()]; b.isNumber() && c.isNumber() {
-				frame[i.a()] = numberValue(b.n * c.n)
+				frame[i.a()] = numberValue(b.f() * c.f())
 			} else {
 				frame = l.arithInto(ci, i.a(), b, c, tmMul)
 			}
 		case opDivRR:
 			if b, c := frame[i.b()], frame[i.c()]; b.isNumber() && c.isNumber() {
-				frame[i.a()] = numberValue(b.n / c.n)
+				frame[i.a()] = numberValue(b.f() / c.f())
 			} else {
 				frame = l.arithInto(ci, i.a(), b, c, tmDiv)
 			}
 		case opDivRK:
 			if b, c := frame[i.b()], constants[i.c()]; b.isNumber() && c.isNumber() {
-				frame[i.a()] = numberValue(b.n / c.n)
+				frame[i.a()] = numberValue(b.f() / c.f())
 			} else {
 				frame = l.arithInto(ci, i.a(), b, c, tmDiv)
 			}
 		case opDivKR:
 			if b, c := constants[i.b()], frame[i.c()]; b.isNumber() && c.isNumber() {
-				frame[i.a()] = numberValue(b.n / c.n)
+				frame[i.a()] = numberValue(b.f() / c.f())
 			} else {
 				frame = l.arithInto(ci, i.a(), b, c, tmDiv)
 			}
 		case opUnaryMinus:
 			if b := frame[i.b()]; b.isNumber() {
-				frame[i.a()] = numberValue(-b.n)
+				frame[i.a()] = numberValue(-b.f())
 			} else {
 				tmp := l.arith(b, b, tmUnaryMinus)
 				frame = ci.frame
@@ -608,7 +598,7 @@ func (l *State) executeSwitch() {
 			b, c := k(i.b(), constants, frame), k(i.c(), constants, frame)
 			var less bool
 			if b.isNumber() && c.isNumber() {
-				less = b.n < c.n
+				less = b.f() < c.f()
 			} else {
 				less = l.lessThan(b, c)
 				frame = ci.frame
@@ -622,7 +612,7 @@ func (l *State) executeSwitch() {
 			b, c := k(i.b(), constants, frame), k(i.c(), constants, frame)
 			var lessOrEqual bool
 			if b.isNumber() && c.isNumber() {
-				lessOrEqual = b.n <= c.n
+				lessOrEqual = b.f() <= c.f()
 			} else {
 				lessOrEqual = l.lessOrEqual(b, c)
 				frame = ci.frame
@@ -648,9 +638,9 @@ func (l *State) executeSwitch() {
 		case opCall:
 			a, b, c := i.a(), i.b(), i.c()
 			if b > 1 && l.hookMask&(MaskCall|MaskReturn) == 0 {
-				if f, ok := frame[a].o.(*goFunction); ok && f.number != nil {
+				if f := frame[a].goFunction(); f != nil && f.number != nil {
 					if nf := f.number; nf.unary != nil && b == 2 && c == 2 && frame[a+1].isNumber() {
-						frame[a] = numberValue(nf.unary(frame[a+1].n))
+						frame[a] = numberValue(nf.unary(frame[a+1].f()))
 						l.top = ci.top
 						break
 					}
@@ -661,17 +651,17 @@ func (l *State) executeSwitch() {
 				}
 			}
 			if b != 0 && l.hookMask&MaskCall == 0 {
-				switch f := frame[a].o.(type) {
-				case *luaClosure:
-					if !f.prototype.isVarArg {
+				switch fv := frame[a]; fv.kind() {
+				case vkLuaClosure:
+					if f := fv.luaClosure(); !f.prototype.isVarArg {
 						ci = l.callLua(ci, f, a, b-1, c-1)
 						frame, closure, constants = ci.frame, f, f.prototype.constants
 						code, ip = f.prototype.execCode(), 0
 						continue
 					}
-				case *goFunction, *goClosure:
+				case vkGoFunction, vkGoClosure:
 					l.top = ci.stackIndex(a + b)
-					l.callGo(frame[a], ci.stackIndex(a), c-1)
+					l.callGo(fv, ci.stackIndex(a), c-1)
 					if c != 0 {
 						l.top = ci.top // adjust results
 					}
@@ -707,7 +697,7 @@ func (l *State) executeSwitch() {
 				oci := nci.previous                    // caller frame
 				nfn, ofn := nci.function, oci.function // called & caller function
 				// last stack slot filled by 'precall'
-				lim := nci.base() + l.stack[nfn].o.(*luaClosure).prototype.parameterCount
+				lim := nci.base() + l.stack[nfn].luaClosure().prototype.parameterCount
 				if len(closure.prototype.prototypes) > 0 { // close all upvalues from previous call
 					l.close(oci.base())
 				}
@@ -761,7 +751,7 @@ func (l *State) executeSwitch() {
 			code, ip = closure.prototype.execCode(), ci.savedPC
 		case opForLoop:
 			a := i.a()
-			index, limit, step := frame[a+0].n, frame[a+1].n, frame[a+2].n
+			index, limit, step := frame[a+0].f(), frame[a+1].f(), frame[a+2].f()
 			if index += step; (0 < step && index <= limit) || (step <= 0 && limit <= index) {
 				ip += pc(i.sbx())
 				frame[a+0] = numberValue(index) // update internal index...
@@ -805,7 +795,7 @@ func (l *State) executeSwitch() {
 				c = expectOp(code[ip], opExtraArg).ax()
 				ip++
 			}
-			h := frame[a].o.(*table)
+			h := frame[a].table()
 			start := (c - 1) * listItemsPerFlush
 			last := start + n
 			if last > len(h.array) {

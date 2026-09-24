@@ -11,7 +11,7 @@ type Frame *callInfo
 
 func (l *State) resetHookCount() { l.hookCount = l.baseHookCount }
 func (l *State) prototype(ci *callInfo) *prototype {
-	return l.stack[ci.function].o.(*luaClosure).prototype
+	return l.stack[ci.function].luaClosure().prototype
 }
 func (l *State) currentLine(ci *callInfo) int {
 	return int(l.prototype(ci).lineInfo[ci.savedPC-1])
@@ -104,7 +104,7 @@ func operandRegister(i instruction, frame []value, v value) (int, bool) {
 		add(i.c())
 	}
 	for _, r := range candidates[:n] {
-		if frame[r] == v {
+		if frame[r].identical(v) {
 			return r, true
 		}
 	}
@@ -144,10 +144,7 @@ func (l *State) assert(cond bool) {
 func (l *State) errorMessage() {
 	if l.errorFunction != 0 { // is there an error handling function?
 		errorFunction := l.stack[l.errorFunction]
-		switch errorFunction.o.(type) {
-		case closure:
-		case *goFunction:
-		default:
+		if !errorFunction.isFunction() {
 			l.throw(ErrorError)
 		}
 		l.stack[l.top] = l.stack[l.top-1] // move argument
@@ -342,24 +339,16 @@ func Info(l *State, what string, where Frame) (d Debug, ok bool) {
 	if what[0] == '>' {
 		where = nil
 		fun = l.stack[l.top-1]
-		switch fun := fun.o.(type) {
-		case closure:
-			f = fun
-		case *goFunction:
-		default:
+		if !fun.isFunction() {
 			panic("function expected")
 		}
+		f = fun.closure()
 		what = what[1:] // skip the '>'
 		l.top--         // pop function
 	} else {
 		fun = l.stack[where.function]
-		switch fun := fun.o.(type) {
-		case closure:
-			f = fun
-		case *goFunction:
-		default:
-			l.assert(false)
-		}
+		l.assert(fun.isFunction())
+		f = fun.closure()
 	}
 	ok, hasL, hasF := true, false, false
 	d.callInfo = where
@@ -408,7 +397,7 @@ func Info(l *State, what string, where Frame) (d Debug, ok bool) {
 		}
 	}
 	if hasF {
-		l.apiPush(objectValue(f))
+		l.apiPush(fun)
 	}
 	if hasL {
 		l.collectValidLines(f)

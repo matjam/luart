@@ -250,36 +250,41 @@ type globalState struct {
 	version            *float64 // pointer to version number
 	memoryErrorMessage string
 	rootShape          *shape // shape tree for this state's tables
+	lightBoxes         map[any]*lightUserData
 	// seed uint // randomized seed for hashes
 	// upValueHead upValue // head of double-linked list of all open upvalues
 }
 
 func (g *globalState) metaTable(o value) *table {
-	var t Type
-	switch o.o.(type) {
-	case nil:
-		t = TypeNil
-	case *boolTag:
-		t = TypeBoolean
-	// TODO TypeLightUserData
-	case *numberTag:
-		t = TypeNumber
-	case string:
-		t = TypeString
-	case *table:
-		t = TypeTable
-	case *goFunction:
-		t = TypeFunction
-	case closure:
-		t = TypeFunction
-	case *userData:
-		t = TypeUserData
-	case *State:
-		t = TypeThread
-	default:
-		return nil
+	if t := typeOf(o); t != TypeNone {
+		return g.metaTables[t]
 	}
-	return g.metaTables[t]
+	return nil
+}
+
+// typeOf returns the Lua type of v, or TypeNone for none.
+func typeOf(v value) Type {
+	switch v.kind() {
+	case vkNil:
+		return TypeNil
+	case vkBool:
+		return TypeBoolean
+	case vkNumber:
+		return TypeNumber
+	case vkString:
+		return TypeString
+	case vkTable:
+		return TypeTable
+	case vkLuaClosure, vkGoClosure, vkGoFunction:
+		return TypeFunction
+	case vkUserData:
+		return TypeUserData
+	case vkThread:
+		return TypeThread
+	case vkLightUserData:
+		return TypeLightUserData
+	}
+	return TypeNone
 }
 
 func (l *State) adjustResults(resultCount int) {
@@ -432,7 +437,7 @@ func (l *State) Load(r io.Reader, chunkName string, mode string) error {
 		return err
 	}
 
-	if f := l.stack[l.top-1].o.(*luaClosure); f.upValueCount() == 1 {
+	if f := l.stack[l.top-1].luaClosure(); f.upValueCount() == 1 {
 		f.setUpValue(0, l.global.registry.atInt(RegistryIndexGlobals))
 	}
 	return nil
@@ -445,7 +450,7 @@ func (l *State) Load(r io.Reader, chunkName string, mode string) error {
 // http://www.lua.org/manual/5.3/manual.html#lua_dump
 func (l *State) Dump(w io.Writer) error {
 	l.checkElementCount(1)
-	if f, ok := l.stack[l.top-1].o.(*luaClosure); ok {
+	if f := l.stack[l.top-1].luaClosure(); f != nil {
 		return l.dump(f.prototype, w)
 	}
 	panic("closure expected")
@@ -467,7 +472,7 @@ func NewState() *State {
 }
 
 func apiCheckStackIndex(index int, v value) {
-	if apiCheck && (v == none || isPseudoIndex(index)) {
+	if apiCheck && (v.identical(none) || isPseudoIndex(index)) {
 		panic(fmt.Sprintf("index %d not in the stack", index))
 	}
 }
@@ -507,7 +512,7 @@ func (l *State) indexToValue(index int) value {
 		return objectValue(l.global.registry)
 	default: // upvalues
 		i := RegistryIndex - index
-		return l.stack[l.callInfo.function].o.(*goClosure).upValues[i-1]
+		return l.stack[l.callInfo.function].goClosure().upValues[i-1]
 		// if closure := l.stack[callInfo.function].(*goClosure); i <= len(closure.upValues) {
 		// 	return closure.upValues[i-1]
 		// }
@@ -527,10 +532,10 @@ func (l *State) setIndexToValue(index int, v value) {
 	case index > RegistryIndex: // negative index
 		l.stack[l.top+index] = v
 	case index == RegistryIndex:
-		l.global.registry = v.o.(*table)
+		l.global.registry = v.table()
 	default: // upvalues
 		i := RegistryIndex - index
-		l.stack[l.callInfo.function].o.(*goClosure).upValues[i-1] = v
+		l.stack[l.callInfo.function].goClosure().upValues[i-1] = v
 	}
 }
 
@@ -631,33 +636,7 @@ func AtPanic(l *State, panicFunction Function) Function {
 	return panicFunction
 }
 
-func (l *State) valueToType(v value) Type {
-	switch v.o.(type) {
-	case nil:
-		return TypeNil
-	case *boolTag:
-		return TypeBoolean
-	// case lightUserData:
-	// 	return TypeLightUserData
-	case *numberTag:
-		return TypeNumber
-	case string:
-		return TypeString
-	case *table:
-		return TypeTable
-	case *goFunction:
-		return TypeFunction
-	case *userData:
-		return TypeUserData
-	case *State:
-		return TypeThread
-	case *luaClosure:
-		return TypeFunction
-	case *goClosure:
-		return TypeFunction
-	}
-	return TypeNone
-}
+func (l *State) valueToType(v value) Type { return typeOf(v) }
 
 // TypeOf returns the type of the value at index, or TypeNone for a
 // non-valid (but acceptable) index.
@@ -671,8 +650,8 @@ func (l *State) TypeOf(index int) Type {
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_iscfunction
 func (l *State) IsGoFunction(index int) bool {
-	switch l.indexToValue(index).o.(type) {
-	case *goFunction, *goClosure:
+	switch l.indexToValue(index).kind() {
+	case vkGoFunction, vkGoClosure:
 		return true
 	}
 	return false
@@ -700,8 +679,7 @@ func (l *State) IsString(index int) bool {
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_isuserdata
 func (l *State) IsUserData(index int) bool {
-	_, ok := l.indexToValue(index).o.(*userData)
-	return ok
+	return l.indexToValue(index).userData() != nil
 }
 
 // Arith performs an arithmetic operation over the two values (or one, in
@@ -733,7 +711,7 @@ func (l *State) Arith(op Operator) {
 // http://www.lua.org/manual/5.2/manual.html#lua_rawequal
 func (l *State) RawEqual(index1, index2 int) bool {
 	if o1, o2 := l.indexToValue(index1), l.indexToValue(index2); !o1.isNil() && !o2.isNil() {
-		return o1 == o2
+		return rawEqual(o1, o2)
 	}
 	return false
 }
@@ -810,13 +788,11 @@ func (l *State) ToString(index int) (s string, ok bool) {
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_rawlen
 func (l *State) RawLength(index int) int {
-	switch v := l.indexToValue(index).o.(type) {
-	case string:
-		return len(v)
-	// case *userData:
-	// 	return reflect.Sizeof(v.data)
-	case *table:
-		return v.length()
+	v := l.indexToValue(index)
+	if s, ok := v.str(); ok {
+		return len(s)
+	} else if t := v.table(); t != nil {
+		return t.length()
 	}
 	return 0
 }
@@ -826,11 +802,11 @@ func (l *State) RawLength(index int) int {
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_tocfunction
 func (l *State) ToGoFunction(index int) Function {
-	switch v := l.indexToValue(index).o.(type) {
-	case *goFunction:
-		return v.Function
-	case *goClosure:
-		return v.function
+	v := l.indexToValue(index)
+	if f := v.goFunction(); f != nil {
+		return f.Function
+	} else if c := v.goClosure(); c != nil {
+		return c.function
 	}
 	return nil
 }
@@ -840,7 +816,7 @@ func (l *State) ToGoFunction(index int) Function {
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_touserdata
 func (l *State) ToUserData(index int) any {
-	if d, ok := l.indexToValue(index).o.(*userData); ok {
+	if d := l.indexToValue(index).userData(); d != nil {
 		return d.data
 	}
 	return nil
@@ -858,15 +834,13 @@ func (l *State) UserData[T any](index int) (T, bool) {
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_tothread
 func (l *State) ToThread(index int) *State {
-	if t, ok := l.indexToValue(index).o.(*State); ok {
-		return t
-	}
-	return nil
+	return l.indexToValue(index).thread()
 }
 
 // ToValue converts the value at index into a Go value of type any. The
-// value can be a userdata, a table, a thread, a function, or Go string, bool
-// or float64 types. Otherwise, the function returns nil.
+// value can be a table, a thread, a function, a Go string, bool or float64,
+// the Go value held by a userdata, or the Go value pushed as light userdata.
+// Otherwise, the function returns nil.
 //
 // Different objects will give different values.  There is no way to convert
 // the value back into its original value.
@@ -875,11 +849,15 @@ func (l *State) ToThread(index int) *State {
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_tovalue
 func (l *State) ToValue(index int) any {
-	switch v := l.indexToValue(index).toAny().(type) {
+	v := l.indexToValue(index)
+	if v.kind() == vkLightUserData {
+		return (*lightUserData)(v.p).v
+	}
+	switch o := v.obj().(type) {
 	case string, float64, bool, *table, *luaClosure, *goClosure, *goFunction, *State:
-		return v
+		return o
 	case *userData:
-		return v.data
+		return o.data
 	}
 	return nil
 }
@@ -942,7 +920,8 @@ func (l *State) PushFString(format string, args ...any) string {
 	if n > 0 {
 		l.concat(n + 1)
 	}
-	return l.stack[l.top-1].o.(string)
+	s, _ := l.stack[l.top-1].str()
+	return s
 }
 
 // PushGoClosure pushes a new Go closure onto the stack.
@@ -1023,7 +1002,7 @@ func (l *State) Field(index int, name string) {
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_rawget
 func (l *State) RawGet(index int) {
-	t := l.indexToValue(index).o.(*table)
+	t := l.indexToValue(index).table()
 	l.stack[l.top-1] = t.at(l.stack[l.top-1])
 }
 
@@ -1033,7 +1012,7 @@ func (l *State) RawGet(index int) {
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_rawgeti
 func (l *State) RawGetInt(index, key int) {
-	t := l.indexToValue(index).o.(*table)
+	t := l.indexToValue(index).table()
 	l.apiPush(t.atInt(key))
 }
 
@@ -1043,8 +1022,8 @@ func (l *State) RawGetInt(index, key int) {
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_rawgetp
 func (l *State) RawGetValue(index int, p any) {
-	t := l.indexToValue(index).o.(*table)
-	l.apiPush(t.at(valueOf(p)))
+	t := l.indexToValue(index).table()
+	l.apiPush(t.at(l.valueOf(p)))
 }
 
 // CreateTable creates a new empty table and pushes it onto the stack.
@@ -1068,12 +1047,11 @@ func (l *State) CreateTable(arrayCount, recordCount int) {
 func (l *State) MetaTable(index int) bool {
 	var mt *table
 	v := l.indexToValue(index)
-	switch o := v.o.(type) {
-	case *table:
-		mt = o.metaTable
-	case *userData:
-		mt = o.metaTable
-	default:
+	if t := v.table(); t != nil {
+		mt = t.metaTable
+	} else if d := v.userData(); d != nil {
+		mt = d.metaTable
+	} else {
 		mt = l.global.metaTable(v)
 	}
 	if mt == nil {
@@ -1088,7 +1066,7 @@ func (l *State) MetaTable(index int) bool {
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_getuservalue
 func (l *State) UserValue(index int) {
-	d := l.indexToValue(index).o.(*userData)
+	d := l.indexToValue(index).userData()
 	if d.env == nil {
 		l.apiPush(nilValue)
 	} else {
@@ -1128,7 +1106,7 @@ func (l *State) SetTable(index int) {
 // http://www.lua.org/manual/5.2/manual.html#lua_rawset
 func (l *State) RawSet(index int) {
 	l.checkElementCount(2)
-	t := l.indexToValue(index).o.(*table)
+	t := l.indexToValue(index).table()
 	t.put(l, l.stack[l.top-2], l.stack[l.top-1])
 	t.invalidateTagMethodCache()
 	l.top -= 2
@@ -1143,7 +1121,7 @@ func (l *State) RawSet(index int) {
 // http://www.lua.org/manual/5.2/manual.html#lua_rawseti
 func (l *State) RawSetInt(index, key int) {
 	l.checkElementCount(1)
-	t := l.indexToValue(index).o.(*table)
+	t := l.indexToValue(index).table()
 	t.putAtInt(key, l.stack[l.top-1])
 	l.top--
 }
@@ -1154,11 +1132,11 @@ func (l *State) RawSetInt(index, key int) {
 // http://www.lua.org/manual/5.2/manual.html#lua_setuservalue
 func (l *State) SetUserValue(index int) {
 	l.checkElementCount(1)
-	d := l.indexToValue(index).o.(*userData)
+	d := l.indexToValue(index).userData()
 	if l.stack[l.top-1].isNil() {
 		d.env = nil
 	} else {
-		d.env = l.stack[l.top-1].o.(*table)
+		d.env = l.stack[l.top-1].table()
 	}
 	l.top--
 }
@@ -1169,16 +1147,16 @@ func (l *State) SetUserValue(index int) {
 // http://www.lua.org/manual/5.2/manual.html#lua_setmetatable
 func (l *State) SetMetaTable(index int) {
 	l.checkElementCount(1)
-	mt, ok := l.stack[l.top-1].o.(*table)
-	if apiCheck && !ok && !l.stack[l.top-1].isNil() {
+	mt := l.stack[l.top-1].table()
+	if apiCheck && mt == nil && !l.stack[l.top-1].isNil() {
 		panic("table expected")
 	}
-	switch v := l.indexToValue(index).o.(type) {
-	case *table:
-		v.metaTable = mt
-	case *userData:
-		v.metaTable = mt
-	default:
+	v := l.indexToValue(index)
+	if t := v.table(); t != nil {
+		t.metaTable = mt
+	} else if d := v.userData(); d != nil {
+		d.metaTable = mt
+	} else {
 		l.global.metaTables[l.TypeOf(index)] = mt
 	}
 	l.top--
@@ -1209,7 +1187,7 @@ func (l *State) Error() {
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_next
 func (l *State) Next(index int) bool {
-	t := l.indexToValue(index).o.(*table)
+	t := l.indexToValue(index).table()
 	if l.next(t, l.top-1) {
 		l.apiIncrementTop()
 		return true
@@ -1276,7 +1254,7 @@ func (l *State) protectedCall(f func(), oldTop, errorFunc int) error {
 // Returns an empty string and false if the index is greater than the number
 // of upvalues.
 func UpValue(l *State, function, index int) (name string, ok bool) {
-	if c, isClosure := l.indexToValue(function).o.(closure); isClosure {
+	if c := l.indexToValue(function).closure(); c != nil {
 		if ok = 1 <= index && index <= c.upValueCount(); ok {
 			if c, isLua := c.(*luaClosure); isLua {
 				name = c.prototype.upValues[index-1].name
@@ -1296,7 +1274,7 @@ func UpValue(l *State, function, index int) (name string, ok bool) {
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_setupvalue
 func SetUpValue(l *State, function, index int) (name string, ok bool) {
-	if c, isClosure := l.indexToValue(function).o.(closure); isClosure {
+	if c := l.indexToValue(function).closure(); c != nil {
 		if ok = 1 <= index && index <= c.upValueCount(); ok {
 			if c, isLua := c.(*luaClosure); isLua {
 				name = c.prototype.upValues[index-1].name
@@ -1309,7 +1287,7 @@ func SetUpValue(l *State, function, index int) (name string, ok bool) {
 }
 
 func (l *State) upValue(f, n int) **upValue {
-	return &l.indexToValue(f).o.(*luaClosure).upValues[n-1]
+	return &l.indexToValue(f).luaClosure().upValues[n-1]
 }
 
 // UpValueId returns a unique identifier for the upvalue numbered n from the
@@ -1321,11 +1299,11 @@ func (l *State) upValue(f, n int) **upValue {
 // access a same external local variable) will return identical ids for those
 // upvalue indices.
 func UpValueId(l *State, f, n int) any {
-	switch fun := l.indexToValue(f).o.(type) {
-	case *luaClosure:
+	v := l.indexToValue(f)
+	if v.luaClosure() != nil {
 		return *l.upValue(f, n)
-	case *goClosure:
-		return &fun.upValues[n-1]
+	} else if c := v.goClosure(); c != nil {
+		return &c.upValues[n-1]
 	}
 	panic("closure expected")
 }
@@ -1421,7 +1399,7 @@ func (t Type) String() string { return typeNames[t+1] }
 // http://www.lua.org/manual/5.2/manual.html#lua_tonumberx
 func (l *State) ToNumber(index int) (float64, bool) {
 	if v := l.arg(index); v.isNumber() {
-		return v.n, true
+		return v.f(), true
 	}
 	return l.toNumber(l.indexToValue(index))
 }
@@ -1491,7 +1469,7 @@ func (l *State) PushBoolean(b bool) { l.apiPush(boolValue(b)) }
 // equality matches the Go rules (http://golang.org/ref/spec#Comparison_operators).
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_pushlightuserdata
-func (l *State) PushLightUserData(d any) { l.apiPush(valueOf(d)) }
+func (l *State) PushLightUserData(d any) { l.apiPush(l.valueOf(d)) }
 
 // PushUserData is similar to PushLightUserData, but pushes a full userdata
 // onto the stack.
