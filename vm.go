@@ -260,6 +260,30 @@ func (l *State) traceExecution() {
 
 func (l *State) execute() { l.executeSwitch() }
 
+// numberResult stores the results of a frameless number function call at
+// register a, as postCall would for a Go function returning results values.
+func (l *State) numberResult(ci *callInfo, a, wanted, results int, r float64) {
+	frame := ci.frame
+	if wanted == MultipleReturns {
+		if results == 1 {
+			frame[a] = numberValue(r)
+		}
+		l.top = ci.stackIndex(a + results)
+		return
+	}
+	if wanted > 0 {
+		if results == 1 {
+			frame[a] = numberValue(r)
+		} else {
+			frame[a] = nilValue
+		}
+		if wanted > 1 {
+			clear(frame[a+1 : a+wanted])
+		}
+	}
+	l.top = ci.top
+}
+
 func k(field int, constants []value, frame []value) value {
 	if 0 != field&bitRK { // OPT: Inline isConstant(field).
 		return constants[field & ^bitRK] // OPT: Inline constantIndex(field).
@@ -275,35 +299,51 @@ func newFrame(l *State, ci *callInfo) (frame []value, closure *luaClosure, const
 	return
 }
 
-func expectNext(ci *callInfo, expected opCode) instruction {
-	i := ci.step() // go to next instruction
+func expectOp(i instruction, expected opCode) instruction {
 	if op := i.opCode(); op != expected {
 		panic(fmt.Sprintf("expected opcode %s, got %s", opNames[expected], opNames[op]))
 	}
 	return i
 }
 
+// jumpFrom runs jump instruction j, which precedes ip, and returns the new ip.
+func (l *State) jumpFrom(ci *callInfo, j instruction, ip pc) pc {
+	if a := j.a(); a > 0 {
+		l.close(ci.stackIndex(a - 1))
+	}
+	return ip + pc(j.sbx())
+}
+
+// executeSwitch runs Lua functions from l.callInfo until it returns to its
+// caller. It keeps the instruction pointer in ip and stores it in
+// ci.savedPC as each instruction starts, where errors and hooks read it.
+// After a call or return changes ci, ip reloads from ci.savedPC.
 func (l *State) executeSwitch() {
 	ci := l.callInfo
 	frame, closure, constants := newFrame(l, ci)
+	code, ip := ci.code, ci.savedPC
 	for {
+		i := code[ip]
+		ip++
+		ci.savedPC = ip
 		if l.hookMask&(MaskLine|MaskCount) != 0 {
 			if l.hookCount--; l.hookCount == 0 || l.hookMask&MaskLine != 0 {
 				l.traceExecution()
 				frame = ci.frame
 			}
 		}
-		switch i := ci.step(); i.opCode() {
+		switch i.opCode() {
 		case opMove:
 			frame[i.a()] = frame[i.b()]
 		case opLoadConstant:
 			frame[i.a()] = constants[i.bx()]
 		case opLoadConstantEx:
-			frame[i.a()] = constants[expectNext(ci, opExtraArg).ax()]
+			frame[i.a()] = constants[expectOp(code[ip], opExtraArg).ax()]
+			ip++
 		case opLoadBool:
 			frame[i.a()] = boolValue(i.b() != 0)
 			if i.c() != 0 {
-				ci.skip()
+				ip++
 			}
 		case opLoadNil:
 			a, b := i.a(), i.b()
@@ -419,72 +459,65 @@ func (l *State) executeSwitch() {
 				clear(frame[b:])
 			}
 		case opJump:
-			if a := i.a(); a > 0 {
-				l.close(ci.stackIndex(a - 1))
-			}
-			ci.jump(i.sbx())
+			ip = l.jumpFrom(ci, i, ip)
 		case opEqual:
-			test := i.a() != 0
-			if l.equalObjects(k(i.b(), constants, frame), k(i.c(), constants, frame)) == test {
-				i := ci.step()
-				if a := i.a(); a > 0 {
-					l.close(ci.stackIndex(a - 1))
-				}
-				ci.jump(i.sbx())
+			if l.equalObjects(k(i.b(), constants, frame), k(i.c(), constants, frame)) == (i.a() != 0) {
+				ip = l.jumpFrom(ci, code[ip], ip+1)
 			} else {
-				ci.skip()
+				ip++
 			}
 			frame = ci.frame
 		case opLessThan:
-			test := i.a() != 0
-			if l.lessThan(k(i.b(), constants, frame), k(i.c(), constants, frame)) == test {
-				i := ci.step()
-				if a := i.a(); a > 0 {
-					l.close(ci.stackIndex(a - 1))
-				}
-				ci.jump(i.sbx())
+			b, c := k(i.b(), constants, frame), k(i.c(), constants, frame)
+			var less bool
+			if b.isNumber() && c.isNumber() {
+				less = b.n < c.n
 			} else {
-				ci.skip()
+				less = l.lessThan(b, c)
+				frame = ci.frame
 			}
-			frame = ci.frame
+			if less == (i.a() != 0) {
+				ip = l.jumpFrom(ci, code[ip], ip+1)
+			} else {
+				ip++
+			}
 		case opLessOrEqual:
-			test := i.a() != 0
-			if l.lessOrEqual(k(i.b(), constants, frame), k(i.c(), constants, frame)) == test {
-				i := ci.step()
-				if a := i.a(); a > 0 {
-					l.close(ci.stackIndex(a - 1))
-				}
-				ci.jump(i.sbx())
+			b, c := k(i.b(), constants, frame), k(i.c(), constants, frame)
+			var lessOrEqual bool
+			if b.isNumber() && c.isNumber() {
+				lessOrEqual = b.n <= c.n
 			} else {
-				ci.skip()
+				lessOrEqual = l.lessOrEqual(b, c)
+				frame = ci.frame
 			}
-			frame = ci.frame
-		case opTest:
-			test := i.c() == 0
-			if isFalse(frame[i.a()]) == test {
-				i := ci.step()
-				if a := i.a(); a > 0 {
-					l.close(ci.stackIndex(a - 1))
-				}
-				ci.jump(i.sbx())
+			if lessOrEqual == (i.a() != 0) {
+				ip = l.jumpFrom(ci, code[ip], ip+1)
 			} else {
-				ci.skip()
+				ip++
+			}
+		case opTest:
+			if isFalse(frame[i.a()]) == (i.c() == 0) {
+				ip = l.jumpFrom(ci, code[ip], ip+1)
+			} else {
+				ip++
 			}
 		case opTestSet:
-			b := frame[i.b()]
-			test := i.c() == 0
-			if isFalse(b) == test {
+			if b := frame[i.b()]; isFalse(b) == (i.c() == 0) {
 				frame[i.a()] = b
-				i := ci.step()
-				if a := i.a(); a > 0 {
-					l.close(ci.stackIndex(a - 1))
-				}
-				ci.jump(i.sbx())
+				ip = l.jumpFrom(ci, code[ip], ip+1)
 			} else {
-				ci.skip()
+				ip++
 			}
 		case opCall:
 			a, b, c := i.a(), i.b(), i.c()
+			if b > 1 && l.hookMask&(MaskCall|MaskReturn) == 0 {
+				if f, ok := frame[a].o.(*goFunction); ok && f.number != nil {
+					if r, ok := f.number.tryCall(frame[a+1 : a+b]); ok {
+						l.numberResult(ci, a, c-1, f.number.results, r)
+						break
+					}
+				}
+			}
 			if b != 0 {
 				l.top = ci.stackIndex(a + b)
 			} // else previous instruction set top
@@ -497,6 +530,7 @@ func (l *State) executeSwitch() {
 				ci = l.callInfo
 				ci.setCallStatus(callStatusReentry)
 				frame, closure, constants = newFrame(l, ci)
+				code, ip = ci.code, ci.savedPC
 			}
 		case opTailCall:
 			a, b := i.a(), i.b()
@@ -529,6 +563,7 @@ func (l *State) executeSwitch() {
 				// TODO l.assert(l.top == oci.base()+l.stack[ofn].(*luaClosure).prototype.maxStackSize)
 				// TODO l.assert(&oci.frame[0] == &l.stack[oci.base()] && len(oci.frame) == oci.top-oci.base())
 				frame, closure, constants = newFrame(l, ci)
+				code, ip = ci.code, ci.savedPC
 			}
 		case opReturn:
 			a := i.a()
@@ -548,11 +583,12 @@ func (l *State) executeSwitch() {
 			}
 			// TODO l.assert(ci.code[ci.savedPC-1].opCode() == opCall)
 			frame, closure, constants = newFrame(l, ci)
+			code, ip = ci.code, ci.savedPC
 		case opForLoop:
 			a := i.a()
 			index, limit, step := frame[a+0].n, frame[a+1].n, frame[a+2].n
 			if index += step; (0 < step && index <= limit) || (step <= 0 && limit <= index) {
-				ci.jump(i.sbx())
+				ip += pc(i.sbx())
 				frame[a+0] = numberValue(index) // update internal index...
 				frame[a+3] = numberValue(index) // ... and external index
 			}
@@ -566,7 +602,7 @@ func (l *State) executeSwitch() {
 				l.runtimeError("'for' step must be a number")
 			} else {
 				frame[a+0], frame[a+1], frame[a+2] = numberValue(init-step), numberValue(limit), numberValue(step)
-				ci.jump(i.sbx())
+				ip += pc(i.sbx())
 			}
 		case opTForCall:
 			a := i.a()
@@ -576,12 +612,14 @@ func (l *State) executeSwitch() {
 			l.top = callBase + 3 // function + 2 args (state and index)
 			l.call(callBase, i.c(), true)
 			frame, l.top = ci.frame, ci.top
-			i = expectNext(ci, opTForLoop) // go to next instruction
+			i = expectOp(code[ip], opTForLoop) // go to next instruction
+			ip++
+			ci.savedPC = ip
 			fallthrough
 		case opTForLoop:
 			if a := i.a(); !frame[a+1].isNil() { // continue loop?
 				frame[a] = frame[a+1] // save control variable
-				ci.jump(i.sbx())      // jump back
+				ip += pc(i.sbx())     // jump back
 			}
 		case opSetList:
 			a, n, c := i.a(), i.b(), i.c()
@@ -589,7 +627,8 @@ func (l *State) executeSwitch() {
 				n = l.top - ci.stackIndex(a) - 1
 			}
 			if c == 0 {
-				c = expectNext(ci, opExtraArg).ax()
+				c = expectOp(code[ip], opExtraArg).ax()
+				ip++
 			}
 			h := frame[a].o.(*table)
 			start := (c - 1) * listItemsPerFlush

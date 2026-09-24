@@ -113,6 +113,9 @@ func debugValue(v value) string {
 			s.WriteString(entry(x) + ", ")
 		}
 		s.WriteString("], {")
+		for k, x := range v.strs {
+			s.WriteString("'" + k + "': " + entry(x) + ", ")
+		}
 		for k, x := range v.hash {
 			s.WriteString(entry(k) + ": " + entry(x) + ", ")
 		}

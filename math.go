@@ -7,18 +7,35 @@ import (
 
 const radiansPerDegree = math.Pi / 180.0
 
-func mathUnaryOp(f func(float64) float64) Function {
-	return func(l *State) int {
-		l.PushNumber(f(CheckNumber(l, 1)))
-		return 1
-	}
+var mathUnaryFunctions = []struct {
+	name string
+	f    func(float64) float64
+}{
+	{"abs", math.Abs},
+	{"acos", math.Acos},
+	{"asin", math.Asin},
+	{"atan", math.Atan},
+	{"ceil", math.Ceil},
+	{"cosh", math.Cosh},
+	{"cos", math.Cos},
+	{"deg", func(x float64) float64 { return x / radiansPerDegree }},
+	{"exp", math.Exp},
+	{"floor", math.Floor},
+	{"rad", func(x float64) float64 { return x * radiansPerDegree }},
+	{"sinh", math.Sinh},
+	{"sin", math.Sin},
+	{"sqrt", math.Sqrt},
+	{"tanh", math.Tanh},
+	{"tan", math.Tan},
 }
 
-func mathBinaryOp(f func(float64, float64) float64) Function {
-	return func(l *State) int {
-		l.PushNumber(f(CheckNumber(l, 1), CheckNumber(l, 2)))
-		return 1
-	}
+var mathBinaryFunctions = []struct {
+	name string
+	f    func(float64, float64) float64
+}{
+	{"atan2", math.Atan2},
+	{"fmod", math.Mod},
+	{"pow", math.Pow},
 }
 
 func reduce(f func(float64, float64) float64) Function {
@@ -34,18 +51,6 @@ func reduce(f func(float64, float64) float64) Function {
 }
 
 var mathLibrary = []RegistryFunction{
-	{"abs", mathUnaryOp(math.Abs)},
-	{"acos", mathUnaryOp(math.Acos)},
-	{"asin", mathUnaryOp(math.Asin)},
-	{"atan2", mathBinaryOp(math.Atan2)},
-	{"atan", mathUnaryOp(math.Atan)},
-	{"ceil", mathUnaryOp(math.Ceil)},
-	{"cosh", mathUnaryOp(math.Cosh)},
-	{"cos", mathUnaryOp(math.Cos)},
-	{"deg", mathUnaryOp(func(x float64) float64 { return x / radiansPerDegree })},
-	{"exp", mathUnaryOp(math.Exp)},
-	{"floor", mathUnaryOp(math.Floor)},
-	{"fmod", mathBinaryOp(math.Mod)},
 	{"frexp", func(l *State) int {
 		f, e := math.Frexp(CheckNumber(l, 1))
 		l.PushNumber(f)
@@ -76,8 +81,6 @@ var mathLibrary = []RegistryFunction{
 		l.PushNumber(f)
 		return 2
 	}},
-	{"pow", mathBinaryOp(math.Pow)},
-	{"rad", mathUnaryOp(func(x float64) float64 { return x * radiansPerDegree })},
 	{"random", func(l *State) int {
 		r := rand.Float64()
 		switch l.Top() {
@@ -101,16 +104,20 @@ var mathLibrary = []RegistryFunction{
 		rand.Float64() // discard first value to avoid undesirable correlations
 		return 0
 	}},
-	{"sinh", mathUnaryOp(math.Sinh)},
-	{"sin", mathUnaryOp(math.Sin)},
-	{"sqrt", mathUnaryOp(math.Sqrt)},
-	{"tanh", mathUnaryOp(math.Tanh)},
-	{"tan", mathUnaryOp(math.Tan)},
 }
 
 // MathOpen opens the math library. Usually passed to Require.
 func MathOpen(l *State) int {
-	NewLibrary(l, mathLibrary)
+	l.CreateTable(0, len(mathLibrary)+len(mathUnaryFunctions)+len(mathBinaryFunctions)+2)
+	SetFunctions(l, mathLibrary, 0)
+	for _, f := range mathUnaryFunctions {
+		l.PushNumberFunction(f.f)
+		l.SetField(-2, f.name)
+	}
+	for _, f := range mathBinaryFunctions {
+		l.PushNumberFunction(f.f)
+		l.SetField(-2, f.name)
+	}
 	l.PushNumber(3.1415926535897932384626433832795) // TODO use math.Pi instead? Values differ.
 	l.SetField(-2, "pi")
 	l.PushNumber(math.MaxFloat64)

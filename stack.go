@@ -39,6 +39,7 @@ type goClosure struct {
 // Function wrapper, to allow go functions as keys in maps. Explicitly not a closure.
 type goFunction struct {
 	Function
+	number *numberFunction // non-nil when the VM may call it frameless
 }
 
 func (c *luaClosure) upValue(i int) value { return c.upValues[i].value() }
@@ -134,7 +135,7 @@ type goCallInfo struct {
 func (ci *callInfo) setCallStatus(flag callStatus)     { ci.callStatus |= flag }
 func (ci *callInfo) clearCallStatus(flag callStatus)   { ci.callStatus &^= flag }
 func (ci *callInfo) isCallStatus(flag callStatus) bool { return ci.callStatus&flag != 0 }
-func (ci *callInfo) isLua() bool                       { return ci.luaCallInfo != nil }
+func (ci *callInfo) isLua() bool                       { return ci.callStatus&callStatusLua != 0 }
 
 func (ci *callInfo) stackIndex(slot int) int { return ci.top - len(ci.frame) + slot }
 func (ci *callInfo) base() int               { return ci.top - len(ci.frame) }
@@ -446,7 +447,7 @@ func (l *State) reallocStack(newSize int) {
 	l.stackLast = len(l.stack) - extraStack
 	l.callInfo.next = nil
 	for ci := l.callInfo; ci != nil; ci = ci.previous {
-		if ci.isLua() {
+		if ci.luaCallInfo != nil {
 			top := ci.top
 			ci.frame = l.stack[top-len(ci.frame) : top]
 		}

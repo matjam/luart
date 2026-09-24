@@ -961,7 +961,7 @@ func (l *State) PushFString(format string, args ...any) string {
 // http://www.lua.org/manual/5.2/manual.html#lua_pushcclosure
 func (l *State) PushGoClosure(function Function, upValueCount uint8) {
 	if upValueCount == 0 {
-		l.apiPush(objectValue(&goFunction{function}))
+		l.apiPush(objectValue(&goFunction{Function: function}))
 	} else {
 		n := int(upValueCount)
 

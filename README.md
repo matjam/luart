@@ -34,6 +34,12 @@ Work so far:
 - Exact constant folding of `10^n` on current Go
 - Unboxed values: numbers and booleans no longer allocate
 - Lua's floored `%` on the interpreter's fast path (go-lua truncated)
+- Number functions: `math.*` and `(*State).PushNumberFunction[F]` run
+  without a call frame
+- String keys in their own `map[string]value`
+- `pairs` is linear and allows clearing fields during traversal (go-lua was
+  quadratic and raised "invalid key to 'next'")
+- Line hooks work (go-lua indexed before the first instruction)
 
 Inherited from go-lua:
 
@@ -51,10 +57,12 @@ effect in several pure-Go scripting runtimes. On an Apple M1 Pro:
 |---|---|---|---|
 | Native Go | 0.33 ms | 0 | 0 |
 | Shopify/go-lua | 5.8 ms | 2.1 MiB | 280,000 |
-| luart | 3.6 ms | 6 B | 0 |
+| luart | 2.8 ms | 5 B | 0 |
+| luart, `set` as a number function | 2.7 ms | 0 | 0 |
 
 `TestNumericFrameDoesNotAllocate` keeps numeric code and calls into Go
-allocation-free. Call overhead is now the largest cost.
+allocation-free. The remaining cost is instruction dispatch, about 4 ns for
+each of the 20 bytecode instructions per pixel.
 
 ## Usage
 
@@ -74,6 +82,15 @@ func main() {
 		panic(err)
 	}
 }
+```
+
+Functions over numbers can skip the call frame entirely. The VM calls them
+directly when every argument is a number:
+
+```go
+l.RegisterNumberFunction("set", func(x, y, v float64) {
+	canvas[int(y)*width+int(x)] = v
+})
 ```
 
 Userdata can be read back with its Go type:
