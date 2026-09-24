@@ -63,3 +63,13 @@ jobs:
       - name: suite with the JIT
         working-directory: bench
         run: go test -run TestSuiteAgrees -count 1 ./...
+      - name: test with the JIT at GOAMD64=v3
+        if: runner.arch == 'X64'
+        env:
+          GOAMD64: v3
+        run: |
+          if grep -qw avx2 /proc/cpuinfo && grep -qw fma /proc/cpuinfo; then
+            go test -count 1 -run JIT .
+          else
+            echo "no v3 CPU on this runner"
+          fi

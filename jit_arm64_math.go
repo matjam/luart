@@ -27,31 +27,6 @@ var intrinsics = []struct {
 
 func funcValue(f func(float64) float64) uint64 { return uint64(*(*uintptr)(unsafe.Pointer(&f))) }
 
-// The constants of math's sin and cos, in math/sin.go.
-const (
-	trigPI4A = 7.85398125648498535156e-1
-	trigPI4B = 3.77489470793079817668e-8
-	trigPI4C = 2.69515142907905952645e-15
-)
-
-var trigSin = [...]float64{
-	1.58962301576546568060e-10,
-	-2.50507477628578072866e-8,
-	2.75573136213857245213e-6,
-	-1.98412698295895385996e-4,
-	8.33333333332211858878e-3,
-	-1.66666666666666307295e-1,
-}
-
-var trigCos = [...]float64{
-	-1.13585365213876817300e-11,
-	2.08757008419747316778e-9,
-	-2.75573141792967388112e-7,
-	2.48015872888517045348e-5,
-	-1.38888888888730564116e-3,
-	4.16666666666665929218e-2,
-}
-
 // fconst loads v into f.
 func (c *arm64Compiler) fconst(f FReg, v float64) {
 	c.a.MovImm(rTmp, math.Float64bits(v))

@@ -73,3 +73,13 @@ var (
 	_ [valueSize - 16]struct{}
 	_ [16 - valueSize]struct{}
 )
+
+// bitOf returns the bit number of a single-bit flag.
+func bitOf(f callStatus) uint32 {
+	for b := range uint32(8) {
+		if f == 1<<b {
+			return b
+		}
+	}
+	panic("bitOf: not a single bit")
+}
