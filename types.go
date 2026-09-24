@@ -26,8 +26,8 @@ type (
 )
 
 var (
-	nilValue = value{}
-	none     = value{o: (*noneTag)(nil)}
+	nilValue   = value{}
+	none       = value{o: (*noneTag)(nil)}
 	trueValue  = value{o: (*boolTag)(nil), n: 1}
 	falseValue = value{o: (*boolTag)(nil)}
 )
