@@ -1,0 +1,48 @@
+goos: darwin
+goarch: arm64
+pkg: luabench
+cpu: Apple M1 Pro
+BenchmarkGo-10                 	    3609	    330437 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGo-10                 	    3678	    327409 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGo-10                 	    3705	    328336 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGo-10                 	    3639	    331784 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGo-10                 	    3692	    327961 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGo-10                 	    3690	    325942 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGopherLua-10          	     174	   6885832 ns/op	 1930796 B/op	   65666 allocs/op
+BenchmarkGopherLua-10          	     175	   6921841 ns/op	 1930926 B/op	   65666 allocs/op
+BenchmarkGopherLua-10          	     174	   6752681 ns/op	 1930793 B/op	   65666 allocs/op
+BenchmarkGopherLua-10          	     178	   6678543 ns/op	 1931188 B/op	   65668 allocs/op
+BenchmarkGopherLua-10          	     178	   6737892 ns/op	 1931189 B/op	   65668 allocs/op
+BenchmarkGopherLua-10          	     166	   6838950 ns/op	 1929944 B/op	   65663 allocs/op
+BenchmarkShopifyGoLua-10       	     192	   5729787 ns/op	 2240090 B/op	  279998 allocs/op
+BenchmarkShopifyGoLua-10       	     193	   5753830 ns/op	 2240093 B/op	  279998 allocs/op
+BenchmarkShopifyGoLua-10       	     206	   5734873 ns/op	 2240093 B/op	  279999 allocs/op
+BenchmarkShopifyGoLua-10       	     210	   5665821 ns/op	 2240095 B/op	  279999 allocs/op
+BenchmarkShopifyGoLua-10       	     211	   5852660 ns/op	 2240093 B/op	  279999 allocs/op
+BenchmarkShopifyGoLua-10       	     206	   5928850 ns/op	 2240094 B/op	  279999 allocs/op
+BenchmarkArnodelGolua-10       	     133	   8966850 ns/op	      68 B/op	       1 allocs/op
+BenchmarkArnodelGolua-10       	     134	   8966454 ns/op	      68 B/op	       1 allocs/op
+BenchmarkArnodelGolua-10       	     132	   9071861 ns/op	      68 B/op	       1 allocs/op
+BenchmarkArnodelGolua-10       	     133	   8883644 ns/op	      68 B/op	       1 allocs/op
+BenchmarkArnodelGolua-10       	     129	   9073004 ns/op	      68 B/op	       1 allocs/op
+BenchmarkArnodelGolua-10       	     128	   8957578 ns/op	      68 B/op	       1 allocs/op
+BenchmarkGojaJS-10             	      63	  17929635 ns/op	 5237052 B/op	  474546 allocs/op
+BenchmarkGojaJS-10             	      67	  17951027 ns/op	 5237055 B/op	  474546 allocs/op
+BenchmarkGojaJS-10             	      66	  18146920 ns/op	 5237057 B/op	  474546 allocs/op
+BenchmarkGojaJS-10             	      62	  19500983 ns/op	 5237061 B/op	  474546 allocs/op
+BenchmarkGojaJS-10             	      68	  17625807 ns/op	 5237050 B/op	  474546 allocs/op
+BenchmarkGojaJS-10             	      66	  17909035 ns/op	 5237054 B/op	  474546 allocs/op
+BenchmarkGopherLuaNoCall-10    	     181	   6495686 ns/op	 2099123 B/op	   66290 allocs/op
+BenchmarkGopherLuaNoCall-10    	     184	   6491014 ns/op	 2099261 B/op	   66291 allocs/op
+BenchmarkGopherLuaNoCall-10    	     181	   6846241 ns/op	 2099123 B/op	   66290 allocs/op
+BenchmarkGopherLuaNoCall-10    	     180	   6520230 ns/op	 2099076 B/op	   66289 allocs/op
+BenchmarkGopherLuaNoCall-10    	     183	   6651158 ns/op	 2099214 B/op	   66291 allocs/op
+BenchmarkGopherLuaNoCall-10    	     186	   6617193 ns/op	 2099347 B/op	   66292 allocs/op
+BenchmarkShopifyNoCall-10      	     195	   6074788 ns/op	 2405894 B/op	  299999 allocs/op
+BenchmarkShopifyNoCall-10      	     196	   6272447 ns/op	 2405866 B/op	  299999 allocs/op
+BenchmarkShopifyNoCall-10      	     164	   6657525 ns/op	 2407023 B/op	  299998 allocs/op
+BenchmarkShopifyNoCall-10      	     178	   6809251 ns/op	 2406449 B/op	  299998 allocs/op
+BenchmarkShopifyNoCall-10      	     198	   6011700 ns/op	 2405808 B/op	  299999 allocs/op
+BenchmarkShopifyNoCall-10      	     201	   6038225 ns/op	 2405721 B/op	  299999 allocs/op
+PASS
+ok  	luabench	72.764s
