@@ -13,9 +13,16 @@ func TestErrorPositions(t *testing.T) {
 		want string
 	}{
 		{"arithmetic on nil", "local a\nlocal b = 1\nreturn b + a", `:3: attempt to perform arithmetic on local 'a' (a nil value)`},
-		{"index nil", "local t = {}\n\nreturn t.x.y", `:3: attempt to index`},
+		{"index nil", "local t = {}\n\nreturn t.x.y", `:3: attempt to index field 'x' (a nil value)`},
+		{"index nil among nil locals", "local a, b\nreturn b.x", `:2: attempt to index local 'b' (a nil value)`},
+		{"index nil global", "return missing.x", `:1: attempt to index global 'missing' (a nil value)`},
+		{"index nil upvalue", "local u\nlocal function f() return u.x end\nf()", `:2: attempt to index upvalue 'u' (a nil value)`},
+		{"arithmetic on second operand", "local a, b = 1\nreturn a + b", `:2: attempt to perform arithmetic on local 'b' (a nil value)`},
 		{"call nil", "local f\nf()", `:2: attempt to call local 'f' (a nil value)`},
-		{"error from Go", "local x = 1\n\nstring.rep()", `:3: bad argument #1 to`},
+		{"call nil field", "local t = {}\nt.go()", `:2: attempt to call field 'go' (a nil value)`},
+		{"error from Go", "local x = 1\n\nstring.rep()", `:3: bad argument #1 to 'rep'`},
+		{"error from global Go function", "setmetatable(1, {})", `bad argument #1 to 'setmetatable'`},
+		{"error in method", "local s = 'x'\nreturn s:rep()", `:2: bad argument #1 to 'rep'`},
 		{"error in callee", "local function f()\n  error('boom')\nend\nf()", `:2: boom`},
 		{"compare", "local a, b = {}, 1\nreturn a < b", `:2: attempt to compare`},
 		{"concat", "local a = {}\nreturn 'x' .. a", `:2: attempt to concatenate local 'a' (a table value)`},

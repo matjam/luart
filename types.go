@@ -241,13 +241,13 @@ func (p *prototype) objectName(reg int, lastPC pc) (name, kind string) {
 				return p.objectName(b, pc)
 			}
 		case opGetTableUp:
-			name, kind = p.constantName(i.c(), pc), "local"
+			name, kind = p.constantName(i.c(), pc), "field"
 			if p.upValueName(i.b()) == "_ENV" {
 				kind = "global"
 			}
 			return
 		case opGetTable:
-			name, kind = p.constantName(i.c(), pc), "local"
+			name, kind = p.constantName(i.c(), pc), "field"
 			if v, ok := p.localName(i.b()+1, pc); ok && v == "_ENV" {
 				kind = "global"
 			}

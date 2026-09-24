@@ -54,35 +54,61 @@ func (l *State) runtimeError(message string) {
 func (l *State) typeError(v value, operation string) {
 	typeName := l.valueToType(v).String()
 	if ci := l.callInfo; ci.isLua() {
-		c := l.stack[ci.function].o.(*luaClosure)
+		p := l.prototype(ci)
+		pc := ci.savedPC - 1 // the failing instruction
 		var kind, name string
-		isUpValue := func() bool {
-			for i, uv := range c.upValues {
-				if uv.value() == v {
-					kind, name = "upvalue", c.prototype.upValueName(i)
-					return true
-				}
-			}
-			return false
-		}
-		frameIndex := 0
-		isInStack := func() bool {
-			for i, e := range ci.frame {
-				if e == v {
-					frameIndex = i
-					return true
-				}
-			}
-			return false
-		}
-		if !isUpValue() && isInStack() {
-			name, kind = c.prototype.objectName(frameIndex, ci.savedPC)
+		if up, ok := operandUpValue(p.code[pc]); ok {
+			kind, name = "upvalue", p.upValueName(up)
+		} else if reg, ok := operandRegister(p.code[pc], ci.frame, v); ok {
+			name, kind = p.objectName(reg, pc)
 		}
 		if kind != "" {
 			l.runtimeError(fmt.Sprintf("attempt to %s %s '%s' (a %s value)", operation, kind, name, typeName))
 		}
 	}
 	l.runtimeError(fmt.Sprintf("attempt to %s a %s value", operation, typeName))
+}
+
+// operandUpValue reports the upvalue that instruction i indexes, if any.
+func operandUpValue(i instruction) (int, bool) {
+	switch i.opCode() {
+	case opGetTableUp:
+		return i.b(), true
+	case opSetTableUp:
+		return i.a(), true
+	}
+	return 0, false
+}
+
+// operandRegister reports which register operand of instruction i holds v.
+// It replaces C Lua's pointer test for whether a value is in the stack.
+func operandRegister(i instruction, frame []value, v value) (int, bool) {
+	var candidates [2]int
+	n := 0
+	add := func(r int) {
+		if !isConstant(r) && r < len(frame) {
+			candidates[n] = r
+			n++
+		}
+	}
+	switch i.opCode() {
+	case opGetTable, opSelf, opUnaryMinus, opLength:
+		add(i.b())
+	case opSetTable, opCall, opTailCall:
+		add(i.a())
+	case opAdd, opSub, opMul, opDiv, opMod, opPow:
+		add(i.b())
+		add(i.c())
+	case opConcat: // concat fails on the last two operands
+		add(i.c() - 1)
+		add(i.c())
+	}
+	for _, r := range candidates[:n] {
+		if frame[r] == v {
+			return r, true
+		}
+	}
+	return 0, false
 }
 
 func (l *State) orderError(left, right value) {
@@ -228,7 +254,7 @@ func (l *State) functionName(ci *callInfo) (name, kind string) {
 	}
 	var tm tm
 	p := l.prototype(ci)
-	pc := ci.savedPC
+	pc := ci.savedPC - 1 // the calling instruction
 	switch i := p.code[pc]; i.opCode() {
 	case opCall, opTailCall:
 		return p.objectName(i.a(), pc)

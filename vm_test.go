@@ -78,7 +78,7 @@ func TestLua(t *testing.T) {
 		// {name: "pm"},
 		{name: "sort", nonPort: true}, // sort.lua depends on os.clock(), which is not yet implemented on Windows.
 		{name: "strings"},
-		// {name: "vararg"},
+		{name: "vararg"},
 		// {name: "verybig"},
 	}
 	for _, v := range tests {
@@ -435,7 +435,7 @@ func TestLocIsCorrectOnFuncCall(t *testing.T) {
 	if err == nil {
 		t.Errorf("Expected error! Got none... :(")
 	} else {
-		if err.Error() != "runtime error: [string \"test\"]:4: attempt to call a nil value" {
+		if err.Error() != "runtime error: [string \"test\"]:4: attempt to call global 'isNotDefined' (a nil value)" {
 			t.Errorf("Wrong error reported: %v", err)
 		}
 	}
@@ -453,7 +453,7 @@ func TestLocIsCorrectOnError(t *testing.T) {
 	if err == nil {
 		t.Errorf("Expected error! Got none... :(")
 	} else {
-		if err.Error() != "runtime error: [string \"test\"]:3: attempt to perform arithmetic on a nil value" {
+		if err.Error() != "runtime error: [string \"test\"]:3: attempt to perform arithmetic on global 'q' (a nil value)" {
 			t.Errorf("Wrong error reported: %v", err)
 		}
 	}
