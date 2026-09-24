@@ -180,8 +180,6 @@ func (l *State) pushGoFrame(function, resultCount int) {
 		l.callInfo.next = ci
 	} else if ci.goCallInfo == nil {
 		ci.goCallInfo = &goCallInfo{}
-	} else {
-		*ci.goCallInfo = goCallInfo{}
 	}
 	ci.function = function
 	ci.top = l.top + MinStack

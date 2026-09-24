@@ -766,7 +766,7 @@ func (l *State) Compare(index1, index2 int, op ComparisonOperator) bool {
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_tointegerx
 func (l *State) ToInteger(index int) (int, bool) {
-	if n, ok := l.toNumber(l.indexToValue(index)); ok {
+	if n, ok := l.ToNumber(index); ok {
 		return int(n), true
 	}
 	return 0, false
@@ -1419,7 +1419,22 @@ func (t Type) String() string { return typeNames[t+1] }
 // If the operation failed, the second return value will be false.
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_tonumberx
-func (l *State) ToNumber(index int) (float64, bool) { return l.toNumber(l.indexToValue(index)) }
+func (l *State) ToNumber(index int) (float64, bool) {
+	if v := l.arg(index); v.isNumber() {
+		return v.n, true
+	}
+	return l.toNumber(l.indexToValue(index))
+}
+
+// arg returns the value at a positive index, or nil when the index is not
+// positive or is past the top. It is indexToValue's fast path for reading
+// Go function arguments.
+func (l *State) arg(index int) value {
+	if i := l.callInfo.function + index; index > 0 && i < l.top {
+		return l.stack[i]
+	}
+	return nilValue
+}
 
 // ToBoolean converts the Lua value at index to a Go boolean. Like all
 // tests in Lua, the only false values are false booleans and nil.
