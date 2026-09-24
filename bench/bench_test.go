@@ -6,10 +6,10 @@ import (
 	"testing"
 
 	shopify "github.com/Shopify/go-lua"
+	arno "github.com/arnodel/golua/lib"
 	"github.com/arnodel/golua/lib/base"
 	"github.com/arnodel/golua/lib/mathlib"
 	"github.com/arnodel/golua/lib/packagelib"
-	arno "github.com/arnodel/golua/lib"
 	rt "github.com/arnodel/golua/runtime"
 	"github.com/dop251/goja"
 	glua "github.com/yuin/gopher-lua"
