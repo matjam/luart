@@ -65,6 +65,17 @@ func TestBranches(t *testing.T) {
 	check(t, &a, want)
 }
 
+func TestTestBranches(t *testing.T) {
+	var a Asm
+	l := a.NewLabel()
+	a.Tbz(13, 0, l)  // tbz x13, #0, 1f
+	a.Tbnz(7, 63, l) // tbnz x7, #63, 1f
+	a.Bind(l)        // 1:
+	a.Ret()
+	a.Tbz(2, 3, l) // tbz w2, #3, 1b
+	check(t, &a, []uint32{0x3600004d, 0xb7f80027, 0xd65f03c0, 0x361fffe2})
+}
+
 func TestMovImm(t *testing.T) {
 	tests := []struct {
 		v    uint64

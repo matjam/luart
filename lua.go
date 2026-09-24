@@ -241,6 +241,7 @@ type State struct {
 	protectFunction       func()
 	jitCtx                jitContext // shared with generated code while it runs
 	jitRuns               uint64     // entries into compiled code, for tests
+	jitBarrierRuns        uint64     // entries while the write barrier was on, for tests
 }
 
 type globalState struct {

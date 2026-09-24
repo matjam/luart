@@ -50,6 +50,7 @@ type fixupKind uint8
 const (
 	fixB26    fixupKind = iota // B, BL
 	fixCond19                  // B.cond, CBZ, CBNZ
+	fixTest14                  // TBZ, TBNZ
 )
 
 type fixup struct {
@@ -99,6 +100,11 @@ func (a *Asm) Code() ([]byte, error) {
 				return nil, fmt.Errorf("arm64: conditional branch out of range")
 			}
 			a.words[f.at] |= (uint32(delta) & (1<<19 - 1)) << 5
+		case fixTest14:
+			if delta < -(1<<13) || delta >= 1<<13 {
+				return nil, fmt.Errorf("arm64: test branch out of range")
+			}
+			a.words[f.at] |= (uint32(delta) & (1<<14 - 1)) << 5
 		}
 	}
 	b := make([]byte, 0, len(a.words)*4)
@@ -209,6 +215,14 @@ func (a *Asm) Cbz(rt Reg, l Label) { a.branch(0xb4000000|rt.u(), l, fixCond19) }
 
 // Cbnz branches to l when rt is not zero.
 func (a *Asm) Cbnz(rt Reg, l Label) { a.branch(0xb5000000|rt.u(), l, fixCond19) }
+
+// Tbz branches to l when bit b of rt is zero.
+func (a *Asm) Tbz(rt Reg, b uint32, l Label) { a.branch(0x36000000|testBit(b)|rt.u(), l, fixTest14) }
+
+// Tbnz branches to l when bit b of rt is one.
+func (a *Asm) Tbnz(rt Reg, b uint32, l Label) { a.branch(0x37000000|testBit(b)|rt.u(), l, fixTest14) }
+
+func testBit(b uint32) uint32 { return (b>>5)<<31 | (b&31)<<19 }
 
 // Ret returns through the link register.
 func (a *Asm) Ret() { a.emit(0xd65f03c0) }
