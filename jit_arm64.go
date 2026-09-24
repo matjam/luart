@@ -3,8 +3,6 @@
 package lua
 
 import (
-	"unsafe"
-
 	. "github.com/matjam/luart/internal/jit/arm64"
 )
 
@@ -34,38 +32,8 @@ const (
 	rSlot    Reg = 21 // the address of a table slot
 )
 
-const (
-	offFrame     = uint32(unsafe.Offsetof(jitContext{}.frame))
-	offConstants = uint32(unsafe.Offsetof(jitContext{}.constants))
-	offTarget    = uint32(unsafe.Offsetof(jitContext{}.target))
-	offExitPC    = uint32(unsafe.Offsetof(jitContext{}.exitPC))
-	offBudget    = uint32(unsafe.Offsetof(jitContext{}.budget))
-	offUpValues  = uint32(unsafe.Offsetof(jitContext{}.upValues))
-	offBarrier   = uint32(unsafe.Offsetof(jitContext{}.barrier))
-	valueSize    = uint32(unsafe.Sizeof(value{}))
-	offP         = uint32(unsafe.Offsetof(value{}.p))
-	offN         = uint32(unsafe.Offsetof(value{}.n))
-	offUVState   = uint32(unsafe.Offsetof(upValue{}.state))
-	offUVIndex   = uint32(unsafe.Offsetof(upValue{}.index))
-	offUVClosed  = uint32(unsafe.Offsetof(upValue{}.closed))
-	offStack     = uint32(unsafe.Offsetof(State{}.stack))
-	offTShape    = uint32(unsafe.Offsetof(table{}.shape))
-	offTSlots    = uint32(unsafe.Offsetof(table{}.slots))
-	offTArray    = uint32(unsafe.Offsetof(table{}.array))
-	offTMeta     = uint32(unsafe.Offsetof(table{}.metaTable))
-	offTFlags    = uint32(unsafe.Offsetof(table{}.flags))
-	offShapeDict = uint32(unsafe.Offsetof(shape{}.dict))
-	offCShape    = uint32(unsafe.Offsetof(fieldCache{}.shape))
-	offCSlot     = uint32(unsafe.Offsetof(fieldCache{}.slot))
-	offCMtShape  = uint32(unsafe.Offsetof(fieldCache{}.mtShape))
-	offCMtSlot   = uint32(unsafe.Offsetof(fieldCache{}.mtSlot))
-	offCIndex    = uint32(unsafe.Offsetof(fieldCache{}.index))
-	offCIdxSlot  = uint32(unsafe.Offsetof(fieldCache{}.indexSlot))
-	offGFNumber  = uint32(unsafe.Offsetof(goFunction{}.number))
-	offNFUnary   = uint32(unsafe.Offsetof(numberFunction{}.unary))
-	offSliceLen  = 8
-	maxOffset    = 32768 // LDR and STR reach offsets below this
-)
+// maxOffset bounds the offsets LDR and STR reach.
+const maxOffset = 32768
 
 // arm64Compiler translates a prototype into arm64 code.
 //
@@ -82,9 +50,9 @@ type arm64Compiler struct {
 	always []bool  // instructions compiled as an unconditional exit
 }
 
-func compileJIT(p *prototype) (code []byte, offsets []int32, entries []int) {
+func compileJIT(p *prototype) (code []byte, offsets []int32, entries []int, kernels int) {
 	if len(p.code) > 1<<16 || uint32(p.maxStackSize+3)*valueSize >= maxOffset {
-		return nil, nil, nil
+		return nil, nil, nil, 0
 	}
 	c := &arm64Compiler{p: p, code: p.jitOrig}
 	c.pcs = make([]Label, len(c.code))
@@ -95,14 +63,27 @@ func compileJIT(p *prototype) (code []byte, offsets []int32, entries []int) {
 		c.pcs[i], c.exits[i], c.budget[i] = c.a.NewLabel(), -1, -1
 	}
 	c.prologue()
+	loops := map[int]*kernel{}
+	for ip, i := range c.p.code {
+		if i.opCode() == opForLoop && !isExtraArg(c.p.code, ip) {
+			if k := c.findKernel(ip); k != nil {
+				loops[ip] = k
+			}
+		}
+	}
 	for ip := 0; ip < len(c.code); ip++ {
 		c.a.Bind(c.pcs[ip])
+		if k := loops[ip]; k != nil {
+			normal := c.a.NewLabel()
+			c.emitKernel(k, normal)
+			c.a.Bind(normal)
+		}
 		ip += c.instruction(ip)
 	}
 	c.stubs()
 	code, err := c.a.Code()
 	if err != nil {
-		return nil, nil, nil
+		return nil, nil, nil, 0
 	}
 	offsets = make([]int32, len(c.code))
 	for i, l := range c.pcs {
@@ -115,7 +96,7 @@ func compileJIT(p *prototype) (code []byte, offsets []int32, entries []int) {
 	for i, l := range c.exits {
 		exits[i] = l >= 0
 	}
-	return code, offsets, jitEntries(c.p, exits, c.always)
+	return code, offsets, jitEntries(c.p, exits, c.always), len(loops)
 }
 
 // prologue loads the fixed registers and branches to ctx.target.
@@ -570,10 +551,3 @@ func (c *arm64Compiler) upValueAddr(n int) {
 	a.AddImm(rAddr, rTmp, offUVClosed)
 	a.Bind(done)
 }
-
-// upValueAddr scales a stack index by shifting it left by 4, so a value
-// must be 16 bytes. Each array length below is negative otherwise.
-var (
-	_ [valueSize - 16]struct{}
-	_ [16 - valueSize]struct{}
-)
