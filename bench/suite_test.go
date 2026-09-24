@@ -177,8 +177,8 @@ func identity(x float64) float64 { return x }
 //go:noinline
 func nativeCall(f func(float64) float64, x float64) float64 { return f(x) }
 
-func newSuiteLuart(tb testing.TB, src string) *luart.State {
-	l := luart.NewState()
+func newSuiteLuart(tb testing.TB, src string, options ...luart.Option) *luart.State {
+	l := luart.NewState(options...)
 	luart.OpenLibraries(l)
 	l.Register("gofn", func(l *luart.State) int { v, _ := l.ToNumber(1); l.PushNumber(v); return 1 })
 	l.Register("set", func(l *luart.State) int {
@@ -235,6 +235,12 @@ func TestSuiteAgrees(t *testing.T) {
 			if lr != sh {
 				t.Errorf("luart %v, shopify %v", lr, sh)
 			}
+			lj := newSuiteLuart(t, w.lua, luart.WithJIT())
+			for range 3 { // later runs use code compiled during earlier ones
+				if j := runLuart(lj); j != lr {
+					t.Errorf("luart with JIT %v, luart %v", j, lr)
+				}
+			}
 			if w.native != nil {
 				if g := w.native(); g != lr {
 					t.Errorf("go %v, luart %v", g, lr)
@@ -255,6 +261,12 @@ func BenchmarkSuite(b *testing.B) {
 		}
 		b.Run(w.name+"/luart", func(b *testing.B) {
 			l := newSuiteLuart(b, w.lua)
+			for b.Loop() {
+				sink = runLuart(l)
+			}
+		})
+		b.Run(w.name+"/luart-jit", func(b *testing.B) {
+			l := newSuiteLuart(b, w.lua, luart.WithJIT())
 			for b.Loop() {
 				sink = runLuart(l)
 			}

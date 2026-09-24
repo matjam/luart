@@ -21,6 +21,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y lua5.2 && luac -v
       - name: gofmt
         run: test -z "$(gofmt -l $(git ls-files '*.go'))"
+      - name: generated code
+        run: go generate ./... && git diff --exit-code
       - name: vet
         run: go vet -unreachable=false ./...
       - name: test
@@ -32,3 +34,32 @@ jobs:
       - name: bench smoke
         working-directory: bench
         run: go test -run x -bench . -benchtime 1x ./...
+      - name: cross-build
+        run: |
+          for target in windows/amd64 windows/arm64 linux/386 darwin/amd64 darwin/arm64 linux/arm64; do
+            GOOS=${target%/*} GOARCH=${target#*/} go build ./... || exit 1
+          done
+
+  # The JIT generates native code, so run the suite with every function
+  # compiled on each architecture it supports.
+  jit:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      CGO_ENABLED: "0"
+      LUART_JIT_TEST: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: test with the JIT
+        run: go test -count 1 ./...
+      - name: suite with the JIT
+        working-directory: bench
+        run: go test -run TestSuiteAgrees -count 1 ./...

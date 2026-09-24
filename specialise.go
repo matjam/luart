@@ -30,6 +30,13 @@ const (
 	// in x*0.1 + t. See fuseMulAdd.
 	opMulAddRKR
 
+	// Patched into the exec code of a state that compiles: jitCount at
+	// function entry and loop latches until the function is compiled, then
+	// jitEnter at the places the interpreter hands over to compiled code.
+	// Both run jitOrig[pc] afterwards. See jit.go.
+	opJITCount
+	opJITEnter
+
 	opCount
 )
 
@@ -65,9 +72,18 @@ func (l *State) arithInto(ci *callInfo, a int, b, c value, op tm) []value {
 // error naming keep using p.code.
 func (p *prototype) execCode() []instruction {
 	if p.exec == nil {
-		p.exec, p.fields = specialise(p.code, p.constants)
+		p.buildExec()
 	}
 	return p.exec
+}
+
+// buildExec is execCode's slow path, kept out of line so execCode inlines
+// into the interpreter's call and return paths.
+func (p *prototype) buildExec() {
+	p.exec, p.fields = specialise(p.code, p.constants)
+	if p.jitOn {
+		p.patchJITCounters()
+	}
 }
 
 func specialise(code []instruction, constants []value) ([]instruction, []fieldCache) {

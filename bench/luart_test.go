@@ -6,9 +6,9 @@ import (
 	luart "github.com/matjam/luart"
 )
 
-func newLuart(b *testing.B, src string) *luart.State {
+func newLuart(b *testing.B, src string, options ...luart.Option) *luart.State {
 	b.Helper()
-	l := luart.NewState()
+	l := luart.NewState(options...)
 	luart.OpenLibraries(l)
 	l.Register("set", func(l *luart.State) int {
 		x, _ := l.ToNumber(1)

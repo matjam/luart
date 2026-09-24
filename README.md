@@ -97,6 +97,21 @@ result. Apple M1 Pro, Go 1.27.1, `CGO_ENABLED=0`, medians of 6 runs:
 - `TestNumericFrameDoesNotAllocate` keeps numeric code and calls into Go
   allocation-free.
 
+## JIT (experimental)
+
+`lua.NewState(lua.WithJIT())` compiles hot Lua functions to machine code.
+It is opt-in while it matures, and states without it run the interpreter
+unchanged.
+
+- Platforms: linux and darwin on arm64 now, amd64 to follow. Elsewhere
+  `WithJIT` does nothing.
+- Compiled code shares the interpreter's stack frames. An instruction it
+  cannot run returns to the interpreter at that instruction, so every
+  script runs correctly while coverage grows.
+- It pauses while a debug hook is set, and `LUART_JIT=off` disables it.
+- CI runs the whole test suite with every function compiled
+  (`LUART_JIT_TEST=1`) on linux/amd64, linux/arm64 and macOS.
+
 ## Usage
 
 ```sh
