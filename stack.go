@@ -142,8 +142,15 @@ func (ci *callInfo) base() int               { return ci.top - len(ci.frame) }
 func (ci *callInfo) skip()                   { ci.savedPC++ }
 func (ci *callInfo) jump(offset int)         { ci.savedPC += pc(offset) }
 
+// hasFrame reports whether ci.frame tracks the stack: true for Lua frames
+// and for the base frame. A Go frame keeps a stale luaCallInfo from an
+// earlier Lua call so the slot can switch kinds without allocating.
+func (ci *callInfo) hasFrame() bool {
+	return ci.luaCallInfo != nil && (ci.isLua() || ci.goCallInfo == nil)
+}
+
 func (ci *callInfo) setTop(top int) {
-	if ci.luaCallInfo != nil {
+	if ci.hasFrame() {
 		diff := top - ci.top
 		ci.frame = ci.frame[:len(ci.frame)+diff]
 	}
@@ -163,7 +170,6 @@ func (l *State) pushLuaFrame(function, base, resultCount int, p *prototype) *cal
 		ci = &callInfo{previous: l.callInfo, luaCallInfo: &luaCallInfo{code: p.code}}
 		l.callInfo.next = ci
 	} else if ci.luaCallInfo == nil {
-		ci.goCallInfo = nil
 		ci.luaCallInfo = &luaCallInfo{code: p.code}
 	} else {
 		ci.savedPC = 0
@@ -187,7 +193,8 @@ func (l *State) pushGoFrame(function, resultCount int) {
 		l.callInfo.next = ci
 	} else if ci.goCallInfo == nil {
 		ci.goCallInfo = &goCallInfo{}
-		ci.luaCallInfo = nil
+	} else {
+		*ci.goCallInfo = goCallInfo{}
 	}
 	ci.function = function
 	ci.top = l.top + MinStack
@@ -447,9 +454,11 @@ func (l *State) reallocStack(newSize int) {
 	l.stackLast = len(l.stack) - extraStack
 	l.callInfo.next = nil
 	for ci := l.callInfo; ci != nil; ci = ci.previous {
-		if ci.luaCallInfo != nil {
+		if ci.hasFrame() {
 			top := ci.top
 			ci.frame = l.stack[top-len(ci.frame) : top]
+		} else if ci.luaCallInfo != nil {
+			ci.frame = nil // stale; drop the old stack
 		}
 	}
 }
