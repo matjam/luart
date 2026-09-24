@@ -194,6 +194,19 @@ func (a *Asm) StrW(rt, rn Reg, off uint32) {
 	a.emit(0xb9000000 | scaled(off, 4)<<10 | rn.u()<<5 | rt.u())
 }
 
+// Ldrb loads the byte at rn+off into rt, zero-extended.
+func (a *Asm) Ldrb(rt, rn Reg, off uint32) {
+	a.emit(0x39400000 | checkImm12(off)<<10 | rn.u()<<5 | rt.u())
+}
+
+// Lsr computes rd = rn >> shift, unsigned.
+func (a *Asm) Lsr(rd, rn Reg, shift uint32) {
+	a.emit(0xd340fc00 | (shift&63)<<16 | rn.u()<<5 | rd.u())
+}
+
+// Sub computes rd = rn - rm.
+func (a *Asm) Sub(rd, rn, rm Reg) { a.emit(0xcb000000 | rm.u()<<16 | rn.u()<<5 | rd.u()) }
+
 // Strb stores the low byte of rt at rn+off.
 func (a *Asm) Strb(rt, rn Reg, off uint32) {
 	a.emit(0x39000000 | checkImm12(off)<<10 | rn.u()<<5 | rt.u())

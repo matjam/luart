@@ -59,9 +59,13 @@ func TestConversions(t *testing.T) {
 	a.Fmsub(5, 6, 7, 8) // fmsub d5, d6, d7, d8
 	a.Fcvtzu(9, 10)     // fcvtzu x9, d10
 	a.Ucvtf(11, 12)     // ucvtf d11, x12
+	a.Ldrb(1, 2, 4095)  // ldrb w1, [x2, #4095]
+	a.Lsr(3, 4, 4)      // lsr x3, x4, #4
+	a.Sub(5, 6, 7)      // sub x5, x6, x7
 	check(t, &a, []uint32{
 		0x393ffc7f, 0x390004c5, 0x9e780107, 0x9e620149,
 		0x1f431041, 0x1f47a0c5, 0x9e790149, 0x9e63018b,
+		0x397ffc41, 0xd344fc83, 0xcb0700c5,
 	})
 }
 

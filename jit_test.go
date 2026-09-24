@@ -374,7 +374,9 @@ func TestJITUnderGC(t *testing.T) {
 	src := `function run()
 		local n = 0
 		local r = {a = {}, b = "x", [1] = {}, [2] = "y"}
+		local function id(x, y) return y, x end
 		for i = 1, 20000 do
+			r.a, r.b = id(r.a, r.b)
 			local t = {i}
 			local u = t
 			local s = "k"

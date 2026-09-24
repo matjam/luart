@@ -506,6 +506,8 @@ func (c *arm64Compiler) instruction(ip int) int {
 		c.tableAccess(ip, c.code[ip])
 	case opCall:
 		c.call(ip, orig)
+	case opReturn:
+		c.returnLua(ip, orig)
 	case opLoadConstantEx, opSetList:
 		c.exitAlways(ip)
 		if op == opLoadConstantEx || orig.c() == 0 {

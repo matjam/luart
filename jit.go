@@ -45,6 +45,7 @@ type jitContext struct {
 	upValues  unsafe.Pointer // &closure.upValues[0], or nil
 	barrier   uint64         // nonzero while the GC write barrier is on
 	reason    uint64         // why the last run exited, set by runJIT
+	state     unsafe.Pointer // the *State, for calls and returns
 }
 
 // writeBarrier is the runtime's flag that Go's own compiled code tests
@@ -71,6 +72,8 @@ const (
 type jitCode struct {
 	mem     *execmem.Code
 	offsets []int32 // native offset of each pc's code, or -1
+	base    uintptr // address of the code
+	entry   uintptr // address of pc 0's code
 }
 
 // The interpreter reaches compiled code through instructions patched into
@@ -148,7 +151,7 @@ func (l *State) countJIT(p *prototype) {
 	if err != nil {
 		return
 	}
-	p.jit = &jitCode{mem: mem, offsets: offsets}
+	p.jit = &jitCode{mem: mem, offsets: offsets, base: mem.Addr(0), entry: mem.Addr(int(offsets[0]))}
 	for _, ip := range entries {
 		p.exec[ip] = patched(p.exec[ip], opJITEnter)
 	}
@@ -272,6 +275,8 @@ func (l *State) runJIT(ci *callInfo, ip pc) {
 			break
 		}
 		l.enterJIT(ci, c, jc, off)
+		ci = l.callInfo // compiled calls and returns move between frames
+		c = ci.closure
 		ip = pc(l.jitCtx.exitPC)
 		if l.jitCtx.reason == jitExitBudget {
 			runtime.Gosched()
@@ -323,6 +328,7 @@ func (l *State) enterJIT(ci *callInfo, c *luaClosure, jc *jitCode, off int32) {
 	}
 	ctx.target = jc.mem.Addr(int(off))
 	ctx.budget = jitBudget
+	ctx.state = unsafe.Pointer(l)
 	ctx.reason = call.Call(jc.mem.Addr(0), unsafe.Pointer(ctx))
 	l.jitRuns++
 	runtime.KeepAlive(frame)
