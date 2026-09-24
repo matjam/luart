@@ -58,25 +58,39 @@ Inherited from go-lua:
 
 ## Performance
 
-[`bench/`](bench/README.md) runs one frame of two visualiser workloads in
-several pure-Go scripting runtimes, on an Apple M1 Pro:
+[`bench/suite_test.go`](bench/suite_test.go) runs ten workloads in native
+Go, luart and Shopify/go-lua, with the same Lua source for both
+interpreters. `TestSuiteAgrees` checks that all three compute the same
+result. Apple M1 Pro, Go 1.27.1, `CGO_ENABLED=0`, medians of 6 runs:
 
-- **Plasma:** a 200×100 per-pixel effect, three `math.sin` calls and one
-  call into Go per pixel
-- **Particles:** 2,000 particle tables moved by a method and drawn each
-  frame
+| Workload | Native Go | luart | Shopify/go-lua | luart vs Shopify | luart vs Go |
+|---|---|---|---|---|---|
+| fib(25), recursive calls | 0.25 ms | 8.99 ms | 13.5 ms | 1.5× faster | 36× slower |
+| numeric loop, 1M iterations | 1.17 ms | 14.7 ms | 290 ms | 20× faster | 13× slower |
+| array fill and sum, 100k | 0.53 ms | 4.90 ms | 8.40 ms | 1.7× faster | 9× slower |
+| records, 10k tables | 0.12 ms | 2.06 ms | 4.07 ms | 2.0× faster | 17× slower |
+| closures, 100k | 0.34 ms | 9.54 ms | 13.3 ms | 1.4× faster | 28× slower |
+| sort 10k with comparator | 1.92 ms | 7.43 ms | 13.4 ms | 1.8× faster | 3.9× slower |
+| string build, 10k pieces | 0.57 ms | 2.09 ms | 97.7 ms | 47× faster | 3.7× slower |
+| calls into Go, 100k | 0.34 ms | 3.19 ms | 7.53 ms | 2.4× faster | 9× slower |
+| plasma frame | 0.29 ms | 2.56 ms | 5.69 ms | 2.2× faster | 9× slower |
+| particles frame | 0.006 ms | 0.42 ms | 1.56 ms | 3.7× faster | 72× slower |
 
-| Runtime | Plasma | Particles | Allocations per frame |
-|---|---|---|---|
-| Native Go | 0.33 ms | 0.006 ms | 0 |
-| Shopify/go-lua | 5.9 ms | 1.65 ms | 280,000 / 25,000 |
-| gopher-lua | 6.9 ms | 1.25 ms | 66,000 / 360 |
-| luart | 2.5 ms | — | 0 |
-| luart, `set` as a number function | 2.3 ms | 0.41 ms | 0 |
-
-`TestNumericFrameDoesNotAllocate` keeps numeric code and calls into Go
-allocation-free. The remaining cost is instruction dispatch: plasma runs
-about 20 bytecode instructions per pixel at 4 ns each.
+- luart allocates nothing on fib, the numeric loop, calls into Go, plasma
+  and particles, where Shopify allocates 25,000 to 4.9 million times per
+  run. Its remaining allocations are objects the script creates: tables,
+  closures and strings. [`bench/README.md`](bench/README.md) has the full
+  allocation table.
+- Shopify's numeric loop is slow because its `%` calls `math.Mod`. Its
+  string build is quadratic because its `table.concat` appends with
+  `s += str`.
+- The gap to Go is widest where Go inlines calls, as in particles and fib.
+- Plasma is a 200×100 per-pixel effect with three `math.sin` calls and one
+  call into Go per pixel. Particles moves 2,000 particle tables by a method
+  and draws them. With `set` registered as a number function, plasma takes
+  2.3 ms.
+- `TestNumericFrameDoesNotAllocate` keeps numeric code and calls into Go
+  allocation-free.
 
 ## Usage
 
