@@ -214,7 +214,7 @@ func worthEntering(code []instruction, always []bool, ip int) bool {
 			continue
 		}
 		op := code[ip].opCode()
-		if always[ip] && op != opCall && op != opReturn {
+		if always[ip] && op != opCall && op != opReturn && !jitSteps(op) {
 			return false
 		}
 		if run++; run >= jitMinRun || op == opForLoop || op == opJump && code[ip].sbx() < 0 {
@@ -301,10 +301,100 @@ func (l *State) runJIT(ci *callInfo, ip pc) {
 				ip = ci.savedPC
 				continue
 			}
+		case opJump: // one that closes upvalues, which compiled code leaves to Go
+			ci.savedPC = ip + 1
+			ip = l.jumpFrom(ci, i, ip+1)
+			continue
+		default:
+			if jitSteps(i.opCode()) {
+				ci.savedPC = ip + 1
+				l.jitStep(ci, i, ip)
+				ip++
+				continue
+			}
 		}
 		break
 	}
 	ci.savedPC = ip
+}
+
+// jitSteps reports whether runJIT runs op itself when compiled code exits
+// at it, and goes on in compiled code after it.
+func jitSteps(op opCode) bool {
+	switch op {
+	case opJump, opNewTable, opClosure, opLength, opGetTable, opGetTableUp, opSelf, opSetTable, opSetTableUp,
+		opGetField, opGetFieldUp, opSelfField, opSetField, opSetFieldUp:
+		return true
+	}
+	return false
+}
+
+// jitStep runs i, the exec instruction at ip, as the interpreter would.
+// Each case is a copy of the interpreter's.
+func (l *State) jitStep(ci *callInfo, i instruction, ip pc) {
+	closure, frame := ci.closure, ci.frame
+	constants := closure.prototype.constants
+	switch i.opCode() {
+	case opNewTable:
+		a := i.a()
+		b, c := float8(i.b()), float8(i.c())
+		frame[a] = objectValue(newTableAt(&closure.prototype.fields[ip], intFromFloat8(b), intFromFloat8(c)))
+		clear(frame[a+1:])
+	case opClosure:
+		a, p := i.a(), &closure.prototype.prototypes[i.bx()]
+		if ncl := cached(p, closure.upValues, ci.base()); ncl == nil {
+			frame[a] = l.newClosure(p, closure.upValues, ci.base())
+		} else {
+			frame[a] = objectValue(ncl)
+		}
+		clear(frame[a+1:])
+	case opLength:
+		tmp := l.objectLength(frame[i.b()])
+		ci.frame[i.a()] = tmp
+	case opGetTableUp:
+		tmp := l.tableAt(closure.upValue(i.b()), k(i.c(), constants, frame))
+		ci.frame[i.a()] = tmp
+	case opGetTable:
+		tmp := l.tableAt(frame[i.b()], k(i.c(), constants, frame))
+		ci.frame[i.a()] = tmp
+	case opSetTableUp:
+		l.setTableAt(closure.upValue(i.a()), k(i.b(), constants, frame), k(i.c(), constants, frame))
+	case opSetTable:
+		l.setTableAt(frame[i.a()], k(i.b(), constants, frame), k(i.c(), constants, frame))
+	case opSelf:
+		a, t := i.a(), frame[i.b()]
+		tmp := l.tableAt(t, k(i.c(), constants, frame))
+		frame = ci.frame
+		frame[a+1], frame[a] = t, tmp
+	case opGetField, opGetFieldUp, opSelfField:
+		var t value
+		if i.opCode() == opGetFieldUp {
+			t = closure.upValue(i.b())
+		} else {
+			t = frame[i.b()]
+		}
+		key := constants[i.c()]
+		v, ok := getField(t, key, &closure.prototype.fields[ip])
+		if !ok {
+			v = l.tableAt(t, key)
+			frame = ci.frame
+		}
+		if i.opCode() == opSelfField {
+			frame[i.a()+1] = t
+		}
+		frame[i.a()] = v
+	case opSetField, opSetFieldUp:
+		var t value
+		if i.opCode() == opSetFieldUp {
+			t = closure.upValue(i.a())
+		} else {
+			t = frame[i.a()]
+		}
+		key, v := constants[i.b()], k(i.c(), constants, frame)
+		if !setField(t, key, v, &closure.prototype.fields[ip]) {
+			l.setTableAt(t, key, v)
+		}
+	}
 }
 
 // enterJIT runs ci's compiled code from native offset off until it exits,
