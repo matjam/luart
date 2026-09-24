@@ -32,8 +32,13 @@ Work so far:
 - `switch` dispatch in place of go-lua's closure jump table
 - Generic accessors `(*State).UserData[T]` and `(*State).CheckUserData[T]`
 - Exact constant folding of `10^n` on current Go
-- Unboxed values: numbers and booleans no longer allocate
+- Two-word values: a pointer and a float64, so numbers and booleans never
+  allocate and stacks and tables are a third smaller
 - Lua's floored `%` on the interpreter's fast path (go-lua truncated)
+- One allocation per small table, closure and captured upvalue; table
+  constructors start in the shape their previous table reached
+- Direct calls and returns between Lua functions, and direct calls into Go
+- Generic argument accessor `(*State).Arg[T]`
 - Number functions: `math.*` and `(*State).PushNumberFunction[F]` run
   without a call frame
 - Table shapes: tables that gain the same string keys in the same order
@@ -65,22 +70,22 @@ result. Apple M1 Pro, Go 1.27.1, `CGO_ENABLED=0`, medians of 6 runs:
 
 | Workload | Native Go | luart | Shopify/go-lua | luart vs Shopify | luart vs Go |
 |---|---|---|---|---|---|
-| fib(25), recursive calls | 0.25 ms | 8.99 ms | 13.5 ms | 1.5× faster | 36× slower |
-| numeric loop, 1M iterations | 1.17 ms | 14.7 ms | 290 ms | 20× faster | 13× slower |
-| array fill and sum, 100k | 0.53 ms | 4.90 ms | 8.40 ms | 1.7× faster | 9× slower |
-| records, 10k tables | 0.12 ms | 2.06 ms | 4.07 ms | 2.0× faster | 17× slower |
-| closures, 100k | 0.34 ms | 9.54 ms | 13.3 ms | 1.4× faster | 28× slower |
-| sort 10k with comparator | 1.92 ms | 7.43 ms | 13.4 ms | 1.8× faster | 3.9× slower |
-| string build, 10k pieces | 0.57 ms | 2.09 ms | 97.7 ms | 47× faster | 3.7× slower |
-| calls into Go, 100k | 0.34 ms | 3.19 ms | 7.53 ms | 2.4× faster | 9× slower |
-| plasma frame | 0.29 ms | 2.56 ms | 5.69 ms | 2.2× faster | 9× slower |
-| particles frame | 0.006 ms | 0.42 ms | 1.56 ms | 3.7× faster | 72× slower |
+| fib(25), recursive calls | 0.26 ms | 8.02 ms | 14.0 ms | 1.7× faster | 31× slower |
+| numeric loop, 1M iterations | 1.20 ms | 14.2 ms | 300 ms | 21× faster | 12× slower |
+| array fill and sum, 100k | 0.49 ms | 4.18 ms | 8.78 ms | 2.1× faster | 8.5× slower |
+| records, 10k tables | 0.13 ms | 1.36 ms | 4.47 ms | 3.3× faster | 10× slower |
+| closures, 100k | 0.36 ms | 8.25 ms | 14.7 ms | 1.8× faster | 23× slower |
+| sort 10k with comparator | 1.99 ms | 7.67 ms | 15.1 ms | 2.0× faster | 3.9× slower |
+| string build, 10k pieces | 0.62 ms | 1.08 ms | 105 ms | 97× faster | 1.7× slower |
+| calls into Go, 100k | 0.35 ms | 2.82 ms | 7.87 ms | 2.8× faster | 7.9× slower |
+| plasma frame | 0.34 ms | 2.15 ms | 5.93 ms | 2.8× faster | 6.4× slower |
+| particles frame | 0.006 ms | 0.38 ms | 1.67 ms | 4.4× faster | 63× slower |
 
 - luart allocates nothing on fib, the numeric loop, calls into Go, plasma
   and particles, where Shopify allocates 25,000 to 4.9 million times per
-  run. Its remaining allocations are objects the script creates: tables,
-  closures and strings. [`bench/README.md`](bench/README.md) has the full
-  allocation table.
+  run. Its remaining allocations are the objects the script creates, one
+  per table, closure or string. [`bench/README.md`](bench/README.md) has
+  the full allocation table.
 - Shopify's numeric loop is slow because its `%` calls `math.Mod`. Its
   string build is quadratic because its `table.concat` appends with
   `s += str`.
@@ -88,7 +93,7 @@ result. Apple M1 Pro, Go 1.27.1, `CGO_ENABLED=0`, medians of 6 runs:
 - Plasma is a 200×100 per-pixel effect with three `math.sin` calls and one
   call into Go per pixel. Particles moves 2,000 particle tables by a method
   and draws them. With `set` registered as a number function, plasma takes
-  2.3 ms.
+  2.1 ms.
 - `TestNumericFrameDoesNotAllocate` keeps numeric code and calls into Go
   allocation-free.
 
