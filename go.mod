@@ -1,3 +1,3 @@
-module github.com/Shopify/go-lua
+module github.com/matjam/luart
 
-go 1.22
+go 1.27.1

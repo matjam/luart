@@ -1,0 +1,32 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: test -z "$(gofmt -l $(git ls-files '*.go'))"
+      - name: vet
+        run: go vet -unreachable=false ./...
+      - name: test
+        run: go test ./...
+      - name: race
+        env:
+          CGO_ENABLED: "1"
+        run: go test -race ./...
+      - name: bench smoke
+        working-directory: bench
+        run: go test -run x -bench . -benchtime 1x ./...

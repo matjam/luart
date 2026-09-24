@@ -1,2 +1,4 @@
 lua-tests/
 .DS_[sS]tore
+/bench/*.prof
+/bench/*.test

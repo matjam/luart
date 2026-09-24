@@ -1,5 +1,12 @@
-[![Build Status](https://circleci.com/gh/Shopify/go-lua.png?circle-token=997f951c602c0c63a263eba92975428a49ee4c2e)](https://circleci.com/gh/Shopify/go-lua)
-[![GoDoc](https://godoc.org/github.com/Shopify/go-lua?status.png)](https://godoc.org/github.com/Shopify/go-lua)
+[![ci](https://github.com/matjam/luart/actions/workflows/ci.yml/badge.svg)](https://github.com/matjam/luart/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/matjam/luart.svg)](https://pkg.go.dev/github.com/matjam/luart)
+
+luart
+=====
+
+luart is a fork of [Shopify/go-lua](https://github.com/Shopify/go-lua), a Lua 5.2 VM in pure Go. The fork targets real-time scripting, such as per-frame visualisers, where interpreter speed and allocation per frame matter. [`bench/`](bench/README.md) holds the benchmark that motivates it.
+
+The rest of this README is upstream's, with import paths updated.
 
 A Lua VM in pure Go
 ===================
@@ -13,7 +20,7 @@ Usage
 
 go-lua is intended to be used as a Go package. It does not include a command to run the interpreter. To start using the library, run:
 ```sh
-go get github.com/Shopify/go-lua
+go get github.com/matjam/luart
 ```
 
 To develop & test go-lua, you'll also need the [lua-tests](https://github.com/Shopify/lua-tests) submodule checked out:
@@ -31,7 +38,7 @@ A simple example that loads & runs a Lua script is:
 ```go
 package main
 
-import "github.com/Shopify/go-lua"
+import lua "github.com/matjam/luart"
 
 func main() {
   l := lua.NewState()
@@ -161,4 +168,4 @@ This exercises more of the bytecode interpreter’s inner loop. Here we see the 
 License
 -------
 
-go-lua is licensed under the [MIT license](https://github.com/Shopify/go-lua/blob/master/LICENSE.md).
+luart is licensed under the [MIT license](LICENSE). It includes go-lua, which is licensed under the [MIT license](LICENSE-go-lua.md) by Shopify.
