@@ -321,7 +321,7 @@ func (l *State) jumpFrom(ci *callInfo, j instruction, ip pc) pc {
 func (l *State) executeSwitch() {
 	ci := l.callInfo
 	frame, closure, constants := newFrame(l, ci)
-	code, ip := ci.code, ci.savedPC
+	code, ip := closure.prototype.execCode(), ci.savedPC
 	for {
 		i := code[ip]
 		ip++
@@ -379,6 +379,45 @@ func (l *State) executeSwitch() {
 			tmp := l.tableAt(t, k(i.c(), constants, frame))
 			frame = ci.frame
 			frame[a+1], frame[a] = t, tmp
+		case opGetField:
+			t, key := frame[i.b()], constants[i.c()]
+			if v, ok := getField(t, key, &closure.prototype.fields[ip-1]); ok {
+				frame[i.a()] = v
+				break
+			}
+			tmp := l.tableAt(t, key)
+			frame = ci.frame
+			frame[i.a()] = tmp
+		case opGetFieldUp:
+			t, key := closure.upValue(i.b()), constants[i.c()]
+			if v, ok := getField(t, key, &closure.prototype.fields[ip-1]); ok {
+				frame[i.a()] = v
+				break
+			}
+			tmp := l.tableAt(t, key)
+			frame = ci.frame
+			frame[i.a()] = tmp
+		case opSelfField:
+			a, t, key := i.a(), frame[i.b()], constants[i.c()]
+			if v, ok := getField(t, key, &closure.prototype.fields[ip-1]); ok {
+				frame[a+1], frame[a] = t, v
+				break
+			}
+			tmp := l.tableAt(t, key)
+			frame = ci.frame
+			frame[a+1], frame[a] = t, tmp
+		case opSetField:
+			t, key, v := frame[i.a()], constants[i.b()], k(i.c(), constants, frame)
+			if !setField(t, key, v, &closure.prototype.fields[ip-1]) {
+				l.setTableAt(t, key, v)
+				frame = ci.frame
+			}
+		case opSetFieldUp:
+			t, key, v := closure.upValue(i.a()), constants[i.b()], k(i.c(), constants, frame)
+			if !setField(t, key, v, &closure.prototype.fields[ip-1]) {
+				l.setTableAt(t, key, v)
+				frame = ci.frame
+			}
 		case opAdd:
 			b, c := k(i.b(), constants, frame), k(i.c(), constants, frame)
 			if b.isNumber() && c.isNumber() {
@@ -433,6 +472,78 @@ func (l *State) executeSwitch() {
 			tmp := l.arith(b, c, tmPow)
 			frame = ci.frame
 			frame[i.a()] = tmp
+		case opAddRR:
+			if b, c := frame[i.b()], frame[i.c()]; b.isNumber() && c.isNumber() {
+				frame[i.a()] = numberValue(b.n + c.n)
+			} else {
+				frame = l.arithInto(ci, i.a(), b, c, tmAdd)
+			}
+		case opAddRK:
+			if b, c := frame[i.b()], constants[i.c()]; b.isNumber() && c.isNumber() {
+				frame[i.a()] = numberValue(b.n + c.n)
+			} else {
+				frame = l.arithInto(ci, i.a(), b, c, tmAdd)
+			}
+		case opAddKR:
+			if b, c := constants[i.b()], frame[i.c()]; b.isNumber() && c.isNumber() {
+				frame[i.a()] = numberValue(b.n + c.n)
+			} else {
+				frame = l.arithInto(ci, i.a(), b, c, tmAdd)
+			}
+		case opSubRR:
+			if b, c := frame[i.b()], frame[i.c()]; b.isNumber() && c.isNumber() {
+				frame[i.a()] = numberValue(b.n - c.n)
+			} else {
+				frame = l.arithInto(ci, i.a(), b, c, tmSub)
+			}
+		case opSubRK:
+			if b, c := frame[i.b()], constants[i.c()]; b.isNumber() && c.isNumber() {
+				frame[i.a()] = numberValue(b.n - c.n)
+			} else {
+				frame = l.arithInto(ci, i.a(), b, c, tmSub)
+			}
+		case opSubKR:
+			if b, c := constants[i.b()], frame[i.c()]; b.isNumber() && c.isNumber() {
+				frame[i.a()] = numberValue(b.n - c.n)
+			} else {
+				frame = l.arithInto(ci, i.a(), b, c, tmSub)
+			}
+		case opMulRR:
+			if b, c := frame[i.b()], frame[i.c()]; b.isNumber() && c.isNumber() {
+				frame[i.a()] = numberValue(b.n * c.n)
+			} else {
+				frame = l.arithInto(ci, i.a(), b, c, tmMul)
+			}
+		case opMulRK:
+			if b, c := frame[i.b()], constants[i.c()]; b.isNumber() && c.isNumber() {
+				frame[i.a()] = numberValue(b.n * c.n)
+			} else {
+				frame = l.arithInto(ci, i.a(), b, c, tmMul)
+			}
+		case opMulKR:
+			if b, c := constants[i.b()], frame[i.c()]; b.isNumber() && c.isNumber() {
+				frame[i.a()] = numberValue(b.n * c.n)
+			} else {
+				frame = l.arithInto(ci, i.a(), b, c, tmMul)
+			}
+		case opDivRR:
+			if b, c := frame[i.b()], frame[i.c()]; b.isNumber() && c.isNumber() {
+				frame[i.a()] = numberValue(b.n / c.n)
+			} else {
+				frame = l.arithInto(ci, i.a(), b, c, tmDiv)
+			}
+		case opDivRK:
+			if b, c := frame[i.b()], constants[i.c()]; b.isNumber() && c.isNumber() {
+				frame[i.a()] = numberValue(b.n / c.n)
+			} else {
+				frame = l.arithInto(ci, i.a(), b, c, tmDiv)
+			}
+		case opDivKR:
+			if b, c := constants[i.b()], frame[i.c()]; b.isNumber() && c.isNumber() {
+				frame[i.a()] = numberValue(b.n / c.n)
+			} else {
+				frame = l.arithInto(ci, i.a(), b, c, tmDiv)
+			}
 		case opUnaryMinus:
 			if b := frame[i.b()]; b.isNumber() {
 				frame[i.a()] = numberValue(-b.n)
@@ -512,6 +623,11 @@ func (l *State) executeSwitch() {
 			a, b, c := i.a(), i.b(), i.c()
 			if b > 1 && l.hookMask&(MaskCall|MaskReturn) == 0 {
 				if f, ok := frame[a].o.(*goFunction); ok && f.number != nil {
+					if nf := f.number; nf.unary != nil && b == 2 && c == 2 && frame[a+1].isNumber() {
+						frame[a] = numberValue(nf.unary(frame[a+1].n))
+						l.top = ci.top
+						break
+					}
 					if r, ok := f.number.tryCall(frame[a+1 : a+b]); ok {
 						l.numberResult(ci, a, c-1, f.number.results, r)
 						break
@@ -530,7 +646,7 @@ func (l *State) executeSwitch() {
 				ci = l.callInfo
 				ci.setCallStatus(callStatusReentry)
 				frame, closure, constants = newFrame(l, ci)
-				code, ip = ci.code, ci.savedPC
+				code, ip = closure.prototype.execCode(), ci.savedPC
 			}
 		case opTailCall:
 			a, b := i.a(), i.b()
@@ -563,7 +679,7 @@ func (l *State) executeSwitch() {
 				// TODO l.assert(l.top == oci.base()+l.stack[ofn].(*luaClosure).prototype.maxStackSize)
 				// TODO l.assert(&oci.frame[0] == &l.stack[oci.base()] && len(oci.frame) == oci.top-oci.base())
 				frame, closure, constants = newFrame(l, ci)
-				code, ip = ci.code, ci.savedPC
+				code, ip = closure.prototype.execCode(), ci.savedPC
 			}
 		case opReturn:
 			a := i.a()
@@ -583,7 +699,7 @@ func (l *State) executeSwitch() {
 			}
 			// TODO l.assert(ci.code[ci.savedPC-1].opCode() == opCall)
 			frame, closure, constants = newFrame(l, ci)
-			code, ip = ci.code, ci.savedPC
+			code, ip = closure.prototype.execCode(), ci.savedPC
 		case opForLoop:
 			a := i.a()
 			index, limit, step := frame[a+0].n, frame[a+1].n, frame[a+2].n

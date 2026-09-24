@@ -249,6 +249,7 @@ type globalState struct {
 	panicFunction      Function // to be called in unprotected errors
 	version            *float64 // pointer to version number
 	memoryErrorMessage string
+	rootShape          *shape // shape tree for this state's tables
 	// seed uint // randomized seed for hashes
 	// upValueHead upValue // head of double-linked list of all open upvalues
 }
@@ -456,7 +457,7 @@ func (l *State) Dump(w io.Writer) error {
 func NewState() *State {
 	v := float64(VersionNumber)
 	l := &State{allowHook: true, error: nil, nonYieldableCallCount: 1}
-	g := &globalState{mainThread: l, registry: newTable(), version: &v, memoryErrorMessage: "not enough memory"}
+	g := &globalState{mainThread: l, registry: newTable(), version: &v, memoryErrorMessage: "not enough memory", rootShape: newRootShape()}
 	l.global = g
 	l.initializeStack()
 	g.registry.putAtInt(RegistryIndexMainThread, objectValue(l))

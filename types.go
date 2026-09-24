@@ -113,8 +113,8 @@ func debugValue(v value) string {
 			s.WriteString(entry(x) + ", ")
 		}
 		s.WriteString("], {")
-		for k, x := range v.strs {
-			s.WriteString("'" + k + "': " + entry(x) + ", ")
+		for i, x := range v.slots {
+			s.WriteString(entry(v.shape.keys[i]) + ": " + entry(x) + ", ")
 		}
 		for k, x := range v.hash {
 			s.WriteString(entry(k) + ": " + entry(x) + ", ")
@@ -180,6 +180,8 @@ type upValueDesc struct {
 type prototype struct {
 	constants                    []value
 	code                         []instruction
+	exec                         []instruction // see execCode
+	fields                       []fieldCache  // by pc, for exec's field instructions
 	prototypes                   []prototype
 	lineInfo                     []int32
 	localVariables               []localVariable

@@ -36,10 +36,18 @@ Work so far:
 - Lua's floored `%` on the interpreter's fast path (go-lua truncated)
 - Number functions: `math.*` and `(*State).PushNumberFunction[F]` run
   without a call frame
-- String keys in their own `map[string]value`
-- `pairs` is linear and allows clearing fields during traversal (go-lua was
-  quadratic and raised "invalid key to 'next'")
-- Line hooks work (go-lua indexed before the first instruction)
+- Table shapes: tables that gain the same string keys in the same order
+  share a key-to-slot layout, and each table holds only a slice of values
+- Inline caches: field reads, writes, method lookups through `__index`
+  tables, and globals with constant names cache their slot per instruction
+- Arithmetic specialised at load time for register and constant operands
+- `pairs` is linear, visits string keys in insertion order, and allows
+  clearing fields during traversal (go-lua was quadratic and raised
+  "invalid key to 'next'")
+- Error messages name the variable or function, as C Lua does (go-lua read
+  the wrong instruction)
+- Line and call hooks work (go-lua crashed)
+- Assigning nil to an existing field no longer calls `__newindex`
 
 Inherited from go-lua:
 
@@ -50,19 +58,25 @@ Inherited from go-lua:
 
 ## Performance
 
-[`bench/`](bench/README.md) runs one frame of a 200×100 per-pixel plasma
-effect in several pure-Go scripting runtimes. On an Apple M1 Pro:
+[`bench/`](bench/README.md) runs one frame of two visualiser workloads in
+several pure-Go scripting runtimes, on an Apple M1 Pro:
 
-| Runtime | Time per frame | Memory per frame | Allocations per frame |
+- **Plasma:** a 200×100 per-pixel effect, three `math.sin` calls and one
+  call into Go per pixel
+- **Particles:** 2,000 particle tables moved by a method and drawn each
+  frame
+
+| Runtime | Plasma | Particles | Allocations per frame |
 |---|---|---|---|
-| Native Go | 0.33 ms | 0 | 0 |
-| Shopify/go-lua | 5.8 ms | 2.1 MiB | 280,000 |
-| luart | 2.8 ms | 5 B | 0 |
-| luart, `set` as a number function | 2.7 ms | 0 | 0 |
+| Native Go | 0.33 ms | 0.006 ms | 0 |
+| Shopify/go-lua | 5.9 ms | 1.65 ms | 280,000 / 25,000 |
+| gopher-lua | 6.9 ms | 1.25 ms | 66,000 / 360 |
+| luart | 2.5 ms | — | 0 |
+| luart, `set` as a number function | 2.3 ms | 0.41 ms | 0 |
 
 `TestNumericFrameDoesNotAllocate` keeps numeric code and calls into Go
-allocation-free. The remaining cost is instruction dispatch, about 4 ns for
-each of the 20 bytecode instructions per pixel.
+allocation-free. The remaining cost is instruction dispatch: plasma runs
+about 20 bytecode instructions per pixel at 4 ns each.
 
 ## Usage
 
