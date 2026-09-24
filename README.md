@@ -121,6 +121,17 @@ l.RegisterNumberFunction("set", func(x, y, v float64) {
 })
 ```
 
+Go functions can read typed arguments, which raise a Lua error when an
+argument does not convert:
+
+```go
+l.Register("rect", func(l *lua.State) int {
+	x, y, label := l.Arg[float64](1), l.Arg[float64](2), l.Arg[string](3)
+	draw(x, y, label)
+	return 0
+})
+```
+
 Userdata can be read back with its Go type:
 
 ```go

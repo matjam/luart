@@ -648,11 +648,22 @@ func (l *State) executeSwitch() {
 				}
 			}
 			if b != 0 && l.hookMask&MaskCall == 0 {
-				if f, ok := frame[a].o.(*luaClosure); ok && !f.prototype.isVarArg {
-					ci = l.callLua(ci, f, a, b-1, c-1)
-					frame, closure, constants = ci.frame, f, f.prototype.constants
-					code, ip = f.prototype.execCode(), 0
-					break
+				switch f := frame[a].o.(type) {
+				case *luaClosure:
+					if !f.prototype.isVarArg {
+						ci = l.callLua(ci, f, a, b-1, c-1)
+						frame, closure, constants = ci.frame, f, f.prototype.constants
+						code, ip = f.prototype.execCode(), 0
+						continue
+					}
+				case *goFunction, *goClosure:
+					l.top = ci.stackIndex(a + b)
+					l.callGo(frame[a], ci.stackIndex(a), c-1)
+					if c != 0 {
+						l.top = ci.top // adjust results
+					}
+					frame = ci.frame
+					continue
 				}
 			}
 			if b != 0 {

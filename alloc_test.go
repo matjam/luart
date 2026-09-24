@@ -40,8 +40,7 @@ func TestNumericFrameDoesNotAllocate(t *testing.T) {
 	OpenLibraries(l)
 	var sum float64
 	l.Register("set", func(l *State) int {
-		v, _ := l.ToNumber(3)
-		sum += v
+		sum += l.Arg[float64](3)
 		return 0
 	})
 	// shade and set alternate a Lua call and a Go call in one call slot.
