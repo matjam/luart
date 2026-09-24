@@ -110,6 +110,7 @@ type luaCallInfo struct {
 	frame   []value
 	savedPC pc
 	code    []instruction
+	closure *luaClosure // the running function, as found at stack[function]
 }
 
 type goCallInfo struct {
@@ -151,17 +152,16 @@ func (ci *callInfo) frameIndex(stackSlot int) int {
 	return stackSlot - ci.top + len(ci.frame)
 }
 
-func (l *State) pushLuaFrame(function, base, resultCount int, p *prototype) *callInfo {
+func (l *State) pushLuaFrame(function, base, resultCount int, c *luaClosure) *callInfo {
+	p := c.prototype
 	ci := l.callInfo.next
 	if ci == nil {
-		ci = &callInfo{previous: l.callInfo, luaCallInfo: &luaCallInfo{code: p.code}}
+		ci = &callInfo{previous: l.callInfo, luaCallInfo: &luaCallInfo{}}
 		l.callInfo.next = ci
 	} else if ci.luaCallInfo == nil {
-		ci.luaCallInfo = &luaCallInfo{code: p.code}
-	} else {
-		ci.savedPC = 0
-		ci.code = p.code
+		ci.luaCallInfo = &luaCallInfo{}
 	}
+	ci.savedPC, ci.code, ci.closure = 0, p.code, c
 	ci.function = function
 	ci.top = base + p.maxStackSize
 	// TODO l.assert(ci.top <= l.stackLast)
@@ -296,7 +296,7 @@ func (l *State) preCall(function int, resultCount int) bool {
 			if p.isVarArg {
 				base = l.adjustVarArgs(p, argCount)
 			}
-			ci := l.pushLuaFrame(function, base, resultCount, p)
+			ci := l.pushLuaFrame(function, base, resultCount, f)
 			if l.hookMask&MaskCall != 0 {
 				l.callHook(ci)
 			}

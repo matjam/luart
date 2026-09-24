@@ -67,6 +67,29 @@ func TestLineHook(t *testing.T) {
 	}
 }
 
+// The Lua call and return fast paths must step aside when hooks are set.
+func TestCallAndReturnHooksSeeLuaCalls(t *testing.T) {
+	l := NewState()
+	OpenLibraries(l)
+	calls, returns := 0, 0
+	SetDebugHook(l, func(l *State, ar Debug) {
+		switch ar.Event {
+		case HookCall:
+			calls++
+		case HookReturn:
+			returns++
+		}
+	}, MaskCall|MaskReturn, 0)
+	src := "local function f(n) if n == 0 then return 0 end return f(n - 1) + 1 end\nlocal r = f(5)"
+	if err := DoString(l, src); err != nil {
+		t.Fatal(err)
+	}
+	// The chunk and six calls of f.
+	if calls != 7 || returns != 7 {
+		t.Fatalf("calls = %d, returns = %d, want 7 and 7", calls, returns)
+	}
+}
+
 func TestTraceback(t *testing.T) {
 	l := NewState()
 	OpenLibraries(l)

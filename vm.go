@@ -260,6 +260,23 @@ func (l *State) traceExecution() {
 
 func (l *State) execute() { l.executeSwitch() }
 
+// callLua starts a call from register a of ci to f, a Lua function that
+// takes a fixed number of parameters, with argCount arguments. It is
+// preCall's Lua branch without the dispatch, varargs and call hook, and
+// returns the new frame.
+func (l *State) callLua(ci *callInfo, f *luaClosure, a, argCount, resultCount int) *callInfo {
+	p := f.prototype
+	function := ci.stackIndex(a)
+	l.top = function + 1 + argCount
+	l.checkStack(p.maxStackSize)
+	if argCount < p.parameterCount {
+		clear(l.stack[l.top : function+1+p.parameterCount])
+	}
+	nci := l.pushLuaFrame(function, function+1, resultCount, f)
+	nci.setCallStatus(callStatusReentry)
+	return nci
+}
+
 // numberResult stores the results of a frameless number function call at
 // register a, as postCall would for a Go function returning results values.
 func (l *State) numberResult(ci *callInfo, a, wanted, results int, r float64) {
@@ -293,8 +310,7 @@ func k(field int, constants []value, frame []value) value {
 
 func newFrame(l *State, ci *callInfo) (frame []value, closure *luaClosure, constants []value) {
 	// TODO l.assert(ci == l.callInfo)
-	frame = ci.frame
-	closure, _ = l.stack[ci.function].o.(*luaClosure)
+	frame, closure = ci.frame, ci.closure
 	constants = closure.prototype.constants
 	return
 }
@@ -631,6 +647,14 @@ func (l *State) executeSwitch() {
 					}
 				}
 			}
+			if b != 0 && l.hookMask&MaskCall == 0 {
+				if f, ok := frame[a].o.(*luaClosure); ok && !f.prototype.isVarArg {
+					ci = l.callLua(ci, f, a, b-1, c-1)
+					frame, closure, constants = ci.frame, f, f.prototype.constants
+					code, ip = f.prototype.execCode(), 0
+					break
+				}
+			}
 			if b != 0 {
 				l.top = ci.stackIndex(a + b)
 			} // else previous instruction set top
@@ -670,8 +694,8 @@ func (l *State) executeSwitch() {
 				base := ofn + (nci.base() - nfn) // correct base
 				oci.setTop(ofn + (l.top - nfn))  // correct top
 				oci.frame = l.stack[base:oci.top]
-				oci.savedPC, oci.code = nci.savedPC, nci.code // correct code (savedPC indexes nci->code)
-				oci.setCallStatus(callStatusTail)             // function was tail called
+				oci.savedPC, oci.code, oci.closure = nci.savedPC, nci.code, nci.closure // correct code (savedPC indexes nci->code)
+				oci.setCallStatus(callStatusTail)                                       // function was tail called
 				l.top, l.callInfo, ci = oci.top, oci, oci
 				// TODO l.assert(l.top == oci.base()+l.stack[ofn].(*luaClosure).prototype.maxStackSize)
 				// TODO l.assert(&oci.frame[0] == &l.stack[oci.base()] && len(oci.frame) == oci.top-oci.base())
@@ -680,6 +704,20 @@ func (l *State) executeSwitch() {
 			}
 		case opReturn:
 			a := i.a()
+			if b, wanted := i.b(), ci.resultCount; b != 0 && wanted >= 0 && l.hookMask&(MaskReturn|MaskLine) == 0 && ci.isCallStatus(callStatusReentry) {
+				// Fixed results into a Lua caller that wants a fixed count.
+				if len(closure.prototype.prototypes) > 0 {
+					l.close(ci.base())
+				}
+				res, results := l.stack[ci.function:ci.function+wanted], frame[a:a+b-1]
+				n := copy(res, results)
+				clear(res[n:])
+				ci = ci.previous
+				l.callInfo, l.top = ci, ci.top
+				frame, closure, constants = newFrame(l, ci)
+				code, ip = closure.prototype.execCode(), ci.savedPC
+				break
+			}
 			if b := i.b(); b != 0 {
 				l.top = ci.stackIndex(a + b - 1)
 			}
