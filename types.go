@@ -5,6 +5,7 @@ import (
 	"math"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -226,6 +227,16 @@ func intFromFloat8(x float8) int {
 	return int(x&7+8) << uint(e-1)
 }
 
+const minPow10, maxPow10 = -323, 308
+
+// pow10 holds correctly rounded powers of ten from 1e-323 to 1e308.
+var pow10 = func() (t [maxPow10 - minPow10 + 1]float64) {
+	for i := range t {
+		t[i], _ = strconv.ParseFloat("1e"+strconv.Itoa(i+minPow10), 64)
+	}
+	return
+}()
+
 func arith(op Operator, v1, v2 float64) float64 {
 	switch op {
 	case OpAdd:
@@ -239,9 +250,10 @@ func arith(op Operator, v1, v2 float64) float64 {
 	case OpMod:
 		return v1 - math.Floor(v1/v2)*v2
 	case OpPow:
-		// Golang bug: math.Pow(10.0, 33.0) is incorrect by 1 bit.
-		if v1 == 10.0 && float64(int(v2)) == v2 {
-			return math.Pow10(int(v2))
+		// math.Pow and math.Pow10 can be 1 ulp off for powers of ten, which
+		// luac folds exactly.
+		if v1 == 10.0 && minPow10 <= v2 && v2 <= maxPow10 && math.Trunc(v2) == v2 {
+			return pow10[int(v2)-minPow10]
 		}
 		return math.Pow(v1, v2)
 	case OpUnaryMinus:
