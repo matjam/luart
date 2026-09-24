@@ -57,6 +57,17 @@ func TestValueSemantics(t *testing.T) {
 			assert(select('#', math.sin(0)) == 1)
 			local a, b = math.sin(0)
 			assert(a == 0 and b == nil)`},
+		{"fused multiply-add", `
+			local function f(x, t) return x * 0.5 + t end
+			assert(f(4, 1) == 3 and f(-2, 0.25) == -0.75)`},
+		{"fused multiply-add falls back to __add", `
+			local V = setmetatable({}, {__add = function(a, b) return "added" end})
+			local function f(x, t) return x * 2 + t end
+			assert(f(1, V) == "added")`},
+		{"fused multiply-add falls back to __mul", `
+			local V = setmetatable({}, {__mul = function(a, b) return 10 end})
+			local function f(x, t) return x * 2 + t end
+			assert(f(V, 1) == 11)`},
 		{"nil and false are falsy, zero is truthy", `
 			assert(not nil and not false and 0 and "")`},
 	}
