@@ -7,33 +7,82 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"unsafe"
 )
 
-// value is a Lua value. Numbers and booleans keep their payload in n and a
-// zero-size tag type in o, so they never allocate. Every other value lives
-// in o, and n is zero. Values compare with == and work as map keys: numbers
-// compare as floats, so 0 and -0 are the same key, and strings compare by
-// content.
+// value is a Lua value in two words. p is nil for nil, a sentinel address
+// for numbers, booleans, none and the empty string, or else a pointer: to a
+// string's bytes or to an object. n holds a number, or for other values the
+// bits returned by x: the value's kind in the top byte, with a boolean or a
+// string's length below it. n is a float64 so arithmetic loads and stores it
+// in floating-point registers without moves.
+//
+// The zero value is nil, so cleared registers need no initialisation.
+// Values must not be compared with ==, which compares a number's bits and a
+// string's address: use rawEqual. Values used as keys of table.hash are
+// normalised by hashKey.
 type value struct {
-	o any
+	_ [0]func() // not comparable; see rawEqual. First, so it adds no padding.
+	p unsafe.Pointer
 	n float64
 }
 
-type (
-	numberTag struct{}
-	boolTag   struct{}
-	noneTag   struct{}
+// x returns v's second word as bits.
+func (v value) x() uint64 { return math.Float64bits(v.n) }
+
+func tagged(p unsafe.Pointer, bits uint64) value {
+	return value{p: p, n: math.Float64frombits(bits)}
+}
+
+// valueKind is what a value holds. Its constants start with vk, because
+// the parser's expression kinds already start with kind.
+type valueKind uint8
+
+const (
+	vkNil valueKind = iota
+	vkNone
+	vkBool
+	vkNumber
+	vkString
+	vkTable
+	vkLuaClosure
+	vkGoClosure
+	vkGoFunction
+	vkUserData
+	vkThread
+	vkLightUserData // p points to a boxed Go value; see lightUserData
 )
+
+const kindShift = 56
+
+func tagOf(k valueKind) uint64 { return uint64(k) << kindShift }
+
+// Sentinels give scalar values a non-nil p. They are bytes so that each
+// has its own address.
+var numberSentinel, boolSentinel, noneSentinel, emptyStringSentinel byte
+
+// The sentinel addresses are functions, not variables, so each check
+// compiles to a compare with an address constant instead of a load.
+func numberPtr() unsafe.Pointer      { return unsafe.Pointer(&numberSentinel) }
+func boolPtr() unsafe.Pointer        { return unsafe.Pointer(&boolSentinel) }
+func nonePtr() unsafe.Pointer        { return unsafe.Pointer(&noneSentinel) }
+func emptyStringPtr() unsafe.Pointer { return unsafe.Pointer(&emptyStringSentinel) }
 
 var (
 	nilValue   = value{}
-	none       = value{o: (*noneTag)(nil)}
-	trueValue  = value{o: (*boolTag)(nil), n: 1}
-	falseValue = value{o: (*boolTag)(nil)}
+	none       = tagged(nonePtr(), tagOf(vkNone))
+	trueValue  = tagged(boolPtr(), tagOf(vkBool)|1)
+	falseValue = tagged(boolPtr(), tagOf(vkBool))
 )
 
-func numberValue(f float64) value { return value{o: (*numberTag)(nil), n: f} }
-func stringValue(s string) value  { return value{o: s} }
+func numberValue(f float64) value { return value{p: numberPtr(), n: f} }
+
+func stringValue(s string) value {
+	if len(s) == 0 {
+		return tagged(emptyStringPtr(), tagOf(vkString))
+	}
+	return tagged(unsafe.Pointer(unsafe.StringData(s)), tagOf(vkString)|uint64(len(s)))
+}
 
 func boolValue(b bool) value {
 	if b {
@@ -42,59 +91,265 @@ func boolValue(b bool) value {
 	return falseValue
 }
 
-// objectValue wraps a table, closure, userdata, thread or light userdata.
-func objectValue(x any) value { return value{o: x} }
+func tableValue(t *table) value           { return tagged(unsafe.Pointer(t), tagOf(vkTable)) }
+func luaClosureValue(c *luaClosure) value { return tagged(unsafe.Pointer(c), tagOf(vkLuaClosure)) }
+func goClosureValue(c *goClosure) value   { return tagged(unsafe.Pointer(c), tagOf(vkGoClosure)) }
+func goFunctionValue(f *goFunction) value { return tagged(unsafe.Pointer(f), tagOf(vkGoFunction)) }
+func userDataValue(d *userData) value     { return tagged(unsafe.Pointer(d), tagOf(vkUserData)) }
+func threadValue(l *State) value          { return tagged(unsafe.Pointer(l), tagOf(vkThread)) }
+func lightUserDataValue(box *lightUserData) value {
+	return tagged(unsafe.Pointer(box), tagOf(vkLightUserData))
+}
 
-// valueOf converts a Go value into a Lua value. float64 becomes a number,
-// bool a boolean and string a string; anything else is stored as is.
-func valueOf(x any) value {
+// lightUserData boxes a Go value pushed as light userdata. A state interns
+// boxes for comparable values, so equal Go values share a box and compare
+// equal, as Go's == would.
+type lightUserData struct{ v any }
+
+// objectValue wraps a table, closure, userdata or thread.
+func objectValue(x any) value {
 	switch x := x.(type) {
+	case *table:
+		return tableValue(x)
+	case *luaClosure:
+		return luaClosureValue(x)
+	case *goClosure:
+		return goClosureValue(x)
+	case *goFunction:
+		return goFunctionValue(x)
+	case *userData:
+		return userDataValue(x)
+	case *State:
+		return threadValue(x)
+	case closure:
+		panic(fmt.Sprintf("unknown closure type %T", x))
+	}
+	panic(fmt.Sprintf("objectValue(%T)", x))
+}
+
+// valueOf converts a Go value into a Lua value. nil, float64, bool and
+// string become the matching Lua values, luart's own objects are stored as
+// themselves, and any other value becomes light userdata.
+func (l *State) valueOf(x any) value {
+	switch x := x.(type) {
+	case nil:
+		return nilValue
 	case float64:
 		return numberValue(x)
 	case bool:
 		return boolValue(x)
-	case value:
-		return x
+	case string:
+		return stringValue(x)
+	case *table, *luaClosure, *goClosure, *goFunction, *userData, *State:
+		return objectValue(x)
 	}
-	return value{o: x}
+	return lightUserDataValue(l.global.lightUserData(x))
 }
 
-func (v value) isNil() bool    { return v.o == nil }
-func (v value) isNumber() bool { _, ok := v.o.(*numberTag); return ok }
+func (g *globalState) lightUserData(x any) *lightUserData {
+	if !reflect.ValueOf(x).Comparable() {
+		return &lightUserData{x}
+	}
+	if g.lightBoxes == nil {
+		g.lightBoxes = make(map[any]*lightUserData)
+	}
+	box, ok := g.lightBoxes[x]
+	if !ok {
+		box = &lightUserData{x}
+		g.lightBoxes[x] = box
+	}
+	return box
+}
+
+func (v value) isNil() bool    { return v.p == nil }
+func (v value) isNumber() bool { return v.p == numberPtr() }
+
+// f returns the number in v, which must be a number.
+func (v value) f() float64 { return v.n }
 
 func (v value) number() (float64, bool) {
-	_, ok := v.o.(*numberTag)
-	return v.n, ok
+	if v.p == numberPtr() {
+		return v.n, true
+	}
+	return 0, false
 }
 
+func (v value) kind() valueKind {
+	switch v.p {
+	case numberPtr():
+		return vkNumber
+	case nil:
+		return vkNil
+	}
+	return valueKind(v.x() >> kindShift)
+}
+
+// is reports whether v is an object of kind k, which must not be a scalar
+// kind. nil fails the tag test, since its bits are zero.
+func (v value) is(k valueKind) bool { return v.x() == tagOf(k) && v.p != numberPtr() }
+
 func (v value) boolean() (b, ok bool) {
-	_, ok = v.o.(*boolTag)
-	return v.n != 0, ok
+	if v.p == boolPtr() {
+		return v.x()&1 != 0, true
+	}
+	return false, false
+}
+
+func (v value) isString() bool {
+	return v.p != numberPtr() && v.p != nil && v.x()>>kindShift == uint64(vkString)
 }
 
 func (v value) str() (string, bool) {
-	s, ok := v.o.(string)
-	return s, ok
+	if !v.isString() {
+		return "", false
+	}
+	if v.p == emptyStringPtr() {
+		return "", true
+	}
+	return unsafe.String((*byte)(v.p), int(v.x()&(1<<kindShift-1))), true
 }
 
 func (v value) table() *table {
-	t, _ := v.o.(*table)
-	return t
+	if v.is(vkTable) {
+		return (*table)(v.p)
+	}
+	return nil
+}
+
+func (v value) luaClosure() *luaClosure {
+	if v.is(vkLuaClosure) {
+		return (*luaClosure)(v.p)
+	}
+	return nil
+}
+
+func (v value) goClosure() *goClosure {
+	if v.is(vkGoClosure) {
+		return (*goClosure)(v.p)
+	}
+	return nil
+}
+
+func (v value) goFunction() *goFunction {
+	if v.is(vkGoFunction) {
+		return (*goFunction)(v.p)
+	}
+	return nil
+}
+
+func (v value) userData() *userData {
+	if v.is(vkUserData) {
+		return (*userData)(v.p)
+	}
+	return nil
+}
+
+func (v value) thread() *State {
+	if v.is(vkThread) {
+		return (*State)(v.p)
+	}
+	return nil
+}
+
+// closure returns v as a closure, or nil when v is not a Lua or Go closure.
+func (v value) closure() closure {
+	switch v.kind() {
+	case vkLuaClosure:
+		return (*luaClosure)(v.p)
+	case vkGoClosure:
+		return (*goClosure)(v.p)
+	}
+	return nil
+}
+
+// isFunction reports whether v can be called without a __call metamethod.
+func (v value) isFunction() bool {
+	switch v.kind() {
+	case vkLuaClosure, vkGoClosure, vkGoFunction:
+		return true
+	}
+	return false
+}
+
+// obj returns v as a Go value for switching on its type: nil, float64,
+// bool, string, a luart object, or *lightUserData. Strings allocate, so hot
+// paths use the typed accessors.
+func (v value) obj() any {
+	switch v.kind() {
+	case vkNil, vkNone:
+		return nil
+	case vkNumber:
+		return v.f()
+	case vkBool:
+		return v.x()&1 != 0
+	case vkString:
+		s, _ := v.str()
+		return s
+	case vkTable:
+		return (*table)(v.p)
+	case vkLuaClosure:
+		return (*luaClosure)(v.p)
+	case vkGoClosure:
+		return (*goClosure)(v.p)
+	case vkGoFunction:
+		return (*goFunction)(v.p)
+	case vkUserData:
+		return (*userData)(v.p)
+	case vkThread:
+		return (*State)(v.p)
+	case vkLightUserData:
+		return (*lightUserData)(v.p)
+	}
+	return nil
 }
 
 // toAny converts a Lua value into the Go value the public API exposes:
-// float64, bool, string, nil, or the object itself.
+// float64, bool, string, nil, the object itself, or a light userdata's
+// Go value.
 func (v value) toAny() any {
-	switch v.o.(type) {
-	case *numberTag:
-		return v.n
-	case *boolTag:
-		return v.n != 0
-	case *noneTag:
-		return nil
+	if b, ok := v.obj().(*lightUserData); ok {
+		return b.v
 	}
-	return v.o
+	return v.obj()
 }
+
+// identical reports whether v and w are the same bits: the same object, or
+// the same scalar encoding.
+func (v value) identical(w value) bool { return v.p == w.p && v.x() == w.x() }
+
+// rawEqual reports whether a and b are equal without metamethods: numbers
+// by value, strings by content, everything else by identity.
+func rawEqual(a, b value) bool {
+	if a.p == numberPtr() {
+		return b.p == numberPtr() && a.n == b.n
+	}
+	if a.isString() {
+		if !b.isString() || a.x() != b.x() {
+			return false
+		}
+		as, _ := a.str()
+		bs, _ := b.str()
+		return as == bs
+	}
+	return a.identical(b)
+}
+
+// hashKey is the table.hash key for k, which is neither nil, NaN nor a
+// string: -0 becomes 0, so the two are one key.
+func hashKey(k value) hashValue {
+	if k.p == numberPtr() && k.n == 0 {
+		return hashValue{p: numberPtr()}
+	}
+	return hashValue{p: k.p, x: k.x()}
+}
+
+// hashValue is a comparable copy of a value, for table.hash keys.
+type hashValue struct {
+	p unsafe.Pointer
+	x uint64
+}
+
+func (h hashValue) value() value { return tagged(h.p, h.x) }
 
 type float8 int
 
@@ -102,7 +357,7 @@ func debugValue(v value) string {
 	switch v := v.toAny().(type) {
 	case *table:
 		entry := func(x value) string {
-			if t, ok := x.o.(*table); ok {
+			if t := x.table(); t != nil {
 				return fmt.Sprintf("table %#v", t)
 			}
 			return debugValue(x)
@@ -117,7 +372,7 @@ func debugValue(v value) string {
 			s.WriteString(entry(v.shape.keys[i]) + ": " + entry(x) + ", ")
 		}
 		for k, x := range v.hash {
-			s.WriteString(entry(k) + ": " + entry(x) + ", ")
+			s.WriteString(entry(k.value()) + ": " + entry(x) + ", ")
 		}
 		return s.String() + "}}"
 	case string:
@@ -152,11 +407,11 @@ func stack(s []value) string {
 }
 
 func isFalse(s value) bool {
-	switch s.o.(type) {
-	case nil, *noneTag:
+	switch s.p {
+	case nil, nonePtr():
 		return true
-	case *boolTag:
-		return s.n == 0
+	case boolPtr():
+		return s.x()&1 == 0
 	}
 	return false
 }
@@ -406,11 +661,11 @@ func numberToString(f float64) string {
 }
 
 func toString(r value) (string, bool) {
-	switch o := r.o.(type) {
-	case string:
-		return o, true
-	case *numberTag:
-		return numberToString(r.n), true
+	if s, ok := r.str(); ok {
+		return s, true
+	}
+	if f, ok := r.number(); ok {
+		return numberToString(f), true
 	}
 	return "", false
 }

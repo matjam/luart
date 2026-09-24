@@ -100,7 +100,7 @@ type block struct {
 }
 
 type function struct {
-	constantLookup      map[value]int
+	constantLookup      map[any]int // Go-native key for each constant; see addConstant
 	f                   *prototype
 	previous            *function
 	p                   *parser
@@ -113,7 +113,7 @@ type function struct {
 
 func (f *function) OpenFunction(line int) {
 	f.f.prototypes = append(f.f.prototypes, prototype{source: f.p.source, maxStackSize: 2, lineDefined: line})
-	f.p.function = &function{f: &f.f.prototypes[len(f.f.prototypes)-1], constantLookup: make(map[value]int), previous: f, p: f.p, jumpPC: noJump, firstLocal: len(f.p.activeVariables)}
+	f.p.function = &function{f: &f.f.prototypes[len(f.f.prototypes)-1], constantLookup: make(map[any]int), previous: f, p: f.p, jumpPC: noJump, firstLocal: len(f.p.activeVariables)}
 	f.p.function.EnterBlock(false)
 }
 
@@ -513,8 +513,11 @@ func (f *function) Concatenate(l1, l2 int) int {
 	return l1
 }
 
-func (f *function) addConstant(k, v value) int {
-	if index, ok := f.constantLookup[k]; ok && f.f.constants[index] == v {
+// addConstant returns the index of constant v, adding it if needed. k is a
+// Go key that identifies v: its float64, string or bool, the bits of 0 and
+// NaN (which float keys would merge or lose), or f itself for nil.
+func (f *function) addConstant(k any, v value) int {
+	if index, ok := f.constantLookup[k]; ok {
 		return index
 	}
 	index := len(f.f.constants)
@@ -525,9 +528,9 @@ func (f *function) addConstant(k, v value) int {
 
 func (f *function) NumberConstant(n float64) int {
 	if n == 0.0 || math.IsNaN(n) {
-		return f.addConstant(objectValue(math.Float64bits(n)), numberValue(n))
+		return f.addConstant(math.Float64bits(n), numberValue(n))
 	}
-	return f.addConstant(numberValue(n), numberValue(n))
+	return f.addConstant(n, numberValue(n))
 }
 
 func (f *function) CheckStack(n int) {
@@ -556,11 +559,9 @@ func (f *function) freeExpression(e exprDesc) {
 	}
 }
 
-func (f *function) stringConstant(s string) int {
-	return f.addConstant(stringValue(s), stringValue(s))
-}
-func (f *function) booleanConstant(b bool) int { return f.addConstant(boolValue(b), boolValue(b)) }
-func (f *function) nilConstant() int           { return f.addConstant(objectValue(f), nilValue) }
+func (f *function) stringConstant(s string) int { return f.addConstant(s, stringValue(s)) }
+func (f *function) booleanConstant(b bool) int  { return f.addConstant(b, boolValue(b)) }
+func (f *function) nilConstant() int            { return f.addConstant(f, nilValue) }
 
 func (f *function) setReturns(e exprDesc, resultCount int) {
 	if e.kind == kindCall {

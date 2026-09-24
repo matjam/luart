@@ -53,14 +53,14 @@ func (f *numberFunction) tryCall(args []value) (float64, bool) {
 		if !args[0].isNumber() {
 			return 0, false
 		}
-		return f.unary(args[0].n), true
+		return f.unary(args[0].f()), true
 	}
 	var a [maxNumberArgs]float64
 	for i, v := range args {
 		if !v.isNumber() {
 			return 0, false
 		}
-		a[i] = v.n
+		a[i] = v.f()
 	}
 	return f.call(a), true
 }

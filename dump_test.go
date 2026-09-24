@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"testing"
 )
 
@@ -71,7 +70,7 @@ func TestDumpThenUndumpReturnsTheSameFunction(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	f := l.stack[l.top-1].o.(*luaClosure)
+	f := l.stack[l.top-1].luaClosure()
 	err = l.Dump(&out)
 	if err != nil {
 		t.Error("unexpected error", err, "with testing dump")
@@ -89,7 +88,7 @@ func TestDumpThenUndumpReturnsTheSameFunction(t *testing.T) {
 		t.Fatal("prototype was nil")
 	}
 
-	if !reflect.DeepEqual(f.prototype, undumpedPrototype) {
-		t.Errorf("prototypes not the same: %#v %#v", f.prototype, undumpedPrototype)
-	}
+	// comparePrototypes compares constants with rawEqual; reflect.DeepEqual
+	// would compare string constants by address.
+	comparePrototypes(t, f.prototype, undumpedPrototype)
 }

@@ -11,7 +11,7 @@ type table struct {
 	array     []value
 	shape     *shape  // nil until the first string key
 	slots     []value // len(slots) == len(shape.keys)
-	hash      map[value]value
+	hash      map[hashValue]value
 	metaTable *table
 	site      *fieldCache // the NEWTABLE that made the table, which learns its shape
 	extra     *tableExtra // allocated on first use
@@ -20,9 +20,9 @@ type table struct {
 
 // tableExtra holds table state that most tables never need.
 type tableExtra struct {
-	dead          int     // nil slots in a dictionary shape
-	iterationKeys []value // snapshot of hash keys for next
-	iterationNext int     // index in iterationKeys after the key next last returned
+	dead          int         // nil slots in a dictionary shape
+	iterationKeys []hashValue // snapshot of hash keys for next
+	iterationNext int         // index in iterationKeys after the key next last returned
 }
 
 // Tables with a few string keys are allocated together with their slots.
@@ -175,7 +175,8 @@ func (t *table) compact() {
 	for i, v := range t.slots {
 		if !v.isNil() {
 			k := t.shape.keys[i]
-			d.slots[k.o.(string)] = int32(len(slots))
+			s, _ := k.str()
+			d.slots[s] = int32(len(slots))
 			d.keys = append(d.keys, k)
 			slots = append(slots, v)
 		}
@@ -203,7 +204,7 @@ func intKey(k value) (int, bool) {
 func (t *table) extendArray(last int) {
 	t.array = append(t.array, make([]value, last-len(t.array))...)
 	for k, v := range t.hash {
-		if i, ok := intKey(k); ok && 0 < i && i <= len(t.array) {
+		if i, ok := intKey(k.value()); ok && 0 < i && i <= len(t.array) {
 			t.array[i-1] = v
 			delete(t.hash, k)
 		}
@@ -214,7 +215,7 @@ func (t *table) atInt(k int) value {
 	if 0 < k && k <= len(t.array) {
 		return t.array[k-1]
 	}
-	return t.hash[numberValue(float64(k))]
+	return t.hash[hashKey(numberValue(float64(k)))]
 }
 
 func (t *table) maybeResizeArray(key int) bool {
@@ -226,7 +227,7 @@ func (t *table) maybeResizeArray(key int) bool {
 		}
 	}
 	for k, v := range t.hash {
-		if i, ok := intKey(k); ok && i <= key && !v.isNil() {
+		if i, ok := intKey(k.value()); ok && i <= key && !v.isNil() {
 			occupancy++
 		}
 	}
@@ -239,9 +240,9 @@ func (t *table) maybeResizeArray(key int) bool {
 
 // addOrInsertHash stores a non-nil v at a key that is not a string and is
 // outside the array part.
-func (t *table) addOrInsertHash(k, v value) {
+func (t *table) addOrInsertHash(k hashValue, v value) {
 	if t.hash == nil {
-		t.hash = make(map[value]value)
+		t.hash = make(map[hashValue]value)
 	}
 	if _, ok := t.hash[k]; !ok {
 		t.invalidateIteration() // adding an entry invalidates iterations
@@ -255,61 +256,64 @@ func (t *table) putAtInt(k int, v value) {
 	} else if k > 0 && !v.isNil() && t.maybeResizeArray(k) {
 		t.array[k-1] = v
 	} else if v.isNil() {
-		delete(t.hash, numberValue(float64(k)))
+		delete(t.hash, hashKey(numberValue(float64(k))))
 	} else {
-		t.addOrInsertHash(numberValue(float64(k)), v)
+		t.addOrInsertHash(hashKey(numberValue(float64(k))), v)
 	}
 }
 
 func (t *table) at(k value) value {
-	switch o := k.o.(type) {
-	case nil:
+	switch k.kind() {
+	case vkNil:
 		return nilValue
-	case string:
-		return t.atString(o)
-	case *numberTag:
-		if i := int(k.n); float64(i) == k.n && 0 < i && i <= len(t.array) { // OPT: Inlined copy of atInt.
-			return t.array[i-1]
+	case vkString:
+		s, _ := k.str()
+		return t.atString(s)
+	case vkNumber:
+		if f := k.f(); float64(int(f)) == f && 0 < int(f) && int(f) <= len(t.array) { // OPT: Inlined copy of atInt.
+			return t.array[int(f)-1]
 		}
 	}
-	return t.hash[k]
+	return t.hash[hashKey(k)]
 }
 
 func (t *table) put(l *State, k, v value) {
-	switch o := k.o.(type) {
-	case nil:
+	switch k.kind() {
+	case vkNil:
 		l.runtimeError("table index is nil")
 		return
-	case string:
-		t.putString(l.global.rootShape, k, o, v)
+	case vkString:
+		s, _ := k.str()
+		t.putString(l.global.rootShape, k, s, v)
 		return
-	case *numberTag:
-		if i := int(k.n); float64(i) == k.n {
-			t.putAtInt(i, v)
+	case vkNumber:
+		if f := k.f(); float64(int(f)) == f {
+			t.putAtInt(int(f), v)
 			return
-		} else if math.IsNaN(k.n) {
+		} else if math.IsNaN(f) {
 			l.runtimeError("table index is NaN")
 			return
 		}
 	}
 	if v.isNil() {
-		delete(t.hash, k)
+		delete(t.hash, hashKey(k))
 	} else {
-		t.addOrInsertHash(k, v)
+		t.addOrInsertHash(hashKey(k), v)
 	}
 }
 
 // tryPut stores v at k when k already holds a non-nil value, where Lua does
 // a raw assignment without consulting __newindex. It reports whether it did.
 func (t *table) tryPut(l *State, k, v value) bool {
-	switch o := k.o.(type) {
-	case nil:
+	switch k.kind() {
+	case vkNil:
 		return false
-	case string:
+	case vkString:
 		if t.shape == nil {
 			return false
 		}
-		if i, ok := t.shape.slot(o); ok && !t.slots[i].isNil() {
+		s, _ := k.str()
+		if i, ok := t.shape.slot(s); ok && !t.slots[i].isNil() {
 			if v.isNil() && t.shape.dict {
 				t.ext().dead++
 			}
@@ -317,19 +321,20 @@ func (t *table) tryPut(l *State, k, v value) bool {
 			return true
 		}
 		return false
-	case *numberTag:
-		if i := int(k.n); float64(i) == k.n && 0 < i && i <= len(t.array) && !t.array[i-1].isNil() {
-			t.array[i-1] = v
+	case vkNumber:
+		if f := k.f(); float64(int(f)) == f && 0 < int(f) && int(f) <= len(t.array) && !t.array[int(f)-1].isNil() {
+			t.array[int(f)-1] = v
 			return true
-		} else if math.IsNaN(k.n) {
+		} else if math.IsNaN(f) {
 			return false
 		}
 	}
-	if old, ok := t.hash[k]; ok && !old.isNil() {
+	hk := hashKey(k)
+	if old, ok := t.hash[hk]; ok && !old.isNil() {
 		if v.isNil() {
-			delete(t.hash, k)
+			delete(t.hash, hk)
 		} else {
-			t.hash[k] = v
+			t.hash[hk] = v
 		}
 		return true
 	}
@@ -427,7 +432,8 @@ func (l *State) next(t *table, key int) bool {
 	return l.nextMapKey(t, key, 0)
 }
 
-func (l *State) nextHashKey(t *table, key int, k value) bool {
+func (l *State) nextHashKey(t *table, key int, kv value) bool {
+	k := hashKey(kv)
 	if t.extra == nil || t.extra.iterationKeys == nil {
 		if _, ok := t.hash[k]; !ok {
 			l.runtimeError("invalid key to 'next'")
@@ -448,7 +454,7 @@ func (l *State) nextHashKey(t *table, key int, k value) bool {
 }
 
 func (t *table) snapshotKeys() {
-	keys := make([]value, 0, len(t.hash))
+	keys := make([]hashValue, 0, len(t.hash))
 	for hk := range t.hash {
 		keys = append(keys, hk)
 	}
@@ -462,7 +468,7 @@ func (l *State) nextMapKey(t *table, key, from int) bool {
 	for j := from; j < len(x.iterationKeys); j++ {
 		hk := x.iterationKeys[j]
 		if v := t.hash[hk]; !v.isNil() {
-			l.stack[key], l.stack[key+1] = hk, v
+			l.stack[key], l.stack[key+1] = hk.value(), v
 			x.iterationNext = j + 1
 			return true
 		}

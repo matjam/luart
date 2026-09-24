@@ -128,10 +128,12 @@ func comparePrototypes(t *testing.T, a, b *prototype) {
 			t.Errorf("%d: %#v\n", i, b.constants[i])
 		}
 	}
-	if !expectDeepEqual(t, a.constants, b.constants, "constants") {
+	if len(a.constants) != len(b.constants) {
+		t.Errorf("constants doesn't match: %d constants, %d constants\n", len(a.constants), len(b.constants))
+	} else {
 		for i := range a.constants {
-			if a.constants[i] != b.constants[i] {
-				t.Errorf("%d: %#v != %#v\n", i, a.constants[i], b.constants[i])
+			if !rawEqual(a.constants[i], b.constants[i]) {
+				t.Errorf("%d: %s != %s\n", i, debugValue(a.constants[i]), debugValue(b.constants[i]))
 			}
 		}
 	}

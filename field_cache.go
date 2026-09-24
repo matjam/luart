@@ -22,8 +22,8 @@ type fieldCache struct {
 // without metamethod calls, and false when the caller must take the generic
 // path.
 func getField(t value, key value, c *fieldCache) (value, bool) {
-	tt, ok := t.o.(*table)
-	if !ok {
+	tt := t.table()
+	if tt == nil {
 		return nilValue, false
 	}
 	if s := tt.shape; s != nil && s == c.shape {
@@ -43,8 +43,8 @@ func (c *fieldCache) fromIndex(tt *table) (value, bool) {
 	if mt == nil || mt.shape != c.mtShape {
 		return nilValue, false
 	}
-	idx, ok := mt.slots[c.mtSlot].o.(*table)
-	if !ok || idx.shape != c.index {
+	idx := mt.slots[c.mtSlot].table()
+	if idx == nil || idx.shape != c.index {
 		return nilValue, false
 	}
 	v := idx.slots[c.indexSlot]
@@ -56,7 +56,7 @@ func (c *fieldCache) fill(tt *table, k value) (value, bool) {
 	if s == nil {
 		return nilValue, false
 	}
-	key := k.o.(string)
+	key, _ := k.str()
 	if i, ok := s.slot(key); ok {
 		*c = fieldCache{shape: s, slot: i}
 		v := tt.slots[i]
@@ -73,8 +73,8 @@ func (c *fieldCache) fill(tt *table, k value) (value, bool) {
 	if !ok {
 		return nilValue, false
 	}
-	idx, ok := mt.slots[mi].o.(*table)
-	if !ok || idx.shape == nil {
+	idx := mt.slots[mi].table()
+	if idx == nil || idx.shape == nil {
 		return nilValue, false
 	}
 	ii, ok := idx.shape.slot(key)
@@ -91,8 +91,8 @@ func (c *fieldCache) fill(tt *table, k value) (value, bool) {
 // or the table has no metatable. It reports false when the caller must take
 // the generic path.
 func setField(t value, key value, v value, c *fieldCache) bool {
-	tt, ok := t.o.(*table)
-	if !ok || v.isNil() {
+	tt := t.table()
+	if tt == nil || v.isNil() {
 		return false
 	}
 	s := tt.shape
@@ -100,7 +100,8 @@ func setField(t value, key value, v value, c *fieldCache) bool {
 		return false
 	}
 	if s != c.shape || c.slot < 0 {
-		i, ok := s.slot(key.o.(string))
+		k, _ := key.str()
+		i, ok := s.slot(k)
 		if !ok {
 			return false
 		}

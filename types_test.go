@@ -5,7 +5,14 @@ import (
 	"math"
 	"strconv"
 	"testing"
+	"unsafe"
 )
+
+func TestValueIsTwoWords(t *testing.T) {
+	if n := unsafe.Sizeof(value{}); n != 16 {
+		t.Fatalf("value is %d bytes, want 16", n)
+	}
+}
 
 func TestNumberToStringMatchesFormat(t *testing.T) {
 	values := []float64{
