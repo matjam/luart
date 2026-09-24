@@ -34,4 +34,12 @@ func runLuartFrames(b *testing.B, l *luart.State) {
 
 func BenchmarkLuart(b *testing.B) { runLuartFrames(b, newLuart(b, luaSrc)) }
 
+// BenchmarkLuartNumberFunction registers set as a number function, which
+// the VM calls without a call frame.
+func BenchmarkLuartNumberFunction(b *testing.B) {
+	l := newLuart(b, luaSrc)
+	l.RegisterNumberFunction("set", func(x, y, v float64) { set(int(x), int(y), v) })
+	runLuartFrames(b, l)
+}
+
 func BenchmarkLuartNoCall(b *testing.B) { runLuartFrames(b, newLuart(b, luaNoCall)) }

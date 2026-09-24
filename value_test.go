@@ -40,6 +40,23 @@ func TestValueSemantics(t *testing.T) {
 			local fs = {}
 			for i = 1, 3 do fs[i] = function() return i end end
 			assert(fs[1]() == 1 and fs[3]() == 3)`},
+		{"pairs visits every key kind once", `
+			local t = {10, 20, x = 1, y = 2, [true] = 3, [2.5] = 4}
+			local seen, n = {}, 0
+			for k, v in pairs(t) do
+			  assert(seen[k] == nil)
+			  seen[k], n = v, n + 1
+			end
+			assert(n == 6 and seen[1] == 10 and seen.x == 1 and seen[true] == 3 and seen[2.5] == 4)`},
+		{"pairs allows clearing visited fields", `
+			local t = {a = 1, b = 2, c = 3, [4.5] = 4}
+			for k in pairs(t) do t[k] = nil end
+			assert(next(t) == nil)`},
+		{"number functions coerce strings on the slow path", `
+			assert(math.floor("2.5") == 2 and math.max(1, 3) == 3)
+			assert(select('#', math.sin(0)) == 1)
+			local a, b = math.sin(0)
+			assert(a == 0 and b == nil)`},
 		{"nil and false are falsy, zero is truthy", `
 			assert(not nil and not false and 0 and "")`},
 	}

@@ -33,7 +33,7 @@ func testStringHelper(t *testing.T, s string, trace bool) {
 			ci := state.callInfo
 			p := state.prototype(ci)
 			println(stack(state.stack[ci.base():state.top]))
-			println(ci.code[ci.savedPC].String(), p.source, p.lineInfo[ci.savedPC])
+			println(ci.code[ci.savedPC-1].String(), p.source, p.lineInfo[ci.savedPC-1])
 		}, MaskCount, 1)
 	}
 	l.Call(0, 0)
@@ -45,7 +45,7 @@ func TestProtectedCall(t *testing.T) {
 	SetDebugHook(l, func(state *State, ar Debug) {
 		ci := state.callInfo
 		_ = stack(state.stack[ci.base():state.top])
-		_ = ci.code[ci.savedPC].String()
+		_ = ci.code[ci.savedPC-1].String()
 	}, MaskCount, 1)
 	LoadString(l, "assert(not pcall(bit32.band, {}))")
 	l.Call(0, 0)

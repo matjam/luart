@@ -39,6 +39,7 @@ type goClosure struct {
 // Function wrapper, to allow go functions as keys in maps. Explicitly not a closure.
 type goFunction struct {
 	Function
+	number *numberFunction // non-nil when the VM may call it frameless
 }
 
 func (c *luaClosure) upValue(i int) value { return c.upValues[i].value() }
