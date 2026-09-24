@@ -13,12 +13,14 @@ func TestNumericFrameDoesNotAllocate(t *testing.T) {
 		sum += v
 		return 0
 	})
+	// shade and set alternate a Lua call and a Go call in one call slot.
 	const src = `
 		local sin = math.sin
+		local function shade(v) return v * 0.5 end
 		function frame(t)
 		  for y = 0, 9 do
 		    for x = 0, 19 do
-		      set(x, y, sin(x*0.1+t) + sin(y*0.07+t) % 1 - (x+y)^2 / 3)
+		      set(x, y, shade(sin(x*0.1+t) + sin(y*0.07+t) % 1 - (x+y)^2 / 3))
 		    end
 		  end
 		end`
