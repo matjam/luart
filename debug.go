@@ -11,7 +11,7 @@ type Frame *callInfo
 
 func (l *State) resetHookCount() { l.hookCount = l.baseHookCount }
 func (l *State) prototype(ci *callInfo) *prototype {
-	return l.stack[ci.function].(*luaClosure).prototype
+	return l.stack[ci.function].o.(*luaClosure).prototype
 }
 func (l *State) currentLine(ci *callInfo) int {
 	return int(l.prototype(ci).lineInfo[ci.savedPC-1])
@@ -38,7 +38,7 @@ func chunkID(source string) string {
 }
 
 func (l *State) runtimeError(message string) {
-	l.push(message)
+	l.push(stringValue(message))
 	if ci := l.callInfo; ci.isLua() {
 		line, source := l.currentLine(ci), l.prototype(ci).source
 		if source == "" {
@@ -46,7 +46,7 @@ func (l *State) runtimeError(message string) {
 		} else {
 			source = chunkID(source)
 		}
-		l.push(fmt.Sprintf("%s:%d: %s", source, line, message))
+		l.push(stringValue(fmt.Sprintf("%s:%d: %s", source, line, message)))
 	}
 	l.errorMessage()
 }
@@ -54,7 +54,7 @@ func (l *State) runtimeError(message string) {
 func (l *State) typeError(v value, operation string) {
 	typeName := l.valueToType(v).String()
 	if ci := l.callInfo; ci.isLua() {
-		c := l.stack[ci.function].(*luaClosure)
+		c := l.stack[ci.function].o.(*luaClosure)
 		var kind, name string
 		isUpValue := func() bool {
 			for i, uv := range c.upValues {
@@ -101,14 +101,11 @@ func (l *State) arithError(v1, v2 value) {
 }
 
 func (l *State) concatError(v1, v2 value) {
-	_, isString := v1.(string)
-	_, isNumber := v1.(float64)
-	if isString || isNumber {
+	if _, isString := v1.str(); isString || v1.isNumber() {
 		v1 = v2
 	}
-	_, isString = v1.(string)
-	_, isNumber = v1.(float64)
-	l.assert(!isString && !isNumber)
+	_, isString := v1.str()
+	l.assert(!isString && !v1.isNumber())
 	l.typeError(v1, "concatenate")
 }
 
@@ -121,7 +118,7 @@ func (l *State) assert(cond bool) {
 func (l *State) errorMessage() {
 	if l.errorFunction != 0 { // is there an error handling function?
 		errorFunction := l.stack[l.errorFunction]
-		switch errorFunction.(type) {
+		switch errorFunction.o.(type) {
 		case closure:
 		case *goFunction:
 		default:
@@ -273,12 +270,12 @@ func (l *State) functionName(ci *callInfo) (name, kind string) {
 
 func (l *State) collectValidLines(f closure) {
 	if lc, ok := f.(*luaClosure); !ok {
-		l.apiPush(nil)
+		l.apiPush(nilValue)
 	} else {
 		t := newTable()
-		l.apiPush(t)
+		l.apiPush(objectValue(t))
 		for _, i := range lc.prototype.lineInfo {
-			t.putAtInt(int(i), true)
+			t.putAtInt(int(i), trueValue)
 		}
 	}
 }
@@ -319,7 +316,7 @@ func Info(l *State, what string, where Frame) (d Debug, ok bool) {
 	if what[0] == '>' {
 		where = nil
 		fun = l.stack[l.top-1]
-		switch fun := fun.(type) {
+		switch fun := fun.o.(type) {
 		case closure:
 			f = fun
 		case *goFunction:
@@ -330,7 +327,7 @@ func Info(l *State, what string, where Frame) (d Debug, ok bool) {
 		l.top--         // pop function
 	} else {
 		fun = l.stack[where.function]
-		switch fun := fun.(type) {
+		switch fun := fun.o.(type) {
 		case closure:
 			f = fun
 		case *goFunction:
@@ -385,7 +382,7 @@ func Info(l *State, what string, where Frame) (d Debug, ok bool) {
 		}
 	}
 	if hasF {
-		l.apiPush(f)
+		l.apiPush(objectValue(f))
 	}
 	if hasL {
 		l.collectValidLines(f)

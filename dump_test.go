@@ -71,7 +71,7 @@ func TestDumpThenUndumpReturnsTheSameFunction(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	f := l.stack[l.top-1].(*luaClosure)
+	f := l.stack[l.top-1].o.(*luaClosure)
 	err = l.Dump(&out)
 	if err != nil {
 		t.Error("unexpected error", err, "with testing dump")

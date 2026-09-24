@@ -177,13 +177,19 @@ func (state *loadState) readConstants() (constants []value, prototypes []prototy
 		case err != nil:
 			return
 		case t == byte(TypeNil):
-			constants[i] = nil
+			constants[i] = nilValue
 		case t == byte(TypeBoolean):
-			constants[i], err = state.readBool()
+			var b bool
+			b, err = state.readBool()
+			constants[i] = boolValue(b)
 		case t == byte(TypeNumber):
-			constants[i], err = state.readNumber()
+			var n float64
+			n, err = state.readNumber()
+			constants[i] = numberValue(n)
 		case t == byte(TypeString):
-			constants[i], err = state.readString()
+			var s string
+			s, err = state.readString()
+			constants[i] = stringValue(s)
 		default:
 			err = errUnknownConstantType
 		}
@@ -318,6 +324,6 @@ func (l *State) undump(in io.Reader, name string) (c *luaClosure, err error) {
 		return
 	}
 	c = l.newLuaClosure(&p)
-	l.push(c)
+	l.push(objectValue(c))
 	return
 }

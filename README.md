@@ -32,6 +32,8 @@ Work so far:
 - `switch` dispatch in place of go-lua's closure jump table
 - Generic accessors `(*State).UserData[T]` and `(*State).CheckUserData[T]`
 - Exact constant folding of `10^n` on current Go
+- Unboxed values: numbers and booleans no longer allocate
+- Lua's floored `%` on the interpreter's fast path (go-lua truncated)
 
 Inherited from go-lua:
 
@@ -43,16 +45,16 @@ Inherited from go-lua:
 ## Performance
 
 [`bench/`](bench/README.md) runs one frame of a 200×100 per-pixel plasma
-effect in several pure-Go scripting runtimes. On an Apple M1 Pro at the time
-of the fork:
+effect in several pure-Go scripting runtimes. On an Apple M1 Pro:
 
 | Runtime | Time per frame | Memory per frame | Allocations per frame |
 |---|---|---|---|
 | Native Go | 0.33 ms | 0 | 0 |
-| go-lua / luart at fork | 5.7 ms | 2.1 MiB | 280,000 |
+| Shopify/go-lua | 5.8 ms | 2.1 MiB | 280,000 |
+| luart | 3.6 ms | 6 B | 0 |
 
-Almost all of the allocation comes from boxing each number result into a Go
-interface. Removing it is the next step.
+`TestNumericFrameDoesNotAllocate` keeps numeric code and calls into Go
+allocation-free. Call overhead is now the largest cost.
 
 ## Usage
 

@@ -106,7 +106,7 @@ func (s *scanner) scanError(message string, token rune) {
 	} else {
 		message = fmt.Sprintf("%s:%d: %s", buff, s.lineNumber, message)
 	}
-	s.l.push(message)
+	s.l.push(stringValue(message))
 	s.l.throw(SyntaxError)
 }
 

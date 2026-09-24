@@ -525,9 +525,9 @@ func (f *function) addConstant(k, v value) int {
 
 func (f *function) NumberConstant(n float64) int {
 	if n == 0.0 || math.IsNaN(n) {
-		return f.addConstant(math.Float64bits(n), n)
+		return f.addConstant(objectValue(math.Float64bits(n)), numberValue(n))
 	}
-	return f.addConstant(n, n)
+	return f.addConstant(numberValue(n), numberValue(n))
 }
 
 func (f *function) CheckStack(n int) {
@@ -556,9 +556,11 @@ func (f *function) freeExpression(e exprDesc) {
 	}
 }
 
-func (f *function) stringConstant(s string) int { return f.addConstant(s, s) }
-func (f *function) booleanConstant(b bool) int  { return f.addConstant(b, b) }
-func (f *function) nilConstant() int            { return f.addConstant(f, nil) }
+func (f *function) stringConstant(s string) int {
+	return f.addConstant(stringValue(s), stringValue(s))
+}
+func (f *function) booleanConstant(b bool) int { return f.addConstant(boolValue(b), boolValue(b)) }
+func (f *function) nilConstant() int           { return f.addConstant(objectValue(f), nilValue) }
 
 func (f *function) setReturns(e exprDesc, resultCount int) {
 	if e.kind == kindCall {

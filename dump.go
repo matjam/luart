@@ -54,7 +54,7 @@ func (d *dumpState) writeConstants(p *prototype) {
 	for _, o := range p.constants {
 		d.writeByte(byte(d.l.valueToType(o)))
 
-		switch o := o.(type) {
+		switch o := o.toAny().(type) {
 		case nil:
 		case bool:
 			d.writeBool(o)
