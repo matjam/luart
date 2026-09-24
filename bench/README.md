@@ -1,25 +1,27 @@
 # Benchmarks
 
-`suite_test.go` runs ten workloads three ways: native Go, luart, and
-Shopify/go-lua, with the same Lua source for both interpreters.
-`TestSuiteAgrees` checks that all three compute the same result. Raw output
-is in [`suite-results.txt`](suite-results.txt).
+`suite_test.go` runs ten workloads four ways: native Go, luart, luart with
+the JIT (`WithJIT`), and Shopify/go-lua, with the same Lua source for every
+interpreter. `TestSuiteAgrees` checks that all of them compute the same
+result. Raw output is in [`suite-results.txt`](suite-results.txt).
 
-Apple M1 Pro, Go 1.27.1, `CGO_ENABLED=0`, `-count 6`, medians from
-benchstat, 2026-09-24:
+Apple M1 Pro, Go 1.27.1, `CGO_ENABLED=0`, `-count 6`,
+`-ldflags=-funcalign=64`, medians, 2026-09-24:
 
-| Workload | Native Go | luart | Shopify/go-lua | luart vs Shopify | luart vs Go |
-|---|---|---|---|---|---|
-| fib(25), recursive calls | 0.26 ms | 8.02 ms | 14.0 ms | 1.7× faster | 31× slower |
-| numeric loop, 1M iterations | 1.20 ms | 14.2 ms | 300 ms | 21× faster | 12× slower |
-| array fill and sum, 100k | 0.49 ms | 4.18 ms | 8.78 ms | 2.1× faster | 8.5× slower |
-| records, 10k tables | 0.13 ms | 1.36 ms | 4.47 ms | 3.3× faster | 10× slower |
-| closures, 100k | 0.36 ms | 8.25 ms | 14.7 ms | 1.8× faster | 23× slower |
-| sort 10k with comparator | 1.99 ms | 7.67 ms | 15.1 ms | 2.0× faster | 3.9× slower |
-| string build, 10k pieces | 0.62 ms | 1.08 ms | 105 ms | 97× faster | 1.7× slower |
-| calls into Go, 100k | 0.35 ms | 2.82 ms | 7.87 ms | 2.8× faster | 7.9× slower |
-| plasma frame | 0.34 ms | 2.15 ms | 5.93 ms | 2.8× faster | 6.4× slower |
-| particles frame | 0.006 ms | 0.38 ms | 1.67 ms | 4.4× faster | 63× slower |
+| Workload | Native Go | luart | luart + JIT | Shopify/go-lua | JIT vs luart | JIT vs Go |
+|---|---|---|---|---|---|---|
+| fib(25), recursive calls | 0.25 ms | 8.11 ms | 2.71 ms | 13.8 ms | 3.0× faster | 11× slower |
+| numeric loop, 1M iterations | 1.19 ms | 14.1 ms | 1.79 ms | 302 ms | 7.8× faster | 1.5× slower |
+| array fill and sum, 100k | 0.48 ms | 4.10 ms | 1.64 ms | 8.56 ms | 2.5× faster | 3.4× slower |
+| records, 10k tables | 0.13 ms | 1.34 ms | 1.16 ms | 4.40 ms | 1.2× faster | 8.7× slower |
+| closures, 100k | 0.35 ms | 8.24 ms | 10.0 ms | 14.1 ms | 1.2× slower | 28× slower |
+| sort 10k with comparator | 1.94 ms | 7.45 ms | 9.57 ms | 14.3 ms | 1.3× slower | 4.9× slower |
+| string build, 10k pieces | 0.59 ms | 1.09 ms | 1.01 ms | 95.8 ms | 1.1× faster | 1.7× slower |
+| calls into Go, 100k | 0.35 ms | 2.77 ms | 3.15 ms | 7.85 ms | 1.1× slower | 9.0× slower |
+| plasma frame | 0.30 ms | 2.19 ms | 1.66 ms | 5.83 ms | 1.3× faster | 5.6× slower |
+| particles frame | 0.006 ms | 0.36 ms | 0.23 ms | 1.61 ms | 1.6× faster | 38× slower |
+
+The JIT allocates exactly what the interpreter does.
 
 | Workload | luart allocations | Shopify allocations |
 |---|---|---|
@@ -41,6 +43,12 @@ benchstat, 2026-09-24:
   `math.Mod`, which is far slower than Lua's `a - floor(a/b)*b`.
 - Shopify's string build is quadratic: its `table.concat` appends with
   `s += str`. luart's uses a `strings.Builder`.
+- The JIT is slower than the interpreter where scripts cross between
+  compiled code and Go every few instructions: creating closures, Go
+  calling Lua (the sort comparator), and calls into Go. It is fastest on
+  numeric loops and Lua calls.
+- `-ldflags=-funcalign=64` keeps the interpreter loop's alignment fixed;
+  without it, unrelated changes move timings by 5–10%.
 - The native Go versions keep Go's advantages, such as inlined method calls
   in particles, so the gap to Go is widest where Go inlines most.
 - Plasma here registers `set` as an ordinary Go function. As a number
@@ -51,6 +59,6 @@ benchstat, 2026-09-24:
 From this directory:
 
 ```sh
-CGO_ENABLED=0 go test -run x -bench 'Suite|GoParticles' -benchmem -count 6 | tee suite-results.txt
+CGO_ENABLED=0 go test -run x -bench . -benchmem -count 6 -ldflags=-funcalign=64 | tee suite-results.txt
 go run golang.org/x/perf/cmd/benchstat@latest suite-results.txt
 ```

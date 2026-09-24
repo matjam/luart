@@ -74,6 +74,7 @@ type jitCode struct {
 	offsets []int32 // native offset of each pc's code, or -1
 	base    uintptr // address of the code
 	entry   uintptr // address of pc 0's code
+	kernels int     // numeric loop kernels compiled, for tests
 }
 
 // The interpreter reaches compiled code through instructions patched into
@@ -143,7 +144,7 @@ func (l *State) countJIT(p *prototype) {
 		return
 	}
 	copy(p.exec, p.jitOrig) // remove the counters
-	code, offsets, entries := compileJIT(p)
+	code, offsets, entries, kernels := compileJIT(p)
 	if code == nil {
 		return
 	}
@@ -151,7 +152,7 @@ func (l *State) countJIT(p *prototype) {
 	if err != nil {
 		return
 	}
-	p.jit = &jitCode{mem: mem, offsets: offsets, base: mem.Addr(0), entry: mem.Addr(int(offsets[0]))}
+	p.jit = &jitCode{mem: mem, offsets: offsets, base: mem.Addr(0), entry: mem.Addr(int(offsets[0])), kernels: kernels}
 	for _, ip := range entries {
 		p.exec[ip] = patched(p.exec[ip], opJITEnter)
 	}

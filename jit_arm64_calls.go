@@ -3,8 +3,6 @@
 package lua
 
 import (
-	"unsafe"
-
 	. "github.com/matjam/luart/internal/jit/arm64"
 )
 
@@ -16,40 +14,10 @@ import (
 // barrier is off; otherwise they exit and runJIT makes the call in Go.
 
 const (
-	rState  Reg = 22 // *State
-	rCI     Reg = 23 // the running *callInfo
-	rNext   Reg = 24 // the callee's or caller's *callInfo
-	rStack  Reg = 25 // &l.stack[0], or a jump target
-	offCtxS     = uint32(unsafe.Offsetof(jitContext{}.state))
-
-	offClProto   = uint32(unsafe.Offsetof(luaClosure{}.prototype))
-	offClUpVals  = uint32(unsafe.Offsetof(luaClosure{}.upValues))
-	offPConsts   = uint32(unsafe.Offsetof(prototype{}.constants))
-	offPCode     = uint32(unsafe.Offsetof(prototype{}.code))
-	offPParams   = uint32(unsafe.Offsetof(prototype{}.parameterCount))
-	offPMaxStack = uint32(unsafe.Offsetof(prototype{}.maxStackSize))
-	offPVarArg   = uint32(unsafe.Offsetof(prototype{}.isVarArg))
-	offPJit      = uint32(unsafe.Offsetof(prototype{}.jit))
-	offJCEntry   = uint32(unsafe.Offsetof(jitCode{}.entry))
-	offJCBase    = uint32(unsafe.Offsetof(jitCode{}.base))
-	offJCOffsets = uint32(unsafe.Offsetof(jitCode{}.offsets))
-
-	offLTop       = uint32(unsafe.Offsetof(State{}.top))
-	offLCallInfo  = uint32(unsafe.Offsetof(State{}.callInfo))
-	offLStackLast = uint32(unsafe.Offsetof(State{}.stackLast))
-
-	offCIFunction = uint32(unsafe.Offsetof(callInfo{}.function))
-	offCITop      = uint32(unsafe.Offsetof(callInfo{}.top))
-	offCIResults  = uint32(unsafe.Offsetof(callInfo{}.resultCount))
-	offCIPrev     = uint32(unsafe.Offsetof(callInfo{}.previous))
-	offCINext     = uint32(unsafe.Offsetof(callInfo{}.next))
-	offCIStatus   = uint32(unsafe.Offsetof(callInfo{}.callStatus))
-	offCILua      = uint32(unsafe.Offsetof(callInfo{}.luaCallInfo))
-	offLFrame     = uint32(unsafe.Offsetof(luaCallInfo{}.frame))
-	offLSavedPC   = uint32(unsafe.Offsetof(luaCallInfo{}.savedPC))
-	offLCode      = uint32(unsafe.Offsetof(luaCallInfo{}.code))
-	offLClosure   = uint32(unsafe.Offsetof(luaCallInfo{}.closure))
-	offSliceCap   = 16
+	rState Reg = 22 // *State
+	rCI    Reg = 23 // the running *callInfo
+	rNext  Reg = 24 // the callee's or caller's *callInfo
+	rStack Reg = 25 // &l.stack[0], or a jump target
 )
 
 // callLua compiles the CALL i at ip for a callee in rT that is a compiled,
