@@ -77,6 +77,10 @@ func specialise(code []instruction, constants []value) ([]instruction, []fieldCa
 			field = opSetField
 		case opSetTableUp:
 			field = opSetFieldUp
+		case opNewTable: // its fieldCache remembers the shape of its tables
+			if fields == nil {
+				fields = make([]fieldCache, len(code))
+			}
 		}
 		if field != 0 {
 			s := i

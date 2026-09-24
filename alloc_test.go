@@ -2,6 +2,37 @@ package lua
 
 import "testing"
 
+func TestObjectAllocations(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want float64
+	}{
+		{"small record", `function run() return {x = 1, y = 2} end`, 1},
+		{"record with a metatable", `local mt = {} function run() return setmetatable({x = 1, y = 2}, mt) end`, 1},
+		{"closure capturing a local", `function run() local n = 0 return function() n = n + 1 return n end end`, 1},
+		{"closure over unchanged upvalues is reused", `local g = 1 function run() return function() return g end end`, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := NewState()
+			OpenLibraries(l)
+			if err := DoString(l, tt.src); err != nil {
+				t.Fatal(err)
+			}
+			run := func() {
+				l.Global("run")
+				l.Call(0, 1)
+				l.Pop(1)
+			}
+			run()
+			if n := testing.AllocsPerRun(50, run); n != tt.want {
+				t.Fatalf("allocated %v times per run, want %v", n, tt.want)
+			}
+		})
+	}
+}
+
 // Numeric code and calls into Go must not allocate, so scripts can run
 // every frame without feeding the garbage collector.
 func TestNumericFrameDoesNotAllocate(t *testing.T) {
