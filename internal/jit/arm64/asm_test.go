@@ -49,6 +49,22 @@ func TestEncodings(t *testing.T) {
 	check(t, &a, want)
 }
 
+func TestConversions(t *testing.T) {
+	var a Asm
+	a.Strb(ZR, 3, 4095) // strb wzr, [x3, #4095]
+	a.Strb(5, 6, 1)     // strb w5, [x6, #1]
+	a.Fcvtzs(7, 8)      // fcvtzs x7, d8
+	a.Scvtf(9, 10)      // scvtf d9, x10
+	a.Fmadd(1, 2, 3, 4) // fmadd d1, d2, d3, d4
+	a.Fmsub(5, 6, 7, 8) // fmsub d5, d6, d7, d8
+	a.Fcvtzu(9, 10)     // fcvtzu x9, d10
+	a.Ucvtf(11, 12)     // ucvtf d11, x12
+	check(t, &a, []uint32{
+		0x393ffc7f, 0x390004c5, 0x9e780107, 0x9e620149,
+		0x1f431041, 0x1f47a0c5, 0x9e790149, 0x9e63018b,
+	})
+}
+
 func TestBranches(t *testing.T) {
 	var a Asm
 	fwd, back := a.NewLabel(), a.NewLabel()

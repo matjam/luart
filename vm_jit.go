@@ -21,7 +21,10 @@ func (l *State) executeSwitchJIT() {
 			}
 		}
 		if i.opCode() >= opJITCount { // patched in by the JIT; see jit.go
-			i, ip = l.jitInstruction(closure, frame, constants, i, ip)
+			i, ip = l.jitInstruction(i, ip)
+			ci = l.callInfo // compiled code may have called or returned
+			frame, closure, constants = newFrame(l, ci)
+			code = closure.prototype.execCode()
 		}
 		switch i.opCode() {
 		case opMove:

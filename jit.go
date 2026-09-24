@@ -44,6 +44,7 @@ type jitContext struct {
 	budget    int64          // back-edges left
 	upValues  unsafe.Pointer // &closure.upValues[0], or nil
 	barrier   uint64         // nonzero while the GC write barrier is on
+	reason    uint64         // why the last run exited, set by runJIT
 }
 
 // writeBarrier is the runtime's flag that Go's own compiled code tests
@@ -103,22 +104,33 @@ func (p *prototype) patchJITCounters() {
 
 // jitInstruction handles i, a patched instruction the interpreter fetched
 // before ip. opJITCount counts; opJITEnter runs compiled code, which may
-// advance the program. It returns the original instruction the
-// interpreter must run next, and the ip after that instruction.
+// advance the program and call or return into other functions. It returns
+// the original instruction the interpreter must run next in l.callInfo,
+// and the ip after that instruction. The interpreter reloads its frame from
+// l.callInfo after every call.
 //
 // It stays out of line: its body inside the interpreter loop measured 10%
 // slower on arithmetic.
 //
 //go:noinline
-func (l *State) jitInstruction(c *luaClosure, frame, constants []value, i instruction, ip pc) (instruction, pc) {
-	p := c.prototype
+func (l *State) jitInstruction(i instruction, ip pc) (instruction, pc) {
+	ci := l.callInfo
 	if i.opCode() == opJITCount {
-		l.countJIT(p)
+		l.countJIT(ci.closure.prototype)
 	} else if l.hookMask == 0 {
-		ip = l.runJIT(c, frame, constants, ip-1) + 1
-		l.callInfo.savedPC = ip
+		l.runJIT(ci, ip-1)
+		ci = l.callInfo
+		ip = ci.savedPC + 1
+		ci.savedPC = ip
+		// A Go function compiled code called may have set a hook, which the
+		// interpreter would check before this instruction.
+		if l.hookMask&(MaskLine|MaskCount) != 0 {
+			if l.hookCount--; l.hookCount == 0 || l.hookMask&MaskLine != 0 {
+				l.traceExecution()
+			}
+		}
 	}
-	return p.jitOrig[ip-1], ip
+	return ci.closure.prototype.jitOrig[ip-1], ip
 }
 
 // countJIT counts one call or loop iteration of p and compiles it once it
@@ -142,15 +154,22 @@ func (l *State) countJIT(p *prototype) {
 	}
 }
 
+// jitMinRun is how many instructions compiled code must run from an entry
+// before its first unconditional exit for entering it to pay: a round trip
+// between the interpreter and compiled code costs about as much as
+// interpreting a few instructions.
+const jitMinRun = 4
+
 // jitEntries lists the pcs where the interpreter should hand over to
 // compiled code: function entry, loop latches, jump targets, and the
 // instruction after each pc where exits is true, since compiled code exits
-// there.
-func jitEntries(p *prototype, exits []bool) []int {
+// there. It leaves out entries that would reach an instruction always
+// exits at, other than a call or return runJIT handles, too soon.
+func jitEntries(p *prototype, exits, always []bool) []int {
 	n := len(p.code)
 	entry := make([]bool, n)
 	mark := func(ip int) {
-		if 0 <= ip && ip < n && !isConsumed(p.code, ip) {
+		if 0 <= ip && ip < n && !isConsumed(p.code, ip) && worthEntering(p.code, always, ip) {
 			entry[ip] = true
 		}
 	}
@@ -181,6 +200,25 @@ func jitEntries(p *prototype, exits []bool) []int {
 		}
 	}
 	return entries
+}
+
+// worthEntering reports whether compiled code entered at ip runs at least
+// jitMinRun instructions, or reaches a loop, before an instruction the
+// interpreter must run.
+func worthEntering(code []instruction, always []bool, ip int) bool {
+	for run := 0; ip < len(code); ip++ {
+		if isExtraArg(code, ip) {
+			continue
+		}
+		op := code[ip].opCode()
+		if always[ip] && op != opCall && op != opReturn {
+			return false
+		}
+		if run++; run >= jitMinRun || op == opForLoop || op == opJump && code[ip].sbx() < 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func patched(i instruction, op opCode) instruction {
@@ -217,15 +255,58 @@ func isExtraArg(code []instruction, ip int) bool {
 	return false
 }
 
-// runJIT runs compiled code from pc in frame and returns the pc the
-// interpreter continues at.
-func (l *State) runJIT(c *luaClosure, frame, constants []value, ip pc) pc {
-	jc := c.prototype.jit
-	off := jc.offsets[ip]
-	if off < 0 {
-		return ip
+// runJIT runs compiled code from ip in ci's function. It handles the calls
+// and returns compiled code exits at itself, moving between compiled
+// functions without the interpreter, and stops at the first instruction
+// the interpreter must run: that instruction's pc is left in the savedPC
+// of l.callInfo, which may now be another frame.
+func (l *State) runJIT(ci *callInfo, ip pc) {
+	for {
+		c := ci.closure
+		jc := c.prototype.jit
+		if jc == nil || l.hookMask != 0 {
+			break
+		}
+		off := jc.offsets[ip]
+		if off < 0 {
+			break
+		}
+		l.enterJIT(ci, c, jc, off)
+		ip = pc(l.jitCtx.exitPC)
+		if l.jitCtx.reason == jitExitBudget {
+			runtime.Gosched()
+			continue
+		}
+		if l.hookMask != 0 { // a Go function set a hook
+			break
+		}
+		switch i := c.prototype.jitOrig[ip]; i.opCode() {
+		case opCall:
+			if nci, ok := l.jitCall(ci, i, ip); ok {
+				if nci == ci {
+					ip++
+				} else {
+					ci, ip = nci, 0
+				}
+				continue
+			}
+		case opReturn:
+			if l.jitReturn(ci, i) {
+				ci = l.callInfo
+				ip = ci.savedPC
+				continue
+			}
+		}
+		break
 	}
+	ci.savedPC = ip
+}
+
+// enterJIT runs ci's compiled code from native offset off until it exits,
+// leaving the exit's pc and reason in l.jitCtx.
+func (l *State) enterJIT(ci *callInfo, c *luaClosure, jc *jitCode, off int32) {
 	ctx := &l.jitCtx
+	frame, constants := ci.frame, c.prototype.constants
 	ctx.frame = unsafe.Pointer(&frame[0])
 	ctx.constants = nil
 	if len(constants) > 0 {
@@ -242,13 +323,66 @@ func (l *State) runJIT(c *luaClosure, frame, constants []value, ip pc) pc {
 	}
 	ctx.target = jc.mem.Addr(int(off))
 	ctx.budget = jitBudget
-	reason := call.Call(jc.mem.Addr(0), unsafe.Pointer(ctx))
+	ctx.reason = call.Call(jc.mem.Addr(0), unsafe.Pointer(ctx))
 	l.jitRuns++
 	runtime.KeepAlive(frame)
-	runtime.KeepAlive(constants)
 	runtime.KeepAlive(c)
-	if reason == jitExitBudget {
-		runtime.Gosched()
+}
+
+// jitCall runs the CALL i at ip that compiled code exited at, when the
+// callee is a Go function, or a compiled Lua function it can enter
+// directly. It returns ci when the call is done and compiled code can go
+// on after it, or the callee's new frame. It reports false, having changed
+// nothing, when the interpreter must make the call.
+func (l *State) jitCall(ci *callInfo, i instruction, ip pc) (*callInfo, bool) {
+	a, b, c := i.a(), i.b(), i.c()
+	if b == 0 { // arguments up to l.top, which compiled code does not track
+		return nil, false
 	}
-	return pc(ctx.exitPC)
+	frame := ci.frame
+	switch fv := frame[a]; fv.kind() {
+	case vkGoFunction, vkGoClosure:
+		if c == 0 {
+			return nil, false
+		}
+		ci.savedPC = ip + 1
+		if f := fv.goFunction(); f != nil && f.number != nil && b > 1 {
+			if r, ok := f.number.tryCall(frame[a+1 : a+b]); ok {
+				l.numberResult(ci, a, c-1, f.number.results, r)
+				return ci, true
+			}
+		}
+		l.top = ci.stackIndex(a + b)
+		l.callGo(fv, ci.stackIndex(a), c-1)
+		l.top = ci.top
+		return ci, true
+	case vkLuaClosure:
+		f := fv.luaClosure()
+		if f.prototype.isVarArg || f.prototype.jit == nil {
+			return nil, false
+		}
+		ci.savedPC = ip + 1
+		return l.callLua(ci, f, a, b-1, c-1), true
+	}
+	return nil, false
+}
+
+// jitReturn runs the RETURN i that compiled code exited at, when it returns
+// a fixed number of results to a Lua caller in the same interpreter loop
+// that wants a fixed number. It reports false, having changed nothing,
+// when the interpreter must return.
+func (l *State) jitReturn(ci *callInfo, i instruction) bool {
+	a, b, wanted := i.a(), i.b(), ci.resultCount
+	if b == 0 || wanted < 0 || !ci.isCallStatus(callStatusReentry) {
+		return false
+	}
+	if len(ci.closure.prototype.prototypes) > 0 {
+		l.close(ci.base())
+	}
+	res, results := l.stack[ci.function:ci.function+wanted], ci.frame[a:a+b-1]
+	n := copy(res, results)
+	clear(res[n:])
+	ci = ci.previous
+	l.callInfo, l.top = ci, ci.top
+	return true
 }

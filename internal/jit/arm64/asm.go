@@ -194,6 +194,11 @@ func (a *Asm) StrW(rt, rn Reg, off uint32) {
 	a.emit(0xb9000000 | scaled(off, 4)<<10 | rn.u()<<5 | rt.u())
 }
 
+// Strb stores the low byte of rt at rn+off.
+func (a *Asm) Strb(rt, rn Reg, off uint32) {
+	a.emit(0x39000000 | checkImm12(off)<<10 | rn.u()<<5 | rt.u())
+}
+
 // LdrD loads the double at rn+off.
 func (a *Asm) LdrD(ft FReg, rn Reg, off uint32) {
 	a.emit(0xfd400000 | scaled(off, 8)<<10 | rn.u()<<5 | ft.u())
@@ -267,6 +272,30 @@ func (a *Asm) FmovToF(fd FReg, rn Reg) { a.emit(0x9e670000 | rn.u()<<5 | fd.u())
 
 // FmovFromF copies the bits of fn to rd.
 func (a *Asm) FmovFromF(rd Reg, fn FReg) { a.emit(0x9e660000 | fn.u()<<5 | rd.u()) }
+
+// Fmadd computes fd = fa + fn*fm with a single rounding.
+func (a *Asm) Fmadd(fd, fn, fm, fa FReg) {
+	a.emit(0x1f400000 | fm.u()<<16 | fa.u()<<10 | fn.u()<<5 | fd.u())
+}
+
+// Fmsub computes fd = fa - fn*fm with a single rounding.
+func (a *Asm) Fmsub(fd, fn, fm, fa FReg) {
+	a.emit(0x1f408000 | fm.u()<<16 | fa.u()<<10 | fn.u()<<5 | fd.u())
+}
+
+// Fcvtzu converts fn to an unsigned integer in rd, rounding toward zero
+// and saturating, as Go's uint64(f) does on arm64.
+func (a *Asm) Fcvtzu(rd Reg, fn FReg) { a.emit(0x9e790000 | fn.u()<<5 | rd.u()) }
+
+// Ucvtf converts the unsigned integer in rn to a double in fd.
+func (a *Asm) Ucvtf(fd FReg, rn Reg) { a.emit(0x9e630000 | rn.u()<<5 | fd.u()) }
+
+// Fcvtzs converts fn to a signed integer in rd, rounding toward zero and
+// saturating, as Go's int(f) does on arm64.
+func (a *Asm) Fcvtzs(rd Reg, fn FReg) { a.emit(0x9e780000 | fn.u()<<5 | rd.u()) }
+
+// Scvtf converts the signed integer in rn to a double in fd.
+func (a *Asm) Scvtf(fd FReg, rn Reg) { a.emit(0x9e620000 | rn.u()<<5 | fd.u()) }
 
 // Fmov copies fn to fd.
 func (a *Asm) Fmov(fd, fn FReg) { a.emit(0x1e604000 | fn.u()<<5 | fd.u()) }
