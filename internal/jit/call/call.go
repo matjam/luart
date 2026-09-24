@@ -6,7 +6,7 @@
 // DI on amd64) and returns a result in X0 or AX. It must not use the Go
 // stack, call Go, or change the registers Go reserves: on arm64 R18, R26,
 // R27, R28 (g), R29 (frame pointer), R30 (link register, used to return)
-// and SP; on amd64 SP, BP, R12, R13, R14 (g) and X15, which Go keeps zero.
+// and SP; on amd64 SP, BP, R14 (g) and X15, which Go keeps zero.
 package call
 
 import "unsafe"

@@ -103,11 +103,21 @@ result. Apple M1 Pro, Go 1.27.1, `CGO_ENABLED=0`, medians of 6 runs:
 It is opt-in while it matures, and states without it run the interpreter
 unchanged.
 
-- Platforms: linux and darwin on arm64 now, amd64 to follow. Elsewhere
-  `WithJIT` does nothing.
+- Platforms: linux and darwin on arm64 and amd64. Elsewhere, Windows
+  included, `WithJIT` does nothing.
+- It compiles arithmetic, comparisons and branches, loops, upvalues,
+  table fields (through the interpreter's inline caches) and arrays, calls
+  and returns between compiled Lua functions, and `math.floor`, `ceil`,
+  `sqrt`, `abs`, `sin` and `cos` inline, bit for bit as Go computes them
+  (on amd64, `floor` and `ceil` need SSE4.1, and `sin` and `cos` a
+  GOAMD64 level below v3).
+  Numeric loops run with their variables in registers.
 - Compiled code shares the interpreter's stack frames. An instruction it
-  cannot run returns to the interpreter at that instruction, so every
-  script runs correctly while coverage grows.
+  cannot run, or a Go call, returns to Go and continues in compiled code
+  after it, so every script runs correctly.
+- It is slower than the interpreter where a script crosses into Go every
+  few instructions, such as creating closures in a loop or a `table.sort`
+  comparator; see [bench](bench/README.md).
 - It pauses while a debug hook is set, and `LUART_JIT=off` disables it.
 - CI runs the whole test suite with every function compiled
   (`LUART_JIT_TEST=1`) on linux/amd64, linux/arm64 and macOS.
