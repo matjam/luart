@@ -26,6 +26,12 @@ const (
 	rTmp2    Reg = 10
 	rExitPC  Reg = 11
 	rAddr    Reg = 14
+	rT       Reg = 15 // a table, while it is indexed
+	rT2      Reg = 16 // a second table: a metatable or its __index
+	rCache   Reg = 17 // the instruction's *fieldCache
+	rIdx     Reg = 19 // a slot or array index
+	rLen     Reg = 20
+	rSlot    Reg = 21 // the address of a table slot
 )
 
 const (
@@ -43,6 +49,20 @@ const (
 	offUVIndex   = uint32(unsafe.Offsetof(upValue{}.index))
 	offUVClosed  = uint32(unsafe.Offsetof(upValue{}.closed))
 	offStack     = uint32(unsafe.Offsetof(State{}.stack))
+	offTShape    = uint32(unsafe.Offsetof(table{}.shape))
+	offTSlots    = uint32(unsafe.Offsetof(table{}.slots))
+	offTArray    = uint32(unsafe.Offsetof(table{}.array))
+	offTMeta     = uint32(unsafe.Offsetof(table{}.metaTable))
+	offTFlags    = uint32(unsafe.Offsetof(table{}.flags))
+	offCShape    = uint32(unsafe.Offsetof(fieldCache{}.shape))
+	offCSlot     = uint32(unsafe.Offsetof(fieldCache{}.slot))
+	offCMtShape  = uint32(unsafe.Offsetof(fieldCache{}.mtShape))
+	offCMtSlot   = uint32(unsafe.Offsetof(fieldCache{}.mtSlot))
+	offCIndex    = uint32(unsafe.Offsetof(fieldCache{}.index))
+	offCIdxSlot  = uint32(unsafe.Offsetof(fieldCache{}.indexSlot))
+	offGFNumber  = uint32(unsafe.Offsetof(goFunction{}.number))
+	offNFUnary   = uint32(unsafe.Offsetof(numberFunction{}.unary))
+	offSliceLen  = 8
 	maxOffset    = 32768 // LDR and STR reach offsets below this
 )
 
@@ -58,6 +78,7 @@ type arm64Compiler struct {
 	pcs    []Label // start of each pc's code
 	exits  []Label // exit to the interpreter at each pc, created on demand
 	budget []Label // budget exits by back-edge target pc, created on demand
+	always []bool  // instructions compiled as an unconditional exit
 }
 
 func compileJIT(p *prototype) (code []byte, offsets []int32, entries []int) {
@@ -68,6 +89,7 @@ func compileJIT(p *prototype) (code []byte, offsets []int32, entries []int) {
 	c.pcs = make([]Label, len(c.code))
 	c.exits = make([]Label, len(c.code))
 	c.budget = make([]Label, len(c.code))
+	c.always = make([]bool, len(c.code))
 	for i := range c.pcs {
 		c.pcs[i], c.exits[i], c.budget[i] = c.a.NewLabel(), -1, -1
 	}
@@ -92,7 +114,7 @@ func compileJIT(p *prototype) (code []byte, offsets []int32, entries []int) {
 	for i, l := range c.exits {
 		exits[i] = l >= 0
 	}
-	return code, offsets, jitEntries(c.p, exits)
+	return code, offsets, jitEntries(c.p, exits, c.always)
 }
 
 // prologue loads the fixed registers and branches to ctx.target.
@@ -144,6 +166,13 @@ func (c *arm64Compiler) exit(ip int) Label {
 		c.exits[ip] = c.a.NewLabel()
 	}
 	return c.exits[ip]
+}
+
+// exitAlways compiles the instruction at ip as an exit: the interpreter,
+// or runJIT for calls and returns, always runs it.
+func (c *arm64Compiler) exitAlways(ip int) {
+	c.always[ip] = true
+	c.a.B(c.exit(ip))
 }
 
 // operand locates a value in memory: its base register and byte offset.
@@ -286,7 +315,7 @@ func (c *arm64Compiler) instruction(ip int) int {
 	case opLoadConstant:
 		k, ok := c.constant(orig.bx())
 		if !ok {
-			a.B(c.exit(ip))
+			c.exitAlways(ip)
 			break
 		}
 		c.copyValue(reg(orig.a()), k, ip)
@@ -321,7 +350,7 @@ func (c *arm64Compiler) instruction(ip int) int {
 		b, okB := c.rkNumber(orig.b())
 		cc, okC := c.rkNumber(orig.c())
 		if !okB || !okC {
-			a.B(c.exit(ip))
+			c.exitAlways(ip)
 			break
 		}
 		dst := reg(orig.a())
@@ -367,7 +396,7 @@ func (c *arm64Compiler) instruction(ip int) int {
 		a.Str(rBool, dst.base, dst.off+offP)
 	case opJump:
 		if orig.a() != 0 {
-			a.B(c.exit(ip))
+			c.exitAlways(ip)
 			break
 		}
 		if target := ip + 1 + orig.sbx(); target <= ip {
@@ -380,7 +409,7 @@ func (c *arm64Compiler) instruction(ip int) int {
 		b, okB := c.rkNumber(orig.b())
 		cc, okC := c.rkNumber(orig.c())
 		if !ok || !okB || !okC {
-			a.B(c.exit(ip))
+			c.exitAlways(ip)
 			break
 		}
 		c.guardNumber(b, ip)
@@ -406,7 +435,7 @@ func (c *arm64Compiler) instruction(ip int) int {
 	case opTest:
 		target, ok := c.jumpAfter(ip)
 		if !ok || target <= ip { // backward tests (repeat-until) spend no budget here
-			a.B(c.exit(ip))
+			c.exitAlways(ip)
 			break
 		}
 		// The JMP runs when the value's truth differs from C.
@@ -421,7 +450,7 @@ func (c *arm64Compiler) instruction(ip int) int {
 	case opTestSet:
 		target, ok := c.jumpAfter(ip)
 		if !ok || target <= ip {
-			a.B(c.exit(ip))
+			c.exitAlways(ip)
 			break
 		}
 		src, dst := reg(orig.b()), reg(orig.a())
@@ -473,13 +502,17 @@ func (c *arm64Compiler) instruction(ip int) int {
 		a.StrD(0, idx.base, idx.off+offN)
 		c.storeNumber(ext, 0)
 		c.backEdge(target)
+	case opGetTable, opGetTableUp, opSelf, opSetTable, opSetTableUp:
+		c.tableAccess(ip, c.code[ip])
+	case opCall:
+		c.call(ip, orig)
 	case opLoadConstantEx, opSetList:
-		a.B(c.exit(ip))
+		c.exitAlways(ip)
 		if op == opLoadConstantEx || orig.c() == 0 {
 			return 1 // the extra-argument word is not an instruction
 		}
 	default:
-		a.B(c.exit(ip))
+		c.exitAlways(ip)
 	}
 	return 0
 }

@@ -1,0 +1,158 @@
+//go:build (darwin || linux) && arm64
+
+package lua
+
+import (
+	"math"
+	"unsafe"
+
+	. "github.com/matjam/luart/internal/jit/arm64"
+)
+
+// intrinsics are the unary number functions compiled inline, by the
+// address of their func value, which is fixed for a top-level function.
+// Each computes d0 from d0 bit for bit as the Go function does, and may
+// exit at ip for arguments it leaves to Go.
+var intrinsics = []struct {
+	fn   uint64
+	emit func(c *arm64Compiler, ip int)
+}{
+	{funcValue(math.Floor), func(c *arm64Compiler, ip int) { c.a.Frintm(0, 0) }},
+	{funcValue(math.Ceil), func(c *arm64Compiler, ip int) { c.a.Frintp(0, 0) }},
+	{funcValue(math.Sqrt), func(c *arm64Compiler, ip int) { c.a.Fsqrt(0, 0) }},
+	{funcValue(math.Abs), func(c *arm64Compiler, ip int) { c.a.Fabs(0, 0) }},
+	{funcValue(math.Sin), func(c *arm64Compiler, ip int) { c.trig(ip, false) }},
+	{funcValue(math.Cos), func(c *arm64Compiler, ip int) { c.trig(ip, true) }},
+}
+
+func funcValue(f func(float64) float64) uint64 { return uint64(*(*uintptr)(unsafe.Pointer(&f))) }
+
+// The constants of math's sin and cos, in math/sin.go.
+const (
+	trigPI4A = 7.85398125648498535156e-1
+	trigPI4B = 3.77489470793079817668e-8
+	trigPI4C = 2.69515142907905952645e-15
+)
+
+var trigSin = [...]float64{
+	1.58962301576546568060e-10,
+	-2.50507477628578072866e-8,
+	2.75573136213857245213e-6,
+	-1.98412698295895385996e-4,
+	8.33333333332211858878e-3,
+	-1.66666666666666307295e-1,
+}
+
+var trigCos = [...]float64{
+	-1.13585365213876817300e-11,
+	2.08757008419747316778e-9,
+	-2.75573141792967388112e-7,
+	2.48015872888517045348e-5,
+	-1.38888888888730564116e-3,
+	4.16666666666665929218e-2,
+}
+
+// fconst loads v into f.
+func (c *arm64Compiler) fconst(f FReg, v float64) {
+	c.a.MovImm(rTmp, math.Float64bits(v))
+	c.a.FmovToF(f, rTmp)
+}
+
+// trig computes math.Sin, or math.Cos, of d0 into d0. It follows the code
+// Go compiles for math/sin.go on arm64, including which multiply-adds it
+// fuses, so results match bit for bit; TestJITTrigMatchesGo checks that.
+// Arguments of 2^29 and more, which Go reduces with trigReduce, and
+// infinities exit at ip.
+func (c *arm64Compiler) trig(ip int, cos bool) {
+	a := &c.a
+	done := a.NewLabel()
+	a.Fcmp(0, 0)
+	if cos {
+		a.BCond(VS, c.exit(ip)) // NaN
+	} else {
+		a.BCond(VS, done) // sin(NaN) is its argument
+		a.FmovToF(7, ZR)
+		a.Fcmp(0, 7)
+		a.BCond(EQ, done) // and so is sin(±0)
+		a.FmovFromF(rLen, 0)
+	}
+	a.Fabs(1, 0)
+	c.fconst(2, 1<<29) // reduceThreshold
+	a.Fcmp(1, 2)
+	a.BCond(GE, c.exit(ip))
+	// j = uint64(x * (4/Pi)); y = float64(j); if j is odd, j++ and y++.
+	c.fconst(2, 4/math.Pi)
+	a.Fmul(2, 1, 2)
+	a.Fcvtzu(rIdx, 2)
+	a.Ucvtf(2, rIdx)
+	even := a.NewLabel()
+	a.Tbz(rIdx, 0, even)
+	a.AddImm(rIdx, rIdx, 1)
+	c.fconst(3, 1)
+	a.Fadd(2, 2, 3)
+	a.Bind(even)
+	// z = ((x - y*PI4A) - y*PI4B) - y*PI4C, each step fused.
+	for _, k := range []float64{trigPI4A, trigPI4B, trigPI4C} {
+		c.fconst(4, k)
+		a.Fmsub(1, 2, 4, 1)
+	}
+	a.Fmul(2, 1, 1) // zz
+	// j is even, so j&7 > 3 is bit 2, and after taking 4 off, j == 1 || j
+	// == 2 is bit 1. Bit 1 picks the sine series for cos and the cosine
+	// series for sin.
+	other, signs := a.NewLabel(), a.NewLabel()
+	a.Tbnz(rIdx, 1, other)
+	if cos {
+		c.cosSeries()
+	} else {
+		c.sinSeries()
+	}
+	a.B(signs)
+	a.Bind(other)
+	if cos {
+		c.sinSeries()
+	} else {
+		c.cosSeries()
+	}
+	a.Bind(signs)
+	flipped := a.NewLabel()
+	a.Tbz(rIdx, 2, flipped)
+	a.Fneg(0, 0)
+	a.Bind(flipped)
+	if cos {
+		a.Tbz(rIdx, 1, done)
+	} else {
+		a.Tbz(rLen, 63, done) // x was negative
+	}
+	a.Fneg(0, 0)
+	a.Bind(done)
+}
+
+// sinSeries computes d0 = z + z*zz*P(zz) from z in d1 and zz in d2.
+func (c *arm64Compiler) sinSeries() {
+	c.a.Fmul(3, 1, 2)
+	c.series(&trigSin)
+	c.a.Fmadd(0, 3, 2, 1)
+}
+
+// cosSeries computes d0 = 1 - 0.5*zz + zz*zz*Q(zz) from zz in d2.
+func (c *arm64Compiler) cosSeries() {
+	c.fconst(5, 0.5)
+	c.fconst(6, 1)
+	c.a.Fmsub(1, 2, 5, 6)
+	c.a.Fmul(3, 2, 2)
+	c.series(&trigCos)
+	c.a.Fmadd(0, 3, 2, 1)
+}
+
+// series evaluates the polynomial k at zz, in d2, by Horner's rule with
+// fused steps, leaving the result in d2.
+func (c *arm64Compiler) series(k *[6]float64) {
+	c.fconst(4, k[0])
+	for _, v := range k[1:5] {
+		c.fconst(5, v)
+		c.a.Fmadd(4, 2, 4, 5)
+	}
+	c.fconst(5, k[5])
+	c.a.Fmadd(2, 2, 4, 5)
+}
