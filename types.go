@@ -446,6 +446,12 @@ type prototype struct {
 	lineDefined, lastLineDefined int
 	parameterCount, maxStackSize int
 	isVarArg                     bool
+
+	// JIT state, last so the interpreter's hot fields stay together.
+	jitOn   bool          // loaded by a state that compiles
+	hot     int32         // calls and loop iterations counted
+	jit     *jitCode      // compiled code, or nil
+	jitOrig []instruction // exec before JIT patches; see jit.go
 }
 
 func (p *prototype) upValueName(index int) string {

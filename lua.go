@@ -239,6 +239,8 @@ type State struct {
 	errorFunction         int      // current error handling function (stack index)
 	baseCallInfo          callInfo // callInfo for first level (go calling lua)
 	protectFunction       func()
+	jitCtx                jitContext // shared with generated code while it runs
+	jitRuns               uint64     // entries into compiled code, for tests
 }
 
 type globalState struct {
@@ -251,6 +253,7 @@ type globalState struct {
 	memoryErrorMessage string
 	rootShape          *shape // shape tree for this state's tables
 	lightBoxes         map[any]*lightUserData
+	jit                bool // compile hot functions; see WithJIT
 	// seed uint // randomized seed for hashes
 	// upValueHead upValue // head of double-linked list of all open upvalues
 }
@@ -437,8 +440,12 @@ func (l *State) Load(r io.Reader, chunkName string, mode string) error {
 		return err
 	}
 
-	if f := l.stack[l.top-1].luaClosure(); f.upValueCount() == 1 {
+	f := l.stack[l.top-1].luaClosure()
+	if f.upValueCount() == 1 {
 		f.setUpValue(0, l.global.registry.atInt(RegistryIndexGlobals))
+	}
+	if l.global.jit {
+		markJIT(f.prototype)
 	}
 	return nil
 }
@@ -459,7 +466,7 @@ func (l *State) Dump(w io.Writer) error {
 // NewState creates a new thread running in a new, independent state.
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_newstate
-func NewState() *State {
+func NewState(options ...Option) *State {
 	v := float64(VersionNumber)
 	l := &State{allowHook: true, error: nil, nonYieldableCallCount: 1}
 	g := &globalState{mainThread: l, registry: newTable(), version: &v, memoryErrorMessage: "not enough memory", rootShape: newRootShape()}
@@ -468,6 +475,10 @@ func NewState() *State {
 	g.registry.putAtInt(RegistryIndexMainThread, objectValue(l))
 	g.registry.putAtInt(RegistryIndexGlobals, objectValue(newTable()))
 	copy(g.tagMethodNames[:], eventNames)
+	g.jit = jitDefault && jitSupported && !jitDisabled
+	for _, o := range options {
+		o(l)
+	}
 	return l
 }
 

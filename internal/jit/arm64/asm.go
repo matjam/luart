@@ -1,0 +1,272 @@
+// Package arm64 encodes the subset of A64 instructions the JIT emits.
+//
+// Methods append one instruction each. Branches take labels, which are
+// resolved by Code. Encodings follow the Arm Architecture Reference Manual;
+// asm_test.go checks them against the system assembler.
+package arm64
+
+import (
+	"encoding/binary"
+	"fmt"
+)
+
+// Reg is a general-purpose register, X0 to X30. ZR is the zero register,
+// and SP the stack pointer in the instructions that accept it.
+type Reg uint8
+
+// FReg is a floating-point register, D0 to D31.
+type FReg uint8
+
+const (
+	ZR Reg = 31
+	SP Reg = 31
+)
+
+// Cond is a condition code.
+type Cond uint8
+
+const (
+	EQ Cond = 0
+	NE Cond = 1
+	HS Cond = 2
+	LO Cond = 3
+	MI Cond = 4
+	PL Cond = 5
+	VS Cond = 6
+	VC Cond = 7
+	HI Cond = 8
+	LS Cond = 9
+	GE Cond = 10
+	LT Cond = 11
+	GT Cond = 12
+	LE Cond = 13
+)
+
+// Label marks a position in the code.
+type Label int
+
+type fixupKind uint8
+
+const (
+	fixB26    fixupKind = iota // B, BL
+	fixCond19                  // B.cond, CBZ, CBNZ
+)
+
+type fixup struct {
+	at    int // instruction index
+	label Label
+	kind  fixupKind
+}
+
+// Asm accumulates instructions.
+type Asm struct {
+	words  []uint32
+	labels []int // instruction index, or -1 while unbound
+	fixups []fixup
+}
+
+// Len returns the number of instructions emitted so far.
+func (a *Asm) Len() int { return len(a.words) }
+
+// NewLabel returns an unbound label.
+func (a *Asm) NewLabel() Label {
+	a.labels = append(a.labels, -1)
+	return Label(len(a.labels) - 1)
+}
+
+// Bind binds l to the next instruction.
+func (a *Asm) Bind(l Label) { a.labels[l] = len(a.words) }
+
+// Offset returns the byte offset of bound label l.
+func (a *Asm) Offset(l Label) int { return a.labels[l] * 4 }
+
+// Code resolves branches and returns the machine code.
+func (a *Asm) Code() ([]byte, error) {
+	for _, f := range a.fixups {
+		target := a.labels[f.label]
+		if target < 0 {
+			return nil, fmt.Errorf("arm64: label %d is not bound", f.label)
+		}
+		delta := target - f.at
+		switch f.kind {
+		case fixB26:
+			if delta < -(1<<25) || delta >= 1<<25 {
+				return nil, fmt.Errorf("arm64: branch out of range")
+			}
+			a.words[f.at] |= uint32(delta) & (1<<26 - 1)
+		case fixCond19:
+			if delta < -(1<<18) || delta >= 1<<18 {
+				return nil, fmt.Errorf("arm64: conditional branch out of range")
+			}
+			a.words[f.at] |= (uint32(delta) & (1<<19 - 1)) << 5
+		}
+	}
+	b := make([]byte, 0, len(a.words)*4)
+	for _, w := range a.words {
+		b = binary.LittleEndian.AppendUint32(b, w)
+	}
+	return b, nil
+}
+
+func (a *Asm) emit(w uint32) { a.words = append(a.words, w) }
+
+func (a *Asm) branch(w uint32, l Label, k fixupKind) {
+	a.fixups = append(a.fixups, fixup{at: len(a.words), label: l, kind: k})
+	a.emit(w)
+}
+
+func (r Reg) u() uint32  { return uint32(r) }
+func (r FReg) u() uint32 { return uint32(r) }
+
+// MovImm loads a 64-bit constant into rd with MOVZ and MOVK.
+func (a *Asm) MovImm(rd Reg, v uint64) {
+	first := true
+	for hw := uint32(0); hw < 4; hw++ {
+		part := uint32(v>>(16*hw)) & 0xffff
+		if part == 0 {
+			continue
+		}
+		if first {
+			a.emit(0xd2800000 | hw<<21 | part<<5 | rd.u()) // MOVZ
+			first = false
+		} else {
+			a.emit(0xf2800000 | hw<<21 | part<<5 | rd.u()) // MOVK
+		}
+	}
+	if first {
+		a.emit(0xd2800000 | rd.u()) // MOVZ rd, #0
+	}
+}
+
+// Mov copies rm to rd.
+func (a *Asm) Mov(rd, rm Reg) { a.emit(0xaa0003e0 | rm.u()<<16 | rd.u()) }
+
+// AddImm computes rd = rn + imm, for imm in [0, 4095].
+func (a *Asm) AddImm(rd, rn Reg, imm uint32) {
+	a.emit(0x91000000 | checkImm12(imm)<<10 | rn.u()<<5 | rd.u())
+}
+
+// SubImm computes rd = rn - imm, for imm in [0, 4095].
+func (a *Asm) SubImm(rd, rn Reg, imm uint32) {
+	a.emit(0xd1000000 | checkImm12(imm)<<10 | rn.u()<<5 | rd.u())
+}
+
+// SubsImm computes rd = rn - imm and sets the flags.
+func (a *Asm) SubsImm(rd, rn Reg, imm uint32) {
+	a.emit(0xf1000000 | checkImm12(imm)<<10 | rn.u()<<5 | rd.u())
+}
+
+// CmpImm compares rn with imm.
+func (a *Asm) CmpImm(rn Reg, imm uint32) { a.SubsImm(ZR, rn, imm) }
+
+// Cmp compares rn with rm.
+func (a *Asm) Cmp(rn, rm Reg) { a.emit(0xeb000000 | rm.u()<<16 | rn.u()<<5 | ZR.u()) }
+
+// AddShifted computes rd = rn + rm<<shift.
+func (a *Asm) AddShifted(rd, rn, rm Reg, shift uint32) {
+	a.emit(0x8b000000 | rm.u()<<16 | (shift&63)<<10 | rn.u()<<5 | rd.u())
+}
+
+// Ldr loads the 64-bit word at rn+off, where off is a multiple of 8 below
+// 32768.
+func (a *Asm) Ldr(rt, rn Reg, off uint32) {
+	a.emit(0xf9400000 | scaled(off, 8)<<10 | rn.u()<<5 | rt.u())
+}
+
+// Str stores rt at rn+off, where off is a multiple of 8 below 32768.
+func (a *Asm) Str(rt, rn Reg, off uint32) {
+	a.emit(0xf9000000 | scaled(off, 8)<<10 | rn.u()<<5 | rt.u())
+}
+
+// LdrW loads the 32-bit word at rn+off, zero-extended.
+func (a *Asm) LdrW(rt, rn Reg, off uint32) {
+	a.emit(0xb9400000 | scaled(off, 4)<<10 | rn.u()<<5 | rt.u())
+}
+
+// StrW stores the low 32 bits of rt at rn+off.
+func (a *Asm) StrW(rt, rn Reg, off uint32) {
+	a.emit(0xb9000000 | scaled(off, 4)<<10 | rn.u()<<5 | rt.u())
+}
+
+// LdrD loads the double at rn+off.
+func (a *Asm) LdrD(ft FReg, rn Reg, off uint32) {
+	a.emit(0xfd400000 | scaled(off, 8)<<10 | rn.u()<<5 | ft.u())
+}
+
+// StrD stores the double ft at rn+off.
+func (a *Asm) StrD(ft FReg, rn Reg, off uint32) {
+	a.emit(0xfd000000 | scaled(off, 8)<<10 | rn.u()<<5 | ft.u())
+}
+
+// B branches to l.
+func (a *Asm) B(l Label) { a.branch(0x14000000, l, fixB26) }
+
+// BCond branches to l when c holds.
+func (a *Asm) BCond(c Cond, l Label) { a.branch(0x54000000|uint32(c), l, fixCond19) }
+
+// Cbz branches to l when rt is zero.
+func (a *Asm) Cbz(rt Reg, l Label) { a.branch(0xb4000000|rt.u(), l, fixCond19) }
+
+// Cbnz branches to l when rt is not zero.
+func (a *Asm) Cbnz(rt Reg, l Label) { a.branch(0xb5000000|rt.u(), l, fixCond19) }
+
+// Ret returns through the link register.
+func (a *Asm) Ret() { a.emit(0xd65f03c0) }
+
+// Br branches to the address in rn.
+func (a *Asm) Br(rn Reg) { a.emit(0xd61f0000 | rn.u()<<5) }
+
+// Fadd computes fd = fn + fm.
+func (a *Asm) Fadd(fd, fn, fm FReg) { a.emit(0x1e602800 | fm.u()<<16 | fn.u()<<5 | fd.u()) }
+
+// Fsub computes fd = fn - fm.
+func (a *Asm) Fsub(fd, fn, fm FReg) { a.emit(0x1e603800 | fm.u()<<16 | fn.u()<<5 | fd.u()) }
+
+// Fmul computes fd = fn * fm.
+func (a *Asm) Fmul(fd, fn, fm FReg) { a.emit(0x1e600800 | fm.u()<<16 | fn.u()<<5 | fd.u()) }
+
+// Fdiv computes fd = fn / fm.
+func (a *Asm) Fdiv(fd, fn, fm FReg) { a.emit(0x1e601800 | fm.u()<<16 | fn.u()<<5 | fd.u()) }
+
+// Fneg computes fd = -fn.
+func (a *Asm) Fneg(fd, fn FReg) { a.emit(0x1e614000 | fn.u()<<5 | fd.u()) }
+
+// Fabs computes fd = |fn|.
+func (a *Asm) Fabs(fd, fn FReg) { a.emit(0x1e60c000 | fn.u()<<5 | fd.u()) }
+
+// Fsqrt computes fd = sqrt(fn).
+func (a *Asm) Fsqrt(fd, fn FReg) { a.emit(0x1e61c000 | fn.u()<<5 | fd.u()) }
+
+// Frintm rounds fn toward minus infinity.
+func (a *Asm) Frintm(fd, fn FReg) { a.emit(0x1e654000 | fn.u()<<5 | fd.u()) }
+
+// Frintp rounds fn toward plus infinity.
+func (a *Asm) Frintp(fd, fn FReg) { a.emit(0x1e64c000 | fn.u()<<5 | fd.u()) }
+
+// Fcmp compares fn with fm. After it, MI means less, LS less or equal, GT
+// greater and GE greater or equal, all false when either is NaN; EQ is
+// equal and NE is not equal or unordered.
+func (a *Asm) Fcmp(fn, fm FReg) { a.emit(0x1e602000 | fm.u()<<16 | fn.u()<<5) }
+
+// FmovToF copies the bits of rn to fd.
+func (a *Asm) FmovToF(fd FReg, rn Reg) { a.emit(0x9e670000 | rn.u()<<5 | fd.u()) }
+
+// FmovFromF copies the bits of fn to rd.
+func (a *Asm) FmovFromF(rd Reg, fn FReg) { a.emit(0x9e660000 | fn.u()<<5 | rd.u()) }
+
+// Fmov copies fn to fd.
+func (a *Asm) Fmov(fd, fn FReg) { a.emit(0x1e604000 | fn.u()<<5 | fd.u()) }
+
+func checkImm12(imm uint32) uint32 {
+	if imm > 4095 {
+		panic(fmt.Sprintf("arm64: immediate %d out of range", imm))
+	}
+	return imm
+}
+
+func scaled(off, size uint32) uint32 {
+	if off%size != 0 || off/size > 4095 {
+		panic(fmt.Sprintf("arm64: offset %d not encodable for %d-byte access", off, size))
+	}
+	return off / size
+}
