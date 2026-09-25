@@ -200,17 +200,18 @@ nothing compiles.
   - Anything else goes back to the interpreter. The interpreter reloads
     its frame from `l.callInfo` after every hand-over.
   - `jitEntries` leaves out entries from which compiled code would run
-    fewer than `jitMinRun` instructions before an exit or a RETURN
-    (`worthEntering`), counting along the path that runs: a test and the
-    JMP it consumes are one instruction, and a LOADBOOL that skips skips.
-    Tests set `jitMinRun` to zero so that compiled code runs wherever it
-    can.
-  - When Go calls a compiled Lua function (`l.call`) whose pc 0 is an
-    entry, `callJIT` runs it
+    fewer than `jitMinRun` instructions before an exit (`worthEntering`).
+    A RETURN does not end that count: into a compiled caller it is a
+    native return. Tests set `jitMinRun` to zero so that compiled code runs
+    wherever it can.
+  - When Go calls a compiled Lua function (`l.call`), `callJIT` runs it
     with `runJIT` straight from `preCall`, without the interpreter. A
-    function that returns within `jitMinRun` instructions, such as a sort
-    comparator, is interpreted: on the M1 the round trip into compiled
-    code and back costs about 10 ns, more than interpreting it. That
+    function that returns within `jitMinRun` instructions of pc 0
+    (`returnsSoon`), such as a sort comparator, is interpreted instead,
+    and pc 0 is not patched: its RETURN would go back to Go or to
+    interpreted code, and on the M1 the round trip into compiled code and
+    back costs about 10 ns, more than interpreting it. Compiled callers
+    still call it natively. That
     frame is `runJIT`'s `bottom`: at its RETURN, `jitReturnToGo` does the
     interpreter's general return and `runJIT` reports that the call is
     done. If compiled code stops anywhere else, `execute` carries on from
@@ -284,7 +285,7 @@ bench/README.md has the current tables and charts, generated from the raw
 results: AMD Ryzen 9 9900X3D (linux/amd64) and Apple M1 Pro (arm64). On
 the standard benchmarks (Are We Fast Yet and three from the Benchmarks
 Game) luart with the JIT takes 0.78 times as long as C Lua 5.4 on amd64
-and 0.70 times on the M1, and 1.8 and 1.4 times without it.
+and 0.75 times on the M1, and 1.8 and 1.5 times without it.
 
 To find where a workload leaves compiled code, count exits: log
 `p.jitOrig[ip]` and `l.jitCtx.reason` after each `enterJIT` in `runJIT`
