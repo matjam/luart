@@ -362,7 +362,7 @@ func (l *State) postCall(firstResult int) bool {
 		result++
 	}
 	l.top = result
-	if l.hookMask&(MaskReturn|MaskLine) != 0 {
+	if l.hookMask&(MaskReturn|MaskLine) != 0 && l.callInfo.isLua() {
 		l.oldPC = l.callInfo.savedPC // oldPC for caller function
 	}
 	return wanted != MultipleReturns
