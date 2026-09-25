@@ -346,6 +346,19 @@ func (a *Asm) SubSD(xd, xs XReg) { a.sse(0xf2, false, []byte{0x5c}, uint8(xd), u
 // MulSD computes xd *= xs.
 func (a *Asm) MulSD(xd, xs XReg) { a.sse(0xf2, false, []byte{0x59}, uint8(xd), uint8(xs)) }
 
+// AddSDMem computes xd += the double at base+disp.
+func (a *Asm) AddSDMem(xd XReg, base Reg, disp uint32) { a.sseMem(0xf2, 0x58, uint8(xd), base, disp) }
+
+// SubSDMem computes xd -= the double at base+disp.
+func (a *Asm) SubSDMem(xd XReg, base Reg, disp uint32) { a.sseMem(0xf2, 0x5c, uint8(xd), base, disp) }
+
+// MulSDMem computes xd *= the double at base+disp.
+func (a *Asm) MulSDMem(xd XReg, base Reg, disp uint32) { a.sseMem(0xf2, 0x59, uint8(xd), base, disp) }
+
+// UcomisdMem compares xa with the double at base+disp, setting the flags
+// as Ucomisd does.
+func (a *Asm) UcomisdMem(xa XReg, base Reg, disp uint32) { a.sseMem(0x66, 0x2e, uint8(xa), base, disp) }
+
 // DivSD computes xd /= xs.
 func (a *Asm) DivSD(xd, xs XReg) { a.sse(0xf2, false, []byte{0x5e}, uint8(xd), uint8(xs)) }
 

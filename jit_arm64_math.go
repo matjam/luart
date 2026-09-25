@@ -27,11 +27,11 @@ var intrinsics = []struct {
 
 func funcValue(f func(float64) float64) uint64 { return uint64(*(*uintptr)(unsafe.Pointer(&f))) }
 
-// fconst loads v into f.
-func (c *arm64Compiler) fconst(f FReg, v float64) {
-	c.a.MovImm(rTmp, math.Float64bits(v))
-	c.a.FmovToF(f, rTmp)
-}
+// rTrig holds &trigTable while sin or cos runs.
+const rTrig = rT2
+
+// tconst loads the constant at offset off in trigTable into f.
+func (c *arm64Compiler) tconst(f FReg, off uint32) { c.a.LdrD(f, rTrig, off) }
 
 // trig computes math.Sin, or math.Cos, of d0 into d0. It follows the code
 // Go compiles for math/sin.go on arm64, including which multiply-adds it
@@ -41,6 +41,7 @@ func (c *arm64Compiler) fconst(f FReg, v float64) {
 func (c *arm64Compiler) trig(ip int, cos bool) {
 	a := &c.a
 	done := a.NewLabel()
+	a.MovImm(rTrig, trigTableAddr())
 	a.Fcmp(0, 0)
 	if cos {
 		a.BCond(VS, c.exit(ip)) // NaN
@@ -52,23 +53,23 @@ func (c *arm64Compiler) trig(ip int, cos bool) {
 		a.FmovFromF(rLen, 0)
 	}
 	a.Fabs(1, 0)
-	c.fconst(2, 1<<29) // reduceThreshold
+	c.tconst(2, offTrigLimit) // reduceThreshold
 	a.Fcmp(1, 2)
 	a.BCond(GE, c.exit(ip))
 	// j = uint64(x * (4/Pi)); y = float64(j); if j is odd, j++ and y++.
-	c.fconst(2, 4/math.Pi)
+	c.tconst(2, offTrigFour)
 	a.Fmul(2, 1, 2)
 	a.Fcvtzu(rIdx, 2)
 	a.Ucvtf(2, rIdx)
 	even := a.NewLabel()
 	a.Tbz(rIdx, 0, even)
 	a.AddImm(rIdx, rIdx, 1)
-	c.fconst(3, 1)
+	c.tconst(3, offTrigOne)
 	a.Fadd(2, 2, 3)
 	a.Bind(even)
 	// z = ((x - y*PI4A) - y*PI4B) - y*PI4C, each step fused.
-	for _, k := range []float64{trigPI4A, trigPI4B, trigPI4C} {
-		c.fconst(4, k)
+	for k := range uint32(3) {
+		c.tconst(4, offTrigPI4+8*k)
 		a.Fmsub(1, 2, 4, 1)
 	}
 	a.Fmul(2, 1, 1) // zz
@@ -106,28 +107,28 @@ func (c *arm64Compiler) trig(ip int, cos bool) {
 // sinSeries computes d0 = z + z*zz*P(zz) from z in d1 and zz in d2.
 func (c *arm64Compiler) sinSeries() {
 	c.a.Fmul(3, 1, 2)
-	c.series(&trigSin)
+	c.series(offTrigSin)
 	c.a.Fmadd(0, 3, 2, 1)
 }
 
 // cosSeries computes d0 = 1 - 0.5*zz + zz*zz*Q(zz) from zz in d2.
 func (c *arm64Compiler) cosSeries() {
-	c.fconst(5, 0.5)
-	c.fconst(6, 1)
+	c.tconst(5, offTrigHalf)
+	c.tconst(6, offTrigOne)
 	c.a.Fmsub(1, 2, 5, 6)
 	c.a.Fmul(3, 2, 2)
-	c.series(&trigCos)
+	c.series(offTrigCos)
 	c.a.Fmadd(0, 3, 2, 1)
 }
 
-// series evaluates the polynomial k at zz, in d2, by Horner's rule with
-// fused steps, leaving the result in d2.
-func (c *arm64Compiler) series(k *[6]float64) {
-	c.fconst(4, k[0])
-	for _, v := range k[1:5] {
-		c.fconst(5, v)
+// series evaluates the six-term polynomial at offset off in trigTable at
+// zz, in d2, by Horner's rule with fused steps, leaving the result in d2.
+func (c *arm64Compiler) series(off uint32) {
+	c.tconst(4, off)
+	for k := uint32(1); k < 5; k++ {
+		c.tconst(5, off+8*k)
 		c.a.Fmadd(4, 2, 4, 5)
 	}
-	c.fconst(5, k[5])
+	c.tconst(5, off+40)
 	c.a.Fmadd(2, 2, 4, 5)
 }

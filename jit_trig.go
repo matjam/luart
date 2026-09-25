@@ -2,6 +2,11 @@
 
 package lua
 
+import (
+	"math"
+	"unsafe"
+)
+
 // The constants of math's sin and cos, in math/sin.go.
 const (
 	trigPI4A = 7.85398125648498535156e-1
@@ -26,3 +31,27 @@ var trigCos = [...]float64{
 	-1.38888888888730564116e-3,
 	4.16666666666665929218e-2,
 }
+
+// trigTable holds the constants compiled sin and cos use. Compiled code
+// reads each from memory with one instruction, rather than building it in
+// a general register and moving it across.
+var trigTable = struct {
+	limit, fourOverPi, one, half float64
+	pi4                          [3]float64
+	sin, cos                     [6]float64
+}{1 << 29, 4 / math.Pi, 1, 0.5, [3]float64{trigPI4A, trigPI4B, trigPI4C}, trigSin, trigCos}
+
+// Offsets into trigTable.
+var (
+	offTrigLimit = uint32(unsafe.Offsetof(trigTable.limit))
+	offTrigFour  = uint32(unsafe.Offsetof(trigTable.fourOverPi))
+	offTrigOne   = uint32(unsafe.Offsetof(trigTable.one))
+	offTrigHalf  = uint32(unsafe.Offsetof(trigTable.half))
+	offTrigPI4   = uint32(unsafe.Offsetof(trigTable.pi4))
+	offTrigSin   = uint32(unsafe.Offsetof(trigTable.sin))
+	offTrigCos   = uint32(unsafe.Offsetof(trigTable.cos))
+)
+
+// trigTableAddr is the address generated code loads trigTable from. A
+// package variable never moves.
+func trigTableAddr() uint64 { return uint64(uintptr(unsafe.Pointer(&trigTable))) }

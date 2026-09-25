@@ -35,16 +35,16 @@ AMD Ryzen 9 9900X3D, linux, Go 1.27.1, `CGO_ENABLED=0`, `-count 6`,
 
 | Workload | Native Go | luart | luart + JIT | Shopify/go-lua | JIT vs luart | JIT vs Go |
 |---|---|---|---|---|---|---|
-| fib(25), recursive calls | 0.22 ms | 5.55 ms | 1.57 ms | 9.14 ms | 3.5× faster | 7.2× slower |
-| numeric loop, 1M iterations | 0.77 ms | 8.66 ms | 1.00 ms | 190 ms | 8.7× faster | 1.3× slower |
-| array fill and sum, 100k | 0.43 ms | 2.70 ms | 1.19 ms | 6.36 ms | 2.3× faster | 2.8× slower |
-| records, 10k tables | 0.09 ms | 0.87 ms | 0.63 ms | 2.89 ms | 1.4× faster | 7.3× slower |
-| closures, 100k | 0.22 ms | 5.32 ms | 4.66 ms | 9.66 ms | 1.1× faster | 21× slower |
-| sort 10k with comparator | 1.28 ms | 3.61 ms | 3.54 ms | 9.29 ms | 1.0× faster | 2.8× slower |
-| string build, 10k pieces | 0.37 ms | 0.72 ms | 0.63 ms | 83.7 ms | 1.1× faster | 1.7× slower |
-| calls into Go, 100k | 0.22 ms | 1.74 ms | 1.47 ms | 5.41 ms | 1.2× faster | 6.7× slower |
-| plasma frame | 0.29 ms | 1.35 ms | 0.82 ms | 4.28 ms | 1.6× faster | 2.8× slower |
-| particles frame | 0.005 ms | 0.25 ms | 0.10 ms | 1.21 ms | 2.4× faster | 20× slower |
+| fib(25), recursive calls | 0.21 ms | 5.57 ms | 1.55 ms | 9.15 ms | 3.6× faster | 7.2× slower |
+| numeric loop, 1M iterations | 0.77 ms | 8.46 ms | 0.97 ms | 188 ms | 8.7× faster | 1.3× slower |
+| array fill and sum, 100k | 0.48 ms | 2.85 ms | 1.26 ms | 6.42 ms | 2.3× faster | 2.6× slower |
+| records, 10k tables | 0.09 ms | 0.89 ms | 0.67 ms | 3.13 ms | 1.3× faster | 7.5× slower |
+| closures, 100k | 0.22 ms | 5.45 ms | 4.85 ms | 9.79 ms | 1.1× faster | 22× slower |
+| sort 10k with comparator | 1.29 ms | 3.66 ms | 3.61 ms | 10.3 ms | 1.0× faster | 2.8× slower |
+| string build, 10k pieces | 0.38 ms | 0.72 ms | 0.63 ms | 55.0 ms | 1.1× faster | 1.7× slower |
+| calls into Go, 100k | 0.22 ms | 1.74 ms | 1.48 ms | 5.49 ms | 1.2× faster | 6.7× slower |
+| plasma frame | 0.29 ms | 1.35 ms | 0.80 ms | 4.21 ms | 1.7× faster | 2.7× slower |
+| particles frame | 0.005 ms | 0.25 ms | 0.10 ms | 1.30 ms | 2.4× faster | 20× slower |
 
 The numeric loop with the JIT varies by about 20% between runs on this
 part, which has two core complexes with different caches and clocks;
