@@ -58,6 +58,7 @@ func TestLua(t *testing.T) {
 		name    string
 		nonPort bool
 		wrapped bool // runs in a coroutine, yielding 'b' and returning 'a', as all.lua runs it
+		goAsC   bool // expects Go functions to be called C, as LUART_GO_AS_C=1 does
 	}{
 		{name: "attrib", nonPort: true},
 		{name: "big", wrapped: true},
@@ -67,7 +68,7 @@ func TestLua(t *testing.T) {
 		{name: "closure"},
 		// {name: "code"}, // needs the C test library (T)
 		{name: "constructs"},
-		// {name: "db"},
+		{name: "db", goAsC: true},
 		{name: "errors"},
 		{name: "events"},
 		{name: "files"},
@@ -90,6 +91,9 @@ func TestLua(t *testing.T) {
 		}
 		t.Log(v)
 		l := NewState()
+		if v.goAsC {
+			l.global.goName = "C"
+		}
 		openLibraries(l)
 		// _noposix skips files.lua's checks of popen and os.execute, whose
 		// results depend on the host's /bin/sh and its lua binary.
