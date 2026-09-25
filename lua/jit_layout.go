@@ -13,6 +13,7 @@ const (
 	offBudget    = uint32(unsafe.Offsetof(jitContext{}.budget))
 	offUpValues  = uint32(unsafe.Offsetof(jitContext{}.upValues))
 	offBarrier   = uint32(unsafe.Offsetof(jitContext{}.barrier))
+	offKernels   = uint32(unsafe.Offsetof(jitContext{}.kernels))
 	valueSize    = uint32(unsafe.Sizeof(value{}))
 	offP         = uint32(unsafe.Offsetof(value{}.p))
 	offN         = uint32(unsafe.Offsetof(value{}.n))

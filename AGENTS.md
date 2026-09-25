@@ -297,10 +297,17 @@ nothing compiles.
     functions.
   - `math.sqrt`, `sin` and `cos` inline. (`floor`, `ceil` and `abs`
     return integers now, and wait for integers in compiled code.)
-- **Kernels:** (floats only so far; an integer loop runs as ordinary
-  compiled code) an innermost float for loop whose body is only moves,
-  float constants, arithmetic other than `%` and float comparisons keeps every Lua
-  register it uses in an FP register for the whole loop (`emitKernel`).
+- **Kernels:** an innermost numeric for loop whose body is only moves,
+  number constants, arithmetic (`%` and `//` by a nonzero integer
+  constant) and number comparisons keeps every Lua register it uses in a
+  machine register for the whole loop (`emitKernel`): integers in
+  general-purpose registers, floats in FP registers. `planKernel` gives
+  each register one type, from the loop's kind and the body; one nothing
+  decides (it only meets itself and integers) is an integer. A loop gets
+  an integer and a float kernel where both type; each checks its live-in
+  types on entry and falls through to the next, then to ordinary code,
+  which comes back to the check every iteration. `jitContext.kernels`
+  counts entries by kind, for `TestJITKernels`.
 
 ### Rules compiled code depends on
 

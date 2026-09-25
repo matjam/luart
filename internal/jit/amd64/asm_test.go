@@ -80,24 +80,26 @@ func TestSSEMemoryOperands(t *testing.T) {
 
 func TestIntegerArithmetic(t *testing.T) {
 	var a Asm
-	a.Imul(R9, BX)  // imul r9, rbx
-	a.Imul(AX, R13) // imul rax, r13
-	a.Neg(R8)       // neg r8
-	a.Neg(CX)       // neg rcx
-	a.Div(R13)      // div r13
-	a.Div(CX)       // div rcx
-	a.And(R9, BX)   // and r9, rbx
-	a.Or(AX, R13)   // or rax, r13
-	a.Xor(R8, CX)   // xor r8, rcx
-	a.Not(R9)       // not r9
-	a.Not(AX)       // not rax
-	a.ShlCL(R8)     // shl r8, cl
-	a.ShrCL(AX)     // shr rax, cl
-	a.Idiv(R13)     // idiv r13
-	a.Idiv(CX)      // idiv rcx
-	a.Cqo()         // cqo
+	a.Imul(R9, BX)         // imul r9, rbx
+	a.Imul(AX, R13)        // imul rax, r13
+	a.Neg(R8)              // neg r8
+	a.Neg(CX)              // neg rcx
+	a.Div(R13)             // div r13
+	a.Div(CX)              // div rcx
+	a.And(R9, BX)          // and r9, rbx
+	a.Or(AX, R13)          // or rax, r13
+	a.Xor(R8, CX)          // xor r8, rcx
+	a.Not(R9)              // not r9
+	a.Not(AX)              // not rax
+	a.ShlCL(R8)            // shl r8, cl
+	a.ShrCL(AX)            // shr rax, cl
+	a.Idiv(R13)            // idiv r13
+	a.Idiv(CX)             // idiv rcx
+	a.Cqo()                // cqo
+	a.IdivMem(SI, 0x1000)  // idiv qword ptr [rsi + 0x1000]
+	a.IdivMem(R12, 0x1000) // idiv qword ptr [r12 + 0x1000]
 	check(t, &a, "4c0fafcb 490fafc5 49f7d8 48f7d9 49f7f5 48f7f1"+
-		"4921d9 4c09e8 4931c8 49f7d1 48f7d0 49d3e0 48d3e8 49f7fd 48f7f9 4899")
+		"4921d9 4c09e8 4931c8 49f7d1 48f7d0 49d3e0 48d3e8 49f7fd 48f7f9 4899 48f7be00100000 49f7bc2400100000")
 }
 
 func TestShl(t *testing.T) {

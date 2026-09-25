@@ -50,6 +50,7 @@ type jitContext struct {
 	reason    uint64         // why the last run exited, set by runJIT
 	state     unsafe.Pointer // the *State, for calls and returns
 	callee    unsafe.Pointer // the *goFunction or *goClosure a jitExitCallGo calls
+	kernels   [2]uint64      // float and integer kernels entered, for tests
 }
 
 // A jitExitCallGo exit leaves only the callee's object in the context, and
