@@ -47,6 +47,52 @@ func TestDumpThenLoad(t *testing.T) {
 	}
 }
 
+// An empty string is written as C Lua writes it, size 1 and its NUL: size
+// 0 means no string at all, which C reads back as NULL. A function without
+// a source, as luac -s strips it, loads with the source "=?".
+func TestEmptyStrings(t *testing.T) {
+	sized := func(n uint64) []byte { // a string's size field
+		var b bytes.Buffer
+		if header.PointerSize == 8 {
+			binary.Write(&b, endianness(), n)
+		} else {
+			binary.Write(&b, endianness(), uint32(n))
+		}
+		return b.Bytes()
+	}
+	dump := func(source string) []byte {
+		p, err := compiler.Parse(strings.NewReader("return 1"), source, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var b bytes.Buffer
+		if err := Dump(&b, p); err != nil {
+			t.Fatal(err)
+		}
+		return b.Bytes()
+	}
+
+	// The source "" is the chunk's only empty string.
+	b := dump("")
+	empty := append(sized(1), 0)
+	if bytes.Count(b, empty) != 1 {
+		t.Fatalf("want one string of size 1 in % x", b)
+	}
+	if got, err := Load(bytes.NewReader(b), "=test"); err != nil {
+		t.Error(err)
+	} else if got.Source != "" {
+		t.Errorf("source %q, want \"\"", got.Source)
+	}
+
+	// Stripped, with size 0 for the source, it loads as "=?".
+	stripped := bytes.Replace(b, empty, sized(0), 1)
+	if got, err := Load(bytes.NewReader(stripped), "=test"); err != nil {
+		t.Error(err)
+	} else if got.Source != "=?" {
+		t.Errorf("stripped source %q, want =?", got.Source)
+	}
+}
+
 // Every proper prefix of a chunk is truncated.
 func TestLoadTruncated(t *testing.T) {
 	b := compile(t)

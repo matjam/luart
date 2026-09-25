@@ -562,29 +562,31 @@ func (s *scanner) checkMatch(what, who rune, where int) {
 const IDSize = 60
 
 // ChunkID returns the name of a chunk with source source as messages show
-// it: the text after = or @, shortened to IDSize, or [string "..."] with
-// the source's first line.
+// it, as lobject.c's luaO_chunkid does, within IDSize: the text after '=',
+// the end of a file name after '@', or [string "..."] with the source's
+// first line, marked "..." when it is cut.
 func ChunkID(source string) string {
-	if source == "" {
-		return `[string ""]`
-	}
-	switch source[0] {
-	case '=': // "literal" source
-		if len(source) <= IDSize {
+	const pre, rets, pos = `[string "`, "...", `"]`
+	if source != "" && (source[0] == '=' || source[0] == '@') {
+		if len(source) <= IDSize { // small enough
 			return source[1:]
+		} else if source[0] == '=' { // truncate it
+			return source[1:IDSize]
 		}
-		return source[1:IDSize]
-	case '@': // file name
-		if len(source) <= IDSize {
-			return source[1:]
-		}
-		return "..." + source[1:IDSize-3]
+		return rets + source[len(source)-(IDSize-len(rets)-1):] // the end of the file name
 	}
-	source = strings.Split(source, "\n")[0]
-	if l := len("[string \"...\"]"); len(source) > IDSize-l {
-		return "[string \"" + source + "...\"]"
+	room := IDSize - len(pre+rets+pos) - 1
+	nl := strings.IndexByte(source, '\n')
+	if len(source) < room && nl < 0 { // a small one-line source
+		return pre + source + pos
 	}
-	return "[string \"" + source + "\"]"
+	if nl >= 0 {
+		source = source[:nl] // stop at the first new line
+	}
+	if len(source) > room {
+		source = source[:room]
+	}
+	return pre + source + rets + pos
 }
 
 // ParseNumber converts s to a number as Lua's tonumber does: a decimal or
