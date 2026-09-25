@@ -13,6 +13,18 @@ import (
 	"github.com/matjam/luart/internal/jitvm"
 )
 
+// skipWithoutJIT skips a test of compiled code where nothing compiles: on
+// platforms without the JIT, or with LUART_JIT=off.
+func skipWithoutJIT(t *testing.T) {
+	t.Helper()
+	if !jitSupported {
+		t.Skip("no JIT on this platform")
+	}
+	if jitDisabled {
+		t.Skip("LUART_JIT=off")
+	}
+}
+
 func TestJITInterpreterIsGenerated(t *testing.T) {
 	vm, err := os.ReadFile("vm.go")
 	if err != nil {
@@ -65,7 +77,7 @@ func runBothWith(t *testing.T, src string, setup func(*State)) (jit, interp stri
 	OpenLibraries(lj)
 	setup(lj)
 	jit = result(lj)
-	li := NewState()
+	li := NewState(WithoutJIT())
 	OpenLibraries(li)
 	setup(li)
 	interp = result(li)
@@ -73,9 +85,7 @@ func runBothWith(t *testing.T, src string, setup func(*State)) (jit, interp stri
 }
 
 func TestJITMatchesInterpreter(t *testing.T) {
-	if !jitSupported {
-		t.Skip("no JIT on this platform")
-	}
+	skipWithoutJIT(t)
 	tests := []struct {
 		name string
 		src  string
@@ -101,9 +111,7 @@ func TestJITMatchesInterpreter(t *testing.T) {
 }
 
 func TestJITControlFlow(t *testing.T) {
-	if !jitSupported {
-		t.Skip("no JIT on this platform")
-	}
+	skipWithoutJIT(t)
 	tests := []struct {
 		name string
 		src  string
@@ -145,9 +153,7 @@ func TestJITControlFlow(t *testing.T) {
 }
 
 func TestJITTablesAndCalls(t *testing.T) {
-	if !jitSupported {
-		t.Skip("no JIT on this platform")
-	}
+	skipWithoutJIT(t)
 	tests := []struct {
 		name string
 		src  string
@@ -253,9 +259,7 @@ func TestJITTablesAndCalls(t *testing.T) {
 // A Go function called from compiled code that sets a hook sees it fire
 // from the next instruction, as in the interpreter.
 func TestJITHookSetFromGo(t *testing.T) {
-	if !jitSupported {
-		t.Skip("no JIT on this platform")
-	}
+	skipWithoutJIT(t)
 	src := `function run()
 		local s = 0
 		for i = 1, 50 do
@@ -286,9 +290,7 @@ func TestJITHookSetFromGo(t *testing.T) {
 // Compiled code exits to runJIT for each call of a Go function, Go closure
 // or number function that is not an intrinsic, and goes on after it.
 func TestJITGoCallExits(t *testing.T) {
-	if !jitSupported {
-		t.Skip("no JIT on this platform")
-	}
+	skipWithoutJIT(t)
 	src := `local function inner(x) return gofn(x) + 1 end
 	function run()
 		local exp, s = math.exp, 0
@@ -340,9 +342,7 @@ func TestJITGoCallExits(t *testing.T) {
 // interpreter, returning to Go from compiled code, or hands over to the
 // interpreter part way through.
 func TestJITCalledFromGo(t *testing.T) {
-	if !jitSupported {
-		t.Skip("no JIT on this platform")
-	}
+	skipWithoutJIT(t)
 	src := `
 		local function fixed(a, b) return a + b, a * b end
 		local function tail(a) return fixed(a, 2) end
@@ -393,9 +393,7 @@ func TestJITCalledFromGo(t *testing.T) {
 // A Go function called from compiled code may grow the stack, moving every
 // frame.
 func TestJITStackGrowsInGoCall(t *testing.T) {
-	if !jitSupported {
-		t.Skip("no JIT on this platform")
-	}
+	skipWithoutJIT(t)
 	src := `function run()
 		local a, b, s = 1, 2, 0
 		for i = 1, 20 do
@@ -423,9 +421,7 @@ func TestJITStackGrowsInGoCall(t *testing.T) {
 
 // Compiled sin and cos follow math.Sin and math.Cos bit for bit.
 func TestJITTrigMatchesGo(t *testing.T) {
-	if !jitSupported {
-		t.Skip("no JIT on this platform")
-	}
+	skipWithoutJIT(t)
 	r := rand.New(rand.NewPCG(3, 4))
 	xs := []float64{0, math.Copysign(0, -1), 1, -1, math.Pi, math.Pi / 2, math.Pi / 4, 1<<29 - 1, -(1<<29 - 1), 1e-300, 5e-324, 1e-8}
 	for range 200000 {
@@ -470,9 +466,7 @@ func TestJITTrigMatchesGo(t *testing.T) {
 // Numeric loops compile to kernels that keep numbers in registers; each
 // case says how many kernels it should compile.
 func TestJITKernels(t *testing.T) {
-	if !jitSupported {
-		t.Skip("no JIT on this platform")
-	}
+	skipWithoutJIT(t)
 	tests := []struct {
 		name    string
 		kernels int
@@ -516,9 +510,7 @@ func TestJITKernels(t *testing.T) {
 
 // A loop longer than the budget returns to Go on the way.
 func TestJITBudget(t *testing.T) {
-	if !jitSupported {
-		t.Skip("no JIT on this platform")
-	}
+	skipWithoutJIT(t)
 	jit, interp, lj := runBoth(t, `function run() local s = 0; for i = 1, 1000000 do s = s + 1 end; return s end`)
 	if jit != interp {
 		t.Fatalf("JIT %q, interpreter %q", jit, interp)
@@ -531,9 +523,7 @@ func TestJITBudget(t *testing.T) {
 // Compiled code copies pointers while another goroutine keeps the GC
 // marking, so some runs start with the write barrier on.
 func TestJITUnderGC(t *testing.T) {
-	if !jitSupported {
-		t.Skip("no JIT on this platform")
-	}
+	skipWithoutJIT(t)
 	var stop atomic.Bool
 	defer stop.Store(true)
 	go func() {
@@ -575,9 +565,7 @@ func TestJITUnderGC(t *testing.T) {
 }
 
 func TestJITRuns(t *testing.T) {
-	if !jitSupported {
-		t.Skip("no JIT on this platform")
-	}
+	skipWithoutJIT(t)
 	_, _, lj := runBoth(t, `function run() local a = 1; local b = a + 2; return b * 3 end`)
 	if lj.jitRuns == 0 {
 		t.Fatal("compiled code never ran")
@@ -586,9 +574,7 @@ func TestJITRuns(t *testing.T) {
 
 // Random arithmetic over locals, checked against the interpreter.
 func TestJITRandomArithmetic(t *testing.T) {
-	if !jitSupported {
-		t.Skip("no JIT on this platform")
-	}
+	skipWithoutJIT(t)
 	r := rand.New(rand.NewPCG(1, 2))
 	ops := []string{"+", "-", "*", "/"}
 	for n := range 200 {

@@ -62,7 +62,10 @@ func TestNumericFrameDoesNotAllocate(t *testing.T) {
 		l.PushNumber(1.5)
 		l.Call(1, 0)
 	}
-	frame()
+	// Run past the JIT's threshold first: compiling allocates, once.
+	for range 10 {
+		frame()
+	}
 	if n := testing.AllocsPerRun(20, frame); n != 0 {
 		t.Fatalf("frame allocated %v times per run, want 0", n)
 	}

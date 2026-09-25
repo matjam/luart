@@ -13,8 +13,10 @@ today, the rules it depends on, and where performance work should go next.
     `vm_jit.go`.
   - `go vet -unreachable=false ./...` (debug.go has two known
     unreachable-code reports).
-  - `go test ./...`, again with `LUART_JIT_TEST=1`, which compiles every
-    function on first use, and `-race -run JIT`.
+  - `go test ./...`, which runs with the JIT at its normal threshold;
+    again with `LUART_JIT_TEST=1`, which compiles every function on first
+    use; again with `LUART_JIT=off`, which only interprets; and
+    `-race -run JIT`.
   - `cd bench && LUART_JIT_TEST=1 go test -run TestSuiteAgrees .`
 - On an Apple silicon Mac, `GOARCH=amd64 go test ./...` runs the amd64 JIT
   under Rosetta. A `GOAMD64=v3` binary cannot run there; CI covers it on
@@ -27,9 +29,13 @@ today, the rules it depends on, and where performance work should go next.
   before merging. The Lua test suite is the `lua-tests` submodule.
 - Benchmarks: always pass `-ldflags=-funcalign=64`. Without it, unrelated
   changes move the interpreter loop's alignment and its timings by 5–10%.
-  Compare back to back on an idle machine. Every performance PR includes a
-  full run of `bench/suite_test.go`, with `bench/README.md` and
-  `bench/suite-results.txt` updated to match.
+  Compare back to back on an idle machine; on a CPU with more than one
+  core complex, pin A/B runs to one (`taskset -c 0-5` on the 9900X3D).
+  Every performance PR includes a full run of `bench/suite_test.go`, saved
+  as the results file for its machine (`bench/suite-results-amd64.txt`,
+  or `bench/suite-results.txt` for Apple M1). `cd bench && go run ./chart
+  -table <file>` prints the README's table for it, and `-svg <out>`
+  redraws its chart; update both.
 
 ## Interpreter
 
@@ -51,9 +57,10 @@ today, the rules it depends on, and where performance work should go next.
 
 ## JIT
 
-Opt-in with `NewState(WithJIT())`; `LUART_JIT=off` disables it. It runs
-on linux and darwin, arm64 and amd64. Elsewhere `jit_none.go` makes it a
-no-op.
+On by default; `NewState(WithoutJIT())` or `LUART_JIT=off` turns it off.
+It runs on linux and darwin, arm64 and amd64. Elsewhere `jit_none.go`
+makes it a no-op. JIT tests call `skipWithoutJIT`, which skips them where
+nothing compiles.
 
 - **Hand-over:**
   - A JIT state runs `executeSwitchJIT` (vm_jit.go), which
