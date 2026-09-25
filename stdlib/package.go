@@ -1,47 +1,62 @@
 package stdlib
 
 import (
-	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/matjam/luart/lua"
 )
 
-const pathListSeparator = ';'
+// The package library, after loadlib.c. luart cannot load dynamic
+// libraries: package.loadlib and the C searchers report that, as C Lua
+// built without them does.
 
-var defaultPath = "./?.lua" // TODO "${LUA_LDIR}?.lua;${LUA_LDIR}?/init.lua;./?.lua"
+const (
+	pathSep    = ";" // separates templates
+	pathMark   = "?" // stands for the module's name
+	dirSep     = "/"
+	noDynamic  = "dynamic libraries not enabled; check your Lua installation"
+	root       = "/usr/local/"
+	luaDir     = root + "share/lua/5.2/"
+	cDir       = root + "lib/lua/5.2/"
+	defaultLua = luaDir + "?.lua;" + luaDir + "?/init.lua;" + cDir + "?.lua;" + cDir + "?/init.lua;./?.lua"
+	defaultC   = cDir + "?.so;" + cDir + "loadall.so;./?.so"
+)
 
 func findLoader(l *lua.State, name string) {
-	var msg string
 	if l.Field(lua.UpValueIndex(1), "searchers"); !l.IsTable(3) {
 		l.Errorf("'package.searchers' must be a table")
 	}
+	var msg strings.Builder
 	for i := 1; ; i++ {
-		if l.RawGetInt(3, i); l.IsNil(-1) {
+		if l.RawGetInt(3, i); l.IsNil(-1) { // no more searchers
 			l.Pop(1)
-			l.PushString(msg)
-			l.Errorf("module '%s' not found: %s", name, msg)
+			l.Errorf("module '%s' not found:%s", name, msg.String())
 		}
 		l.PushString(name)
-		if l.Call(1, 2); l.IsFunction(-2) {
+		if l.Call(1, 2); l.IsFunction(-2) { // found a loader
 			return
-		} else if l.IsString(-2) {
-			msg += l.CheckString(-2)
+		} else if s, ok := l.ToString(-2); ok { // the searcher's reason
+			msg.WriteString(s)
 		}
 		l.Pop(2)
 	}
 }
 
-func findFile(l *lua.State, name, field, dirSep string) (string, error) {
+// findFile searches package[field] for name, pushing why it failed.
+func findFile(l *lua.State, name, field string) (string, bool) {
 	l.Field(lua.UpValueIndex(1), field)
 	path, ok := l.ToString(-1)
 	if !ok {
 		l.Errorf("'package.%s' must be a string", field)
 	}
-	return searchPath(l, name, path, ".", dirSep)
+	filename, tried := searchPath(name, path, ".", dirSep)
+	if filename == "" {
+		l.PushString(tried)
+		return "", false
+	}
+	return filename, true
 }
 
 func checkLoad(l *lua.State, loaded bool, fileName string) int {
@@ -49,19 +64,10 @@ func checkLoad(l *lua.State, loaded bool, fileName string) int {
 		l.PushString(fileName) // Second argument to module.
 		return 2               // Return open function & file name.
 	}
-	m := l.CheckString(1)
-	e := l.CheckString(-1)
+	m, _ := l.ToString(1)
+	e, _ := l.ToString(-1)
 	l.Errorf("error loading module '%s' from file '%s':\n\t%s", m, fileName, e)
 	panic("unreachable")
-}
-
-func searcherLua(l *lua.State) int {
-	name := l.CheckString(1)
-	filename, err := findFile(l, name, "path", string(filepath.Separator))
-	if err != nil {
-		return 1 // Module not found in this path.
-	}
-	return checkLoad(l, l.LoadFile(filename, "") == nil, filename)
 }
 
 func searcherPreload(l *lua.State) int {
@@ -74,8 +80,44 @@ func searcherPreload(l *lua.State) int {
 	return 1
 }
 
+func searcherLua(l *lua.State) int {
+	name := l.CheckString(1)
+	filename, ok := findFile(l, name, "path")
+	if !ok {
+		return 1 // not found in this path
+	}
+	return checkLoad(l, l.LoadFile(filename, "") == nil, filename)
+}
+
+// searcherC finds a C library for name, which cannot load.
+func searcherC(l *lua.State) int {
+	name := l.CheckString(1)
+	filename, ok := findFile(l, name, "cpath")
+	if !ok {
+		return 1 // not found in this path
+	}
+	l.PushString(noDynamic)
+	return checkLoad(l, false, filename)
+}
+
+// searcherCroot finds the C library of the root of a name such as a.b.c,
+// which cannot load either.
+func searcherCroot(l *lua.State) int {
+	name := l.CheckString(1)
+	p := strings.IndexByte(name, '.')
+	if p < 0 {
+		return 0 // a root itself
+	}
+	filename, ok := findFile(l, name[:p], "cpath")
+	if !ok {
+		return 1 // root not found
+	}
+	l.PushString(noDynamic)
+	return checkLoad(l, false, filename)
+}
+
 func createSearchersTable(l *lua.State) {
-	searchers := []lua.Function{searcherPreload, searcherLua}
+	searchers := []lua.Function{searcherPreload, searcherLua, searcherC, searcherCroot}
 	l.CreateTable(len(searchers), 0)
 	for i, s := range searchers {
 		l.PushValue(-2)
@@ -92,22 +134,25 @@ func readable(filename string) bool {
 	return err == nil
 }
 
-func searchPath(l *lua.State, name, path, sep, dirSep string) (string, error) {
-	var msg string
+// searchPath looks for name in path's templates, with sep in name
+// replaced by dirSep, as loadlib.c's searchpath does. It returns the first
+// readable file, or "" and the list of files it tried.
+func searchPath(name, path, sep, dirSep string) (string, string) {
 	if sep != "" {
-		name = strings.Replace(name, sep, dirSep, -1) // Replace sep by dirSep.
+		name = strings.ReplaceAll(name, sep, dirSep)
 	}
-	path = strings.Replace(path, string(pathListSeparator), string(filepath.ListSeparator), -1)
-	for _, template := range filepath.SplitList(path) {
-		if template != "" {
-			filename := strings.Replace(template, "?", name, -1)
-			if readable(filename) {
-				return filename, nil
-			}
-			msg = fmt.Sprintf("%s\n\tno file '%s'", msg, filename)
+	var msg strings.Builder
+	for _, template := range strings.Split(path, pathSep) {
+		if template == "" {
+			continue
 		}
+		filename := strings.ReplaceAll(template, pathMark, name)
+		if readable(filename) {
+			return filename, ""
+		}
+		fmt.Fprintf(&msg, "\n\tno file '%s'", filename)
 	}
-	return "", errors.New(msg)
+	return "", msg.String()
 }
 
 func noEnv(l *lua.State) bool {
@@ -117,24 +162,27 @@ func noEnv(l *lua.State) bool {
 	return b
 }
 
+// setPath sets package[field] from the environment variable env with
+// _5_2, or without it, or to def; ";;" in a variable stands for def.
 func setPath(l *lua.State, field, env, def string) {
-	if path := os.Getenv(env); path == "" || noEnv(l) {
+	path, ok := os.LookupEnv(env + "_5_2")
+	if !ok {
+		path, ok = os.LookupEnv(env)
+	}
+	if !ok || noEnv(l) {
 		l.PushString(def)
 	} else {
-		o := fmt.Sprintf("%c%c", pathListSeparator, pathListSeparator)
-		n := fmt.Sprintf("%c%s%c", pathListSeparator, def, pathListSeparator)
-		path = strings.Replace(path, o, n, -1)
-		l.PushString(path)
+		l.PushString(strings.ReplaceAll(path, pathSep+pathSep, pathSep+def+pathSep))
 	}
 	l.SetField(-2, field)
 }
 
 var packageLibrary = []lua.RegistryFunction{
 	{Name: "loadlib", Function: func(l *lua.State) int {
-		_ = l.CheckString(1) // path
-		_ = l.CheckString(2) // init
+		l.CheckString(1) // path
+		l.CheckString(2) // init
 		l.PushNil()
-		l.PushString("dynamic libraries not enabled; check your Lua installation")
+		l.PushString(noDynamic)
 		l.PushString("absent")
 		return 3 // Return nil, error message, and where.
 	}},
@@ -142,11 +190,11 @@ var packageLibrary = []lua.RegistryFunction{
 		name := l.CheckString(1)
 		path := l.CheckString(2)
 		sep := l.OptString(3, ".")
-		dirSep := l.OptString(4, string(filepath.Separator))
-		f, err := searchPath(l, name, path, sep, dirSep)
-		if err != nil {
+		dirSep := l.OptString(4, dirSep)
+		f, tried := searchPath(name, path, sep, dirSep)
+		if f == "" {
 			l.PushNil()
-			l.PushString(err.Error())
+			l.PushString(tried)
 			return 2
 		}
 		l.PushString(f)
@@ -159,8 +207,9 @@ func OpenPackage(l *lua.State) int {
 	l.NewLibrary(packageLibrary)
 	createSearchersTable(l)
 	l.SetField(-2, "searchers")
-	setPath(l, "path", "LUA_PATH", defaultPath)
-	l.PushString(fmt.Sprintf("%c\n%c\n?\n!\n-\n", filepath.Separator, pathListSeparator))
+	setPath(l, "path", "LUA_PATH", defaultLua)
+	setPath(l, "cpath", "LUA_CPATH", defaultC)
+	l.PushString(dirSep + "\n" + pathSep + "\n" + pathMark + "\n!\n-\n")
 	l.SetField(-2, "config")
 	l.SubTable(lua.RegistryIndex, "_LOADED")
 	l.SetField(-2, "loaded")
