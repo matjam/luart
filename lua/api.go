@@ -193,18 +193,11 @@ type Debug struct {
 	callInfo *callInfo
 }
 
-// A Hook is a callback function that can be registered with SetDebugHook to trace various VM events.
+// A Hook is a callback function that can be registered with SetHook to trace various VM events.
 type Hook func(state *State, activationRecord Debug)
 
 // A Function is a Go function intended to be called from Lua.
 type Function func(state *State) int
-
-// TODO Set functions (stack -> Lua)
-// RawSetValue(index int, p any)
-//
-// Debug API
-// Local(activationRecord *Debug, index int) string
-// SetLocal(activationRecord *Debug, index int) string
 
 // String returns the name of Type t.
 //

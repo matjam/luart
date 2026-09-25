@@ -1,6 +1,82 @@
 package stdlib_test
 
-import "testing"
+import (
+	"os"
+	"strings"
+	"testing"
+)
+
+// debug.getlocal and setlocal read and write the locals of a running
+// function, its varargs, and its temporaries, and name a function's
+// parameters.
+func TestDebugLocals(t *testing.T) {
+	run(t, `
+		local function f(a, b, ...)
+			local c = a + b
+			local n1, v1 = debug.getlocal(1, 1)
+			local n3, v3 = debug.getlocal(1, 3)
+			local nv, vv = debug.getlocal(1, -2)
+			local none = debug.getlocal(1, -3)
+			local past = debug.getlocal(1, 50)
+			return n1, v1, n3, v3, nv, vv, none, past
+		end
+		local n1, v1, n3, v3, nv, vv, none, past = f(10, 20, "x", "y")
+		assert(n1 == "a" and v1 == 10 and n3 == "c" and v3 == 30)
+		assert(nv == "(*vararg)" and vv == "y" and none == nil and past == nil)
+
+		-- A function's parameters, by name only.
+		assert(debug.getlocal(f, 1) == "a" and debug.getlocal(f, 2) == "b" and debug.getlocal(f, 3) == nil)
+		assert(debug.getlocal(print, 1) == nil)
+
+		-- A Go function's arguments are temporaries: level 0 is getlocal.
+		local n, v = debug.getlocal(0, 1)
+		assert(n == "(*temporary)" and v == 0)
+
+		local function g()
+			local x = 1
+			assert(debug.setlocal(1, 1, 99) == "x")
+			assert(debug.setlocal(1, 9, 0) == nil)
+			return x
+		end
+		for _ = 1, 2000 do assert(g() == 99) end -- compiled too, once hot
+
+		local ok, err = pcall(debug.getlocal, 100, 1)
+		assert(not ok and err:find("level out of range", 1, true), err)
+		ok, err = pcall(debug.setlocal, 100, 1, 1)
+		assert(not ok and err:find("level out of range", 1, true), err)
+	`)
+}
+
+// debug.debug runs lines from stdin until "cont", writing errors to
+// stderr.
+func TestDebugDebug(t *testing.T) {
+	dir := t.TempDir()
+	in, err := os.Create(dir + "/in")
+	if err != nil {
+		t.Fatal(err)
+	}
+	in.WriteString("x = 42\nerror('boom', 0)\ncont\ny = 1\n")
+	in.Seek(0, 0)
+	out, err := os.Create(dir + "/out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdin, stderr := os.Stdin, os.Stderr
+	os.Stdin, os.Stderr = in, out
+	defer func() { os.Stdin, os.Stderr = stdin, stderr }()
+	run(t, `
+		debug.debug()
+		assert(x == 42 and y == nil)
+	`)
+	os.Stdin, os.Stderr = stdin, stderr
+	b, _ := os.ReadFile(dir + "/out")
+	if s := string(b); s != "lua_debug> lua_debug> boom\nlua_debug> " {
+		t.Errorf("stderr %q", s)
+	}
+	if rest, _ := os.ReadFile(dir + "/in"); !strings.HasSuffix(string(rest), "y = 1\n") {
+		t.Error("input changed")
+	}
+}
 
 // Debug information calls Go functions "Go", or "C" as C Lua does with
 // LUART_GO_AS_C=1.

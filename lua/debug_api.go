@@ -153,6 +153,86 @@ func (l *State) functionName(ci *callInfo) (name, kind string) {
 	return eventNames[tm], "metamethod"
 }
 
+// findLocal is ldebug.c's findlocal: the name and stack index of local n
+// of the function running in ci, or "" if there is none. Negative n are
+// the varargs of a Lua function; slots without a name are temporaries.
+func (l *State) findLocal(ci *callInfo, n int) (string, int) {
+	var name string
+	var base int
+	if ci.isLua() {
+		if n < 0 {
+			return l.findVarArg(ci, -n)
+		}
+		base = ci.base()
+		name, _ = l.prototype(ci).localName(n, ci.savedPC-1)
+	} else {
+		base = ci.function + 1
+	}
+	if name == "" {
+		limit := l.top
+		if ci != l.callInfo {
+			limit = ci.next.function
+		}
+		if n <= 0 || limit-base < n { // outside the function's slots
+			return "", 0
+		}
+		name = "(*temporary)"
+	}
+	return name, base + n - 1
+}
+
+// findVarArg is ldebug.c's findvararg: vararg n of the Lua function in ci.
+func (l *State) findVarArg(ci *callInfo, n int) (string, int) {
+	parameters := l.prototype(ci).ParameterCount
+	if n >= ci.base()-ci.function-parameters { // no such vararg
+		return "", 0
+	}
+	return "(*vararg)", ci.function + parameters + n
+}
+
+// Local gets a local variable of the function running in frame: it pushes
+// the variable's value and returns its name. Parameter 1 is the first
+// local, then the other locals in the order they are declared, while they
+// are active. Negative n are the varargs, named "(*vararg)", and the
+// function's other slots are named "(*temporary)".
+//
+// With the zero Frame, Local instead returns the name of parameter n of
+// the Lua function on the top of the stack, and pushes nothing.
+//
+// Local returns false, pushing nothing, if there is no such variable.
+//
+// http://www.lua.org/manual/5.2/manual.html#lua_getlocal
+func (l *State) Local(frame Frame, n int) (string, bool) {
+	if frame.ci == nil {
+		if c := l.stack[l.top-1].luaClosure(); c != nil {
+			return c.prototype.localName(n, 0) // the live variables at the start
+		}
+		return "", false
+	}
+	name, pos := l.findLocal(frame.ci, n)
+	if name == "" {
+		return "", false
+	}
+	l.apiPush(l.stack[pos])
+	return name, true
+}
+
+// SetLocal sets a local variable of the function running in frame, as
+// Local numbers them, to the value on the top of the stack, and returns
+// its name. It pops the value, and returns false if there is no such
+// variable.
+//
+// http://www.lua.org/manual/5.2/manual.html#lua_setlocal
+func (l *State) SetLocal(frame Frame, n int) (string, bool) {
+	l.checkElementCount(1)
+	name, pos := l.findLocal(frame.ci, n)
+	if name != "" {
+		l.stack[pos] = l.stack[l.top-1]
+	}
+	l.top--
+	return name, name != ""
+}
+
 func (l *State) collectValidLines(f closure) {
 	if lc, ok := f.(*luaClosure); !ok {
 		l.apiPush(nilValue)

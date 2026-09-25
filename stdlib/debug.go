@@ -1,6 +1,7 @@
 package stdlib
 
 import (
+	"os"
 	"reflect"
 	"strings"
 
@@ -25,7 +26,7 @@ func checkUpValue(l *lua.State, f, upValueCount int) int {
 	l.CheckType(f, lua.TypeFunction)
 	l.PushValue(f)
 	debug, _ := l.Info(">u", lua.Frame{})
-	l.ArgumentCheck(1 <= n && n <= debug.UpValueCount, upValueCount, "invalue upvalue index")
+	l.ArgumentCheck(1 <= n && n <= debug.UpValueCount, upValueCount, "invalid upvalue index")
 	return n
 }
 
@@ -160,8 +161,95 @@ func moveStackOption(l, l1 *lua.State, name string) {
 	l.SetField(-2, name)
 }
 
+// getLocal is debug.getlocal([thread,] f, n), after ldblib.c's
+// db_getlocal. f is a stack level, whose local n's name and value it
+// returns, or a function, whose parameter n's name it returns.
+func getLocal(l *lua.State) int {
+	arg, l1 := threadArg(l)
+	n := l.CheckInteger(arg + 2)
+	if l.IsFunction(arg + 1) {
+		l.PushValue(arg + 1)
+		if name, ok := l.Local(lua.Frame{}, n); ok {
+			l.PushString(name)
+		} else {
+			l.PushNil()
+		}
+		return 1
+	}
+	frame, ok := l1.Frame(l.CheckInteger(arg + 1))
+	if !ok {
+		l.ArgumentError(arg+1, "level out of range")
+	}
+	name, ok := l1.Local(frame, n)
+	if !ok {
+		l.PushNil() // no name, nor value
+		return 1
+	}
+	l1.XMove(l, 1)
+	l.PushString(name)
+	l.PushValue(-2)
+	return 2
+}
+
+// setLocal is debug.setlocal([thread,] level, n, value), after ldblib.c's
+// db_setlocal: it returns the local's name, or nil if there is none.
+func setLocal(l *lua.State) int {
+	arg, l1 := threadArg(l)
+	frame, ok := l1.Frame(l.CheckInteger(arg + 1))
+	if !ok {
+		l.ArgumentError(arg+1, "level out of range")
+	}
+	n := l.CheckInteger(arg + 2)
+	l.CheckAny(arg + 3)
+	l.SetTop(arg + 3)
+	l.XMove(l1, 1)
+	if name, ok := l1.SetLocal(frame, n); ok {
+		l.PushString(name)
+	} else {
+		l.PushNil()
+	}
+	return 1
+}
+
+// debugPrompt is debug.debug, after ldblib.c's db_debug: it runs each line
+// read from stdin until "cont" or the end of the input, prompting on
+// stderr and writing errors there.
+func debugPrompt(l *lua.State) int {
+	for {
+		os.Stderr.WriteString("lua_debug> ")
+		line, ok := readStdinLine()
+		if !ok || line == "cont\n" {
+			return 0
+		}
+		err := l.LoadBuffer(line, "=(debug command)", "")
+		if err == nil {
+			err = l.ProtectedCall(0, 0, 0)
+		}
+		if err != nil {
+			msg, _ := l.ToString(-1)
+			os.Stderr.WriteString(msg + "\n")
+		}
+		l.SetTop(0)
+	}
+}
+
+// readStdinLine reads a line from stdin a byte at a time, so it reads no
+// further than the line, and returns false at the end of the input.
+func readStdinLine() (string, bool) {
+	var line []byte
+	b := make([]byte, 1)
+	for {
+		if n, err := os.Stdin.Read(b); n == 0 || err != nil {
+			return string(line), len(line) > 0
+		}
+		if line = append(line, b[0]); b[0] == '\n' {
+			return string(line), true
+		}
+	}
+}
+
 var debugLibrary = []lua.RegistryFunction{
-	// {"debug", db_debug},
+	{Name: "debug", Function: debugPrompt},
 	{Name: "getuservalue", Function: func(l *lua.State) int {
 		if l.TypeOf(1) != lua.TypeUserData {
 			l.PushNil()
@@ -187,7 +275,7 @@ var debugLibrary = []lua.RegistryFunction{
 		return 3
 	}},
 	{Name: "getinfo", Function: getInfo},
-	// {"getlocal", db_getlocal},
+	{Name: "getlocal", Function: getLocal},
 	{Name: "getregistry", Function: func(l *lua.State) int { l.PushValue(lua.RegistryIndex); return 1 }},
 	{Name: "getmetatable", Function: func(l *lua.State) int {
 		l.CheckAny(1)
@@ -244,7 +332,7 @@ var debugLibrary = []lua.RegistryFunction{
 		l1.SetHook(hook, mask, count)
 		return 0
 	}},
-	// {"setlocal", db_setlocal},
+	{Name: "setlocal", Function: setLocal},
 	{Name: "setmetatable", Function: func(l *lua.State) int {
 		t := l.TypeOf(2)
 		l.ArgumentCheck(t == lua.TypeNil || t == lua.TypeTable, 2, "nil or table expected")
