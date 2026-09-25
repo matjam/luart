@@ -49,6 +49,11 @@ type evalDoneMsg struct{ elapsed time.Duration }
 // colour by then.
 type bannerMsg struct{}
 
+// printedMsg follows lines printed above the program. Bubble Tea leaves the
+// cursor at the top of the frame after printing, and puts it back only
+// when the view changes, so the model changes it: see redraws.
+type printedMsg struct{}
+
 type model struct {
 	c     *cli
 	th    *theme
@@ -72,6 +77,7 @@ type model struct {
 	hint     string
 	quitting bool // Ctrl+C was pressed on an empty input
 	bannered bool
+	redraws  int // printed batches, whose parity the view carries
 }
 
 func newModel(c *cli, th *theme) *model {
@@ -144,7 +150,7 @@ func (m *model) printLines(lines ...string) tea.Cmd {
 		for _, line := range lines {
 			print(line)
 		}
-		return nil
+		return printedMsg{}
 	}
 }
 
@@ -161,7 +167,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.banner()
 	case bannerMsg:
 		return m, m.banner()
+	case printedMsg:
+		m.redraws++
+		return m, nil
 	case evalDoneMsg:
+		m.redraws++
 		m.running = false
 		m.last = msg.elapsed
 		m.heap = heapBytes()
@@ -440,8 +450,14 @@ func (m *model) View() tea.View {
 	}
 	parts = append(parts, m.status())
 
+	// An invisible reset on alternate batches of printed lines makes the
+	// view differ, so that Bubble Tea redraws it and puts the cursor back.
+	content := strings.Join(parts, "\n")
+	if m.redraws%2 == 1 {
+		content += "\x1b[m"
+	}
 	// The cursor: after the border, the padding and the prompt.
-	v := tea.NewView(strings.Join(parts, "\n"))
+	v := tea.NewView(content)
 	row, col := m.input.Line(), m.input.Column()
 	x := 0
 	if text := strings.Split(value, "\n"); row < len(text) {
