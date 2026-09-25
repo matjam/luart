@@ -271,10 +271,10 @@ nothing compiles.
 ## Performance today
 
 bench/README.md has the current tables and charts, generated from the raw
-results: AMD Ryzen 9 9900X3D (linux/amd64), and Apple M1 Pro (arm64) as
-of commit 664f09d. On the standard benchmarks (Are We Fast Yet and three
-from the Benchmarks Game) luart with the JIT takes 0.78 times as long as
-C Lua 5.4, and 1.8 times without it.
+results: AMD Ryzen 9 9900X3D (linux/amd64) and Apple M1 Pro (arm64). On
+the standard benchmarks (Are We Fast Yet and three from the Benchmarks
+Game) luart with the JIT takes 0.78 times as long as C Lua 5.4 on amd64
+and 0.70 times on the M1, and 1.8 and 1.4 times without it.
 
 To find where a workload leaves compiled code, count exits: log
 `p.jitOrig[ip]` and `l.jitCtx.reason` after each `enterJIT` in `runJIT`
