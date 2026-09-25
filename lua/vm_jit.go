@@ -233,7 +233,7 @@ func (l *State) executeSwitchJIT() {
 			}
 		case opMulAddRKR:
 			if b, c := frame[i.B()], constants[i.C()]; b.isFloat() && c.isFloat() {
-				r := b.f() * c.f()
+				r := float64(b.f() * c.f()) // rounded: Go may fuse x*y + z otherwise, as C Lua does not
 				frame[i.A()] = numberValue(r)
 				if j := code[ip]; l.hookMask&(MaskLine|MaskCount) == 0 {
 					if d := frame[j.C()]; d.isFloat() {
