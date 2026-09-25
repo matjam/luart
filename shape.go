@@ -1,4 +1,4 @@
-package lua
+package luart
 
 // A shape maps a table's string keys to slots in the table's slots slice.
 //

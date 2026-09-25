@@ -1,6 +1,6 @@
 //go:build (darwin || linux) && arm64
 
-package lua
+package luart
 
 import (
 	"math"

@@ -3,7 +3,7 @@ package luabench
 import (
 	"testing"
 
-	luart "github.com/matjam/luart"
+	"github.com/matjam/luart"
 )
 
 func newLuart(b *testing.B, src string, options ...luart.Option) *luart.State {

@@ -1,13 +1,13 @@
-package lua_test
+package luart_test
 
 import (
 	"fmt"
 
-	lua "github.com/matjam/luart"
+	"github.com/matjam/luart"
 )
 
 // averageAndSum receives a variable number of numerical arguments and returns their average and sum.
-func averageAndSum(l *lua.State) int {
+func averageAndSum(l *luart.State) int {
 	n := l.Top() // Number of arguments.
 	var sum float64
 	for i := 1; i <= n; i++ {
@@ -24,7 +24,7 @@ func averageAndSum(l *lua.State) int {
 }
 
 func ExampleFunction() {
-	l := lua.NewState()
+	l := luart.NewState()
 	l.Register("averageAndSum", averageAndSum)
 	l.Global("averageAndSum")
 	l.PushNumber(2)

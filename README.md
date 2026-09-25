@@ -104,8 +104,8 @@ also has Apple M1 results.
 
 ## JIT
 
-`lua.NewState()` compiles hot Lua functions to machine code.
-`lua.NewState(lua.WithoutJIT())` makes a state that only interprets, and
+`luart.NewState()` compiles hot Lua functions to machine code.
+`luart.NewState(luart.WithoutJIT())` makes a state that only interprets, and
 the environment variable `LUART_JIT=off` does that for every state.
 `WithJIT()` remains for code written when the JIT was opt-in.
 
@@ -138,12 +138,12 @@ go get github.com/matjam/luart
 ```go
 package main
 
-import lua "github.com/matjam/luart"
+import "github.com/matjam/luart"
 
 func main() {
-	l := lua.NewState()
-	lua.OpenLibraries(l)
-	if err := lua.DoFile(l, "hello.lua"); err != nil {
+	l := luart.NewState()
+	luart.OpenLibraries(l)
+	if err := luart.DoFile(l, "hello.lua"); err != nil {
 		panic(err)
 	}
 }
@@ -162,7 +162,7 @@ Go functions can read typed arguments, which raise a Lua error when an
 argument does not convert:
 
 ```go
-l.Register("rect", func(l *lua.State) int {
+l.Register("rect", func(l *luart.State) int {
 	x, y, label := l.Arg[float64](1), l.Arg[float64](2), l.Arg[string](3)
 	draw(x, y, label)
 	return 0
@@ -174,7 +174,7 @@ Userdata can be read back with its Go type:
 ```go
 type point struct{ x, y float64 }
 
-l.Register("norm", func(l *lua.State) int {
+l.Register("norm", func(l *luart.State) int {
 	p := l.CheckUserData[*point](1, "point")
 	l.PushNumber(math.Hypot(p.x, p.y))
 	return 1

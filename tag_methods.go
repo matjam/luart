@@ -1,4 +1,4 @@
-package lua
+package luart
 
 type tm uint
 

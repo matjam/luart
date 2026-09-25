@@ -1,4 +1,4 @@
-package lua
+package luart
 
 func clock(l *State) int {
 	Errorf(l, "os.clock not yet supported on Windows")

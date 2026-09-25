@@ -1,4 +1,4 @@
-package lua
+package luart
 
 // A Frame is a token representing an activation record. It is returned by
 // Stack and passed to Info.

@@ -1,6 +1,6 @@
 //go:build (darwin || linux) && arm64
 
-package lua
+package luart
 
 import (
 	. "github.com/matjam/luart/internal/jit/arm64"

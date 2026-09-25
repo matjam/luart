@@ -1,4 +1,4 @@
-package lua
+package luart
 
 // ArgType lists the Go types Arg can convert a Lua argument to.
 type ArgType interface {

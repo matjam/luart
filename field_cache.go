@@ -1,4 +1,4 @@
-package lua
+package luart
 
 // fieldCache remembers where an instruction with a constant string key last
 // found its field.

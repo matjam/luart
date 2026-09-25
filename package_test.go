@@ -1,9 +1,9 @@
-package lua_test
+package luart_test
 
 import (
 	"fmt"
 
-	lua "github.com/matjam/luart"
+	"github.com/matjam/luart"
 )
 
 type step struct {
@@ -13,19 +13,19 @@ type step struct {
 
 func Example() {
 	steps := []step{}
-	l := lua.NewState()
-	lua.BaseOpen(l)
-	_ = lua.NewMetaTable(l, "stepMetaTable")
-	lua.SetFunctions(l, []lua.RegistryFunction{{"__newindex", func(l *lua.State) int {
-		k, v := lua.CheckString(l, 2), l.ToValue(3)
+	l := luart.NewState()
+	luart.BaseOpen(l)
+	_ = luart.NewMetaTable(l, "stepMetaTable")
+	luart.SetFunctions(l, []luart.RegistryFunction{{"__newindex", func(l *luart.State) int {
+		k, v := luart.CheckString(l, 2), l.ToValue(3)
 		steps = append(steps, step{name: k, function: v})
 		return 0
 	}}}, 0)
 	l.PushUserData(steps)
 	l.PushValue(-1)
 	l.SetGlobal("step")
-	lua.SetMetaTableNamed(l, "stepMetaTable")
-	lua.LoadString(l, `step.request_tracking_js = function ()
+	luart.SetMetaTableNamed(l, "stepMetaTable")
+	luart.LoadString(l, `step.request_tracking_js = function ()
     get(config.domain..'/javascripts/shopify_stats.js')
   end`)
 	l.Call(0, 0)
