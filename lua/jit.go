@@ -198,8 +198,11 @@ const maxInlineCompare = 32
 // jitMinRun is how many instructions compiled code must run from an entry
 // before its first unconditional exit for entering it to pay: a round trip
 // between the interpreter and compiled code costs about as much as
-// interpreting a few instructions.
-const jitMinRun = 4
+// interpreting a few instructions. Tests set it to zero, so compiled code
+// is entered wherever it can run.
+var jitMinRun = defaultJITMinRun
+
+const defaultJITMinRun = 4
 
 // jitEntries lists the pcs where the interpreter should hand over to
 // compiled code: function entry, loop latches, jump targets, and the
@@ -245,18 +248,34 @@ func jitEntries(p *prototype, exits, always []bool) []int {
 
 // worthEntering reports whether compiled code entered at ip runs at least
 // jitMinRun instructions, or reaches a loop, before an instruction the
-// interpreter must run.
+// interpreter must run or a RETURN. A RETURN ends the run: it goes back to
+// Go, or to the caller, which is interpreted if it handed over at all. A
+// test and the JMP it consumes run as one instruction, and a LOADBOOL that
+// skips the next instruction skips it here too, so a short function such as
+// a sort comparator is not entered for the two instructions it runs.
 func worthEntering(code []bytecode.Instruction, always []bool, ip int) bool {
 	for run := 0; ip < len(code); ip++ {
+		i := code[ip]
+		op := i.OpCode()
 		if isExtraArg(code, ip) {
 			continue
+		} else if isConsumed(code, ip) {
+			if op == bytecode.OpJump && i.SBx() < 0 { // a repeat loop's latch
+				return true
+			}
+			continue
 		}
-		op := code[ip].OpCode()
-		if always[ip] && op != bytecode.OpCall && op != bytecode.OpReturn && !jitSteps(op) {
+		if op == bytecode.OpReturn {
+			return run >= jitMinRun
+		}
+		if always[ip] && op != bytecode.OpCall && !jitSteps(op) {
 			return false
 		}
-		if run++; run >= jitMinRun || op == bytecode.OpForLoop || op == bytecode.OpJump && code[ip].SBx() < 0 {
+		if run++; run >= jitMinRun || op == bytecode.OpForLoop || op == bytecode.OpJump && i.SBx() < 0 {
 			return true
+		}
+		if op == bytecode.OpLoadBool && i.C() != 0 {
+			ip++
 		}
 	}
 	return false
@@ -388,11 +407,12 @@ func (l *State) runJIT(ci *callInfo, ip pc, bottom *callInfo) bool {
 }
 
 // callJIT runs the Lua function that preCall has just entered for l.call,
-// if it is compiled. It reports whether the function has returned;
-// otherwise the interpreter goes on from the savedPC of l.callInfo.
+// if it is compiled and its entry is worth entering. It reports whether the
+// function has returned; otherwise the interpreter goes on from the savedPC
+// of l.callInfo.
 func (l *State) callJIT() bool {
 	ci := l.callInfo
-	if ci.closure.prototype.jit == nil || l.hookMask != 0 {
+	if p := ci.closure.prototype; p.jit == nil || p.exec[0].OpCode() != opJITEnter || l.hookMask != 0 {
 		return false
 	}
 	return l.runJIT(ci, 0, ci)

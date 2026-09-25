@@ -11,7 +11,7 @@ import (
 // LUART_JIT=off runs the suite interpreted.
 func TestMain(m *testing.M) {
 	if os.Getenv("LUART_JIT_TEST") == "1" {
-		jitThreshold = 0
+		jitThreshold, jitMinRun = 0, 0
 	}
 	os.Exit(m.Run())
 }
