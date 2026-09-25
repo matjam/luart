@@ -118,8 +118,10 @@ func formatHelper(l *lua.State, fs string, argCount int) string {
 				} else {
 					fmt.Fprintf(&b, f, s)
 				}
+			case 'a', 'A':
+				b.WriteString(formatHexFloat(f, l.CheckNumber(arg)))
 			default:
-				l.Errorf(fmt.Sprintf("invalid option '%%%c' to 'format'", fs[i]))
+				l.Errorf("invalid option '%%%c' to 'format'", int(fs[i]))
 			}
 		}
 	}
@@ -256,6 +258,60 @@ func formatNonFinite(spec string, n float64) string {
 		return s + pad
 	}
 	return pad + s
+}
+
+// formatHexFloat formats n as glibc's printf does for the %a or %A
+// conversion spec: a hexadecimal fraction and a binary exponent without
+// leading zeros, such as 0x1.8p+1, with C's flags, width and precision.
+func formatHexFloat(spec string, n float64) string {
+	if math.IsInf(n, 0) || math.IsNaN(n) {
+		return formatNonFinite(spec, n)
+	}
+	body := spec[1 : len(spec)-1]
+	i := 0
+	for i < len(body) && strings.IndexByte("-+ #0", body[i]) >= 0 {
+		i++
+	}
+	flags, rest := body[:i], body[i:]
+	precision := -1 // as many digits as needed
+	if j := strings.IndexByte(rest, '.'); j >= 0 {
+		precision, _ = strconv.Atoi(rest[j+1:]) // "." alone is 0, as in C
+		rest = rest[:j]
+	}
+	width, _ := strconv.Atoi(rest)
+	s := strconv.FormatFloat(math.Abs(n), 'x', precision, 64) // such as 0x1.8p+01
+	p := strings.IndexByte(s, 'p')
+	exponent := strings.TrimLeft(s[p+2:], "0")
+	if exponent == "" {
+		exponent = "0"
+	}
+	mantissa := s[:p]
+	if strings.Contains(flags, "#") && !strings.Contains(mantissa, ".") {
+		mantissa += "."
+	}
+	s = mantissa + s[p:p+2] + exponent
+	if spec[len(spec)-1] == 'A' {
+		s = strings.ToUpper(s)
+	}
+	sign := ""
+	switch {
+	case math.Signbit(n):
+		sign = "-"
+	case strings.Contains(flags, "+"):
+		sign = "+"
+	case strings.Contains(flags, " "):
+		sign = " "
+	}
+	pad := width - len(sign) - len(s)
+	switch {
+	case pad <= 0:
+		return sign + s
+	case strings.Contains(flags, "-"):
+		return sign + s + strings.Repeat(" ", pad)
+	case strings.Contains(flags, "0"): // zeros after the 0x
+		return sign + s[:2] + strings.Repeat("0", pad) + s[2:]
+	}
+	return strings.Repeat(" ", pad) + sign + s
 }
 
 // changeCase flips the case of the letters from lo to hi in s. string.lower

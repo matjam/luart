@@ -122,6 +122,30 @@ func TestStringPatternErrors(t *testing.T) {
 	`)
 }
 
+// string.format's %a and %A write hexadecimal floats as glibc's printf
+// does, and an unknown option is an error naming it.
+func TestStringFormatHexFloat(t *testing.T) {
+	run(t, `
+		local function eq(want, ...)
+			local got = string.format(...)
+			assert(got == want, "got " .. got .. ", want " .. want)
+		end
+		eq("0x1p+0", "%a", 1)
+		eq("0x1p-1", "%a", 0.5)
+		eq("0X1.FFP+7", "%A", 255.5)
+		eq("0x1.55p-2", "%.2a", 1/3)
+		eq("-0x0p+0", "%a", -0.0)
+		eq("0x1.921fb54442d18p+1", "%a", math.pi)
+		eq("    0x1p+0", "%10a", 1)
+		eq("0x1p+0    |", "%-10a|", 1)
+		eq("0x0001p+0", "%09a", 1)
+		eq("+0x1p+0", "%+a", 1)
+		eq("inf", "%a", math.huge)
+		local ok, err = pcall(string.format, "%y", 1)
+		assert(not ok and err:find("invalid option '%y' to 'format'", 1, true), err)
+	`)
+}
+
 func TestStringDump(t *testing.T) {
 	run(t, `
 		local f = load(string.dump(function(a, b) return a * b + 1 end))
