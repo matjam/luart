@@ -10,7 +10,7 @@ func TestPushFStringPointer(t *testing.T) {
 	l.PushFString("%p %s", l, "test")
 
 	expected := fmt.Sprintf("%p %s", l, "test")
-	actual := CheckString(l, -1)
+	actual := l.CheckString(-1)
 	if expected != actual {
 		t.Errorf("PushFString, expected \"%s\" but found \"%s\"", expected, actual)
 	}

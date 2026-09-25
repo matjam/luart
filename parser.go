@@ -666,7 +666,7 @@ func (l *State) parse(r io.ByteReader, name string) *luaClosure {
 func (l *State) checkMode(mode, x string) {
 	if mode != "" && !strings.Contains(mode, x[:1]) {
 		l.push(stringValue(fmt.Sprintf("attempt to load a %s chunk (mode is '%s')", x, mode)))
-		l.throw(SyntaxError)
+		l.throw(ErrSyntax)
 	}
 }
 

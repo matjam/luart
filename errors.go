@@ -113,14 +113,14 @@ func (l *State) errorMessage() {
 	if l.errorFunction != 0 { // is there an error handling function?
 		errorFunction := l.stack[l.errorFunction]
 		if !errorFunction.isFunction() {
-			l.throw(ErrorError)
+			l.throw(ErrErrorHandler)
 		}
 		l.stack[l.top] = l.stack[l.top-1] // move argument
 		l.stack[l.top-1] = errorFunction  // push function
 		l.top++
 		l.call(l.top-2, 1, false)
 	}
-	l.throw(RuntimeError(CheckString(l, -1)))
+	l.throw(RuntimeError(l.CheckString(-1)))
 }
 
 func chunkID(source string) string {

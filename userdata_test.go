@@ -37,18 +37,18 @@ func TestCheckUserDataGeneric(t *testing.T) {
 	}{
 		{"named userdata holding T", func(l *State) {
 			l.PushUserData(&point{3, 4})
-			SetMetaTableNamed(l, "point")
+			l.SetMetaTableNamed("point")
 		}, false},
 		{"named userdata holding other type", func(l *State) {
 			l.PushUserData("nope")
-			SetMetaTableNamed(l, "point")
+			l.SetMetaTableNamed("point")
 		}, true},
 		{"unnamed userdata", func(l *State) { l.PushUserData(&point{3, 4}) }, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			l := NewState()
-			NewMetaTable(l, "point")
+			l.NewMetaTable("point")
 			l.Pop(1)
 			var got *point
 			l.PushGoFunction(func(l *State) int {

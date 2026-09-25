@@ -51,14 +51,14 @@ func (h sortHelper) Less(i, j int) bool {
 
 var tableLibrary = []RegistryFunction{
 	{"concat", func(l *State) int {
-		CheckType(l, 1, TypeTable)
-		sep := OptString(l, 2, "")
-		i := OptInteger(l, 3, 1)
+		l.CheckType(1, TypeTable)
+		sep := l.OptString(2, "")
+		i := l.OptInteger(3, 1)
 		var last int
 		if l.IsNoneOrNil(4) {
-			last = LengthEx(l, 1)
+			last = l.Len(1)
 		} else {
-			last = CheckInteger(l, 4)
+			last = l.CheckInteger(4)
 		}
 		var s strings.Builder
 		addField := func() {
@@ -66,7 +66,7 @@ var tableLibrary = []RegistryFunction{
 			if str, ok := l.ToString(-1); ok {
 				s.WriteString(str)
 			} else {
-				Errorf(l, fmt.Sprintf("invalid value (%s) at index %d in table for 'concat'", TypeNameOf(l, -1), i))
+				l.Errorf(fmt.Sprintf("invalid value (%s) at index %d in table for 'concat'", l.TypeName(-1), i))
 			}
 			l.Pop(1)
 		}
@@ -81,21 +81,21 @@ var tableLibrary = []RegistryFunction{
 		return 1
 	}},
 	{"insert", func(l *State) int {
-		CheckType(l, 1, TypeTable)
-		e := LengthEx(l, 1) + 1 // First empty element.
+		l.CheckType(1, TypeTable)
+		e := l.Len(1) + 1 // First empty element.
 		switch l.Top() {
 		case 2:
 			l.RawSetInt(1, e) // Insert new element at the end.
 		case 3:
-			pos := CheckInteger(l, 2)
-			ArgumentCheck(l, 1 <= pos && pos <= e, 2, "position out of bounds")
+			pos := l.CheckInteger(2)
+			l.ArgumentCheck(1 <= pos && pos <= e, 2, "position out of bounds")
 			for i := e; i > pos; i-- {
 				l.RawGetInt(1, i-1)
 				l.RawSetInt(1, i) // t[i] = t[i-1]
 			}
 			l.RawSetInt(1, pos) // t[pos] = v
 		default:
-			Errorf(l, "wrong number of arguments to 'insert'")
+			l.Errorf("wrong number of arguments to 'insert'")
 		}
 		return 0
 	}},
@@ -115,20 +115,20 @@ var tableLibrary = []RegistryFunction{
 		return 1
 	}},
 	{"unpack", func(l *State) int {
-		CheckType(l, 1, TypeTable)
-		i := OptInteger(l, 2, 1)
+		l.CheckType(1, TypeTable)
+		i := l.OptInteger(2, 1)
 		var e int
 		if l.IsNoneOrNil(3) {
-			e = LengthEx(l, 1)
+			e = l.Len(1)
 		} else {
-			e = CheckInteger(l, 3)
+			e = l.CheckInteger(3)
 		}
 		if i > e {
 			return 0
 		}
 		n := e - i + 1
 		if n <= 0 || !l.CheckStack(n) {
-			Errorf(l, "too many results to unpack")
+			l.Errorf("too many results to unpack")
 			panic("unreachable")
 		}
 		for l.RawGetInt(1, i); i < e; i++ {
@@ -137,11 +137,11 @@ var tableLibrary = []RegistryFunction{
 		return n
 	}},
 	{"remove", func(l *State) int {
-		CheckType(l, 1, TypeTable)
-		size := LengthEx(l, 1)
-		pos := OptInteger(l, 2, size)
+		l.CheckType(1, TypeTable)
+		size := l.Len(1)
+		pos := l.OptInteger(2, size)
 		if pos != size {
-			ArgumentCheck(l, 1 <= pos && pos <= size+1, 2, "position out of bounds")
+			l.ArgumentCheck(1 <= pos && pos <= size+1, 2, "position out of bounds")
 		}
 		for l.RawGetInt(1, pos); pos < size; pos++ {
 			l.RawGetInt(1, pos+1)
@@ -152,11 +152,11 @@ var tableLibrary = []RegistryFunction{
 		return 1
 	}},
 	{"sort", func(l *State) int {
-		CheckType(l, 1, TypeTable)
-		n := LengthEx(l, 1)
+		l.CheckType(1, TypeTable)
+		n := l.Len(1)
 		hasFunction := !l.IsNoneOrNil(2)
 		if hasFunction {
-			CheckType(l, 2, TypeFunction)
+			l.CheckType(2, TypeFunction)
 		}
 		l.SetTop(2)
 		h := sortHelper{l: l, t: l.indexToValue(1).table(), n: n, hasFunction: hasFunction}
@@ -166,7 +166,7 @@ var tableLibrary = []RegistryFunction{
 		sort.Sort(h)
 		// Check result is sorted.
 		if n > 0 && h.Less(n-1, 0) {
-			Errorf(l, "invalid order function for sorting")
+			l.Errorf("invalid order function for sorting")
 		}
 		return 0
 	}},
@@ -174,6 +174,6 @@ var tableLibrary = []RegistryFunction{
 
 // TableOpen opens the table library. Usually passed to Require.
 func TableOpen(l *State) int {
-	NewLibrary(l, tableLibrary)
+	l.NewLibrary(tableLibrary)
 	return 1
 }

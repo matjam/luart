@@ -27,9 +27,9 @@ func testNoPanicString(t *testing.T, s string) {
 func testStringHelper(t *testing.T, s string, trace bool) {
 	l := NewState()
 	OpenLibraries(l)
-	LoadString(l, s)
+	l.LoadString(s)
 	if trace {
-		SetDebugHook(l, func(state *State, ar Debug) {
+		l.SetHook(func(state *State, ar Debug) {
 			ci := state.callInfo
 			p := state.prototype(ci)
 			println(stack(state.stack[ci.base():state.top]))
@@ -42,12 +42,12 @@ func testStringHelper(t *testing.T, s string, trace bool) {
 func TestProtectedCall(t *testing.T) {
 	l := NewState()
 	OpenLibraries(l)
-	SetDebugHook(l, func(state *State, ar Debug) {
+	l.SetHook(func(state *State, ar Debug) {
 		ci := state.callInfo
 		_ = stack(state.stack[ci.base():state.top])
 		_ = ci.code[ci.savedPC-1].String()
 	}, MaskCount, 1)
-	LoadString(l, "assert(not pcall(bit32.band, {}))")
+	l.LoadString("assert(not pcall(bit32.band, {}))")
 	l.Call(0, 0)
 }
 
@@ -106,7 +106,7 @@ func TestLua(t *testing.T) {
 		l.Field(-1, "traceback")
 		traceback := l.Top()
 		// t.Logf("%#v", l.ToValue(traceback))
-		if err := LoadFile(l, filepath.Join("lua-tests", v.name+".lua"), "text"); err != nil {
+		if err := l.LoadFile(filepath.Join("lua-tests", v.name+".lua"), "text"); err != nil {
 			t.Errorf("'%s' failed: %s", v.name, err.Error())
 		}
 		// l.Call(0, 0)
@@ -123,11 +123,11 @@ func benchmarkSort(b *testing.B, program string) {
 		for i=1,%d do
 			a[i] = math.random()
 		end`
-	LoadString(l, fmt.Sprintf(s, b.N))
+	l.LoadString(fmt.Sprintf(s, b.N))
 	if err := l.ProtectedCall(0, 0, 0); err != nil {
 		b.Error(err.Error())
 	}
-	LoadString(l, program)
+	l.LoadString(program)
 	b.ResetTimer()
 	if err := l.ProtectedCall(0, 0, 0); err != nil {
 		b.Error(err.Error())
@@ -155,7 +155,7 @@ func BenchmarkFibonnaci(b *testing.B) {
 			end
 			return n1
 		end`
-	LoadString(l, s)
+	l.LoadString(s)
 	if err := l.ProtectedCall(0, 1, 0); err != nil {
 		b.Error(err.Error())
 	}
@@ -236,7 +236,7 @@ func TestTableUserdataEquality(t *testing.T) {
 
 	l := NewState()
 	OpenLibraries(l)
-	LoadString(l, s)
+	l.LoadString(s)
 	if err := l.ProtectedCall(0, 1, 0); err != nil {
 		t.Error(err.Error())
 	}
@@ -256,7 +256,7 @@ func TestUserDataEqualityNil(t *testing.T) {
 
 	l := NewState()
 	OpenLibraries(l)
-	LoadString(l, s)
+	l.LoadString(s)
 	if err := l.ProtectedCall(0, 1, 0); err != nil {
 		t.Error(err.Error())
 	}
@@ -284,12 +284,12 @@ func TestTableNext(t *testing.T) {
 		l.PushValue(-1)
 		l.SetTable(-3)
 	}
-	if length := LengthEx(l, -1); length != 4 {
+	if length := l.Len(-1); length != 4 {
 		t.Errorf("expected table length to be 4, but was %d", length)
 	}
 	count := 0
 	for l.PushNil(); l.Next(-2); count++ {
-		if k, v := CheckInteger(l, -2), CheckInteger(l, -1); k != v {
+		if k, v := l.CheckInteger(-2), l.CheckInteger(-1); k != v {
 			t.Errorf("key %d != value %d", k, v)
 		}
 		l.Pop(1)
@@ -308,14 +308,14 @@ func TestError(t *testing.T) {
 		if l.Top() == 0 {
 			t.Error("error handler received no arguments")
 		} else if errorMessage, ok := l.ToString(-1); !ok {
-			t.Errorf("error handler received %s instead of string", TypeNameOf(l, -1))
+			t.Errorf("error handler received %s instead of string", l.TypeName(-1))
 		} else if errorMessage != chunkID(program)+":1: error" {
 			t.Errorf("error handler received '%s' instead of 'error'", errorMessage)
 		}
 		errorHandled = true
 		return 1
 	})
-	LoadString(l, program)
+	l.LoadString(program)
 	l.ProtectedCall(0, 0, -2)
 	if !errorHandled {
 		t.Error("error not handled")
@@ -328,7 +328,7 @@ func TestErrorf(t *testing.T) {
 	program := "-- script that is bigger than the max ID size\nhelper()\n" + strings.Repeat("--", idSize)
 	expectedErrorMessage := chunkID(program) + ":2: error"
 	l.PushGoFunction(func(l *State) int {
-		Errorf(l, "error")
+		l.Errorf("error")
 		return 0
 	})
 	l.SetGlobal("helper")
@@ -337,14 +337,14 @@ func TestErrorf(t *testing.T) {
 		if l.Top() == 0 {
 			t.Error("error handler received no arguments")
 		} else if errorMessage, ok := l.ToString(-1); !ok {
-			t.Errorf("error handler received %s instead of string", TypeNameOf(l, -1))
+			t.Errorf("error handler received %s instead of string", l.TypeName(-1))
 		} else if errorMessage != expectedErrorMessage {
 			t.Errorf("error handler received '%s' instead of '%s'", errorMessage, expectedErrorMessage)
 		}
 		errorHandled = true
 		return 1
 	})
-	LoadString(l, program)
+	l.LoadString(program)
 	l.ProtectedCall(0, 0, -2)
 	if !errorHandled {
 		t.Error("error not handled")
@@ -401,7 +401,7 @@ func TestConcurrentNext(t *testing.T) {
 func TestLocIsCorrectOnRegisteredFuncCall(t *testing.T) {
 	l := NewState()
 	l.Register("barf", func(l *State) int {
-		Errorf(l, "Boom!")
+		l.Errorf("Boom!")
 		return 0
 	})
 	if err := l.Load(strings.NewReader(`

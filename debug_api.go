@@ -1,8 +1,8 @@
 package luart
 
-// A Frame is a token representing an activation record. It is returned by
-// Stack and passed to Info.
-type Frame *callInfo
+// A Frame identifies an activation record. It is returned by State.Frame and
+// passed to State.Info; its zero value identifies none.
+type Frame struct{ ci *callInfo }
 
 func (l *State) resetHookCount() { l.hookCount = l.baseHookCount }
 
@@ -14,7 +14,7 @@ func (l *State) currentLine(ci *callInfo) int {
 	return int(l.prototype(ci).lineInfo[ci.savedPC-1])
 }
 
-// SetDebugHook sets the debugging hook function.
+// SetHook sets the debugging hook function.
 //
 // f is the hook function. mask specifies on which events the hook will be
 // called: it is formed by a bitwise or of the constants MaskCall, MaskReturn,
@@ -39,7 +39,7 @@ func (l *State) currentLine(ci *callInfo) int {
 // function.)
 //
 // A hook is disabled by setting mask to zero.
-func SetDebugHook(l *State, f Hook, mask byte, count int) {
+func (l *State) SetHook(f Hook, mask byte, count int) {
 	if f == nil || mask == 0 {
 		f, mask = nil, 0
 	}
@@ -52,16 +52,16 @@ func SetDebugHook(l *State, f Hook, mask byte, count int) {
 	l.internalHook = false
 }
 
-// DebugHook returns the current hook function.
-func DebugHook(l *State) Hook { return l.hooker }
+// Hook returns the current hook function.
+func (l *State) Hook() Hook { return l.hooker }
 
-// DebugHookMask returns the current hook mask.
-func DebugHookMask(l *State) byte { return l.hookMask }
+// HookMask returns the current hook mask.
+func (l *State) HookMask() byte { return l.hookMask }
 
-// DebugHookCount returns the current hook count.
-func DebugHookCount(l *State) int { return l.hookCount }
+// HookCount returns the current hook count.
+func (l *State) HookCount() int { return l.hookCount }
 
-// Stack gets information about the interpreter runtime stack.
+// Frame gets information about the interpreter runtime stack.
 //
 // It returns a Frame identifying the activation record of the
 // function executing at a given level. Level 0 is the current running
@@ -69,7 +69,7 @@ func DebugHookCount(l *State) int { return l.hookCount }
 // for tail calls, which do not count on the stack). When there are no errors,
 // Stack returns true; when called with a level greater than the stack depth,
 // it returns false.
-func Stack(l *State, level int) (f Frame, ok bool) {
+func (l *State) Frame(level int) (f Frame, ok bool) {
 	if level < 0 {
 		return // invalid (negative) level
 	}
@@ -77,7 +77,7 @@ func Stack(l *State, level int) (f Frame, ok bool) {
 	for ; level > 0 && callInfo != &l.baseCallInfo; level, callInfo = level-1, callInfo.previous {
 	}
 	if level == 0 && callInfo != &l.baseCallInfo { // level found?
-		f, ok = callInfo, true
+		f, ok = Frame{callInfo}, true
 	}
 	return
 }
@@ -174,7 +174,7 @@ func (l *State) collectValidLines(f closure) {
 // a function f was defined, you can write the following code:
 //
 //	l.Global("f") // Get global 'f'.
-//	d, _ := lua.Info(l, ">S", nil)
+//	d, _ := l.Info(">S", Frame{})
 //	fmt.Printf("%d\n", d.LineDefined)
 //
 // Each character in the string what selects some fields of the Debug struct
@@ -192,7 +192,8 @@ func (l *State) collectValidLines(f closure) {
 // can put a break point. Non-valid lines include empty lines and comments.)
 //
 // This function returns false on error (for instance, an invalid option in what).
-func Info(l *State, what string, where Frame) (d Debug, ok bool) {
+func (l *State) Info(what string, frame Frame) (d Debug, ok bool) {
+	where := frame.ci
 	var f closure
 	var fun value
 	if what[0] == '>' {

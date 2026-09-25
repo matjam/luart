@@ -17,7 +17,7 @@ func TestObjectAllocations(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			l := NewState()
 			OpenLibraries(l)
-			if err := DoString(l, tt.src); err != nil {
+			if err := l.DoString(tt.src); err != nil {
 				t.Fatal(err)
 			}
 			run := func() {
@@ -54,7 +54,7 @@ func TestNumericFrameDoesNotAllocate(t *testing.T) {
 		    end
 		  end
 		end`
-	if err := DoString(l, src); err != nil {
+	if err := l.DoString(src); err != nil {
 		t.Fatal(err)
 	}
 	frame := func() {

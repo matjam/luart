@@ -188,7 +188,7 @@ func newSuiteLuart(tb testing.TB, src string, options ...luart.Option) *luart.St
 		setClipped(x, y, v)
 		return 0
 	})
-	if err := luart.DoString(l, src); err != nil {
+	if err := l.DoString(src); err != nil {
 		tb.Fatal(err)
 	}
 	return l

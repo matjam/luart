@@ -18,12 +18,6 @@ type Option func(*State)
 // Setting the environment variable LUART_JIT=off disables compilation for
 // every State.
 
-// WithJIT turns the JIT on. It is on by default; WithJIT remains for code
-// written when it was not.
-func WithJIT() Option {
-	return func(l *State) { l.global.jit = jitSupported && !jitDisabled }
-}
-
 // WithoutJIT turns the JIT off, so the State only interprets.
 func WithoutJIT() Option {
 	return func(l *State) { l.global.jit = false }

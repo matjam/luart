@@ -64,7 +64,7 @@ func TestDumpThenUndumpReturnsTheSameFunction(t *testing.T) {
 	}
 	source := filepath.Join("lua-tests", "checktable.lua")
 	l := NewState()
-	err = LoadFile(l, source, "")
+	err = l.LoadFile(source, "")
 	if err != nil {
 		t.Error("unexpected error", err, "with loading file", source)
 	}

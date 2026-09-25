@@ -34,7 +34,7 @@ func TestErrorPositions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			l := NewState()
 			OpenLibraries(l)
-			err := DoString(l, tt.src)
+			err := l.DoString(tt.src)
 			if err == nil {
 				t.Fatal("no error")
 			}
@@ -49,11 +49,11 @@ func TestLineHook(t *testing.T) {
 	l := NewState()
 	OpenLibraries(l)
 	var lines []int
-	SetDebugHook(l, func(l *State, ar Debug) {
+	l.SetHook(func(l *State, ar Debug) {
 		lines = append(lines, ar.CurrentLine)
 	}, MaskLine, 0)
 	src := "local x = 1\nfor i = 1, 2 do\n  x = x + math.abs(i)\nend\nreturn x"
-	if err := DoString(l, src); err != nil {
+	if err := l.DoString(src); err != nil {
 		t.Fatal(err)
 	}
 	want := []int{1, 2, 3, 2, 3, 2, 5}
@@ -72,7 +72,7 @@ func TestCallAndReturnHooksSeeLuaCalls(t *testing.T) {
 	l := NewState()
 	OpenLibraries(l)
 	calls, returns := 0, 0
-	SetDebugHook(l, func(l *State, ar Debug) {
+	l.SetHook(func(l *State, ar Debug) {
 		switch ar.Event {
 		case HookCall:
 			calls++
@@ -81,7 +81,7 @@ func TestCallAndReturnHooksSeeLuaCalls(t *testing.T) {
 		}
 	}, MaskCall|MaskReturn, 0)
 	src := "local function f(n) if n == 0 then return 0 end return f(n - 1) + 1 end\nlocal r = f(5)"
-	if err := DoString(l, src); err != nil {
+	if err := l.DoString(src); err != nil {
 		t.Fatal(err)
 	}
 	// The chunk and six calls of f.
@@ -96,7 +96,7 @@ func TestTraceback(t *testing.T) {
 	src := "local function inner()\n  error('deep')\nend\nlocal function outer()\n  inner()\nend\nouter()"
 	l.Global("debug")
 	l.Field(-1, "traceback")
-	if err := LoadString(l, src); err != nil {
+	if err := l.LoadString(src); err != nil {
 		t.Fatal(err)
 	}
 	if err := l.ProtectedCall(0, 0, -2); err == nil {

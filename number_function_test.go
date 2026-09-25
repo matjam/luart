@@ -41,7 +41,7 @@ func TestNumberFunction(t *testing.T) {
 				l.PushNumber(v)
 				l.SetGlobal("last")
 			})
-			if err := DoString(l, tt.src); err != nil {
+			if err := l.DoString(tt.src); err != nil {
 				t.Fatal(err)
 			}
 		})
@@ -53,8 +53,8 @@ func TestNumberFunctionDuringCallHook(t *testing.T) {
 	OpenLibraries(l)
 	calls := 0
 	l.RegisterNumberFunction("add", func(a, b float64) float64 { return a + b })
-	SetDebugHook(l, func(l *State, ar Debug) { calls++ }, MaskCall, 0)
-	if err := DoString(l, `assert(add(1, 2) == 3)`); err != nil {
+	l.SetHook(func(l *State, ar Debug) { calls++ }, MaskCall, 0)
+	if err := l.DoString(`assert(add(1, 2) == 3)`); err != nil {
 		t.Fatal(err)
 	}
 	// The chunk, add and assert each report a call.

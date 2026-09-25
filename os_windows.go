@@ -1,6 +1,6 @@
 package luart
 
 func clock(l *State) int {
-	Errorf(l, "os.clock not yet supported on Windows")
+	l.Errorf("os.clock not yet supported on Windows")
 	panic("unreachable")
 }

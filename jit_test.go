@@ -58,7 +58,7 @@ func runBothWith(t *testing.T, src string, setup func(*State)) (jit, interp stri
 	jitThreshold = 0
 	defer func() { jitThreshold = saved }()
 	result := func(l *State) string {
-		if err := DoString(l, src); err != nil {
+		if err := l.DoString(src); err != nil {
 			t.Fatal(err)
 		}
 		l.Global("run")
@@ -73,7 +73,7 @@ func runBothWith(t *testing.T, src string, setup func(*State)) (jit, interp stri
 		}
 		return strings.Join(parts, ",")
 	}
-	lj = NewState(WithJIT())
+	lj = NewState()
 	OpenLibraries(lj)
 	setup(lj)
 	jit = result(lj)
@@ -289,11 +289,11 @@ func TestJITHookSetFromGo(t *testing.T) {
 		jit, interp, _ := runBothWith(t, src, func(l *State) {
 			count := 0
 			l.Register("hookon", func(l *State) int {
-				SetDebugHook(l, func(*State, Debug) { count++ }, mask, 1)
+				l.SetHook(func(*State, Debug) { count++ }, mask, 1)
 				return 0
 			})
 			l.Register("hooks", func(l *State) int {
-				SetDebugHook(l, nil, 0, 0)
+				l.SetHook(nil, 0, 0)
 				l.PushInteger(count)
 				return 1
 			})
@@ -350,7 +350,7 @@ func TestJITGoCallExits(t *testing.T) {
 		})
 		l.Register("fail", func(l *State) int {
 			if n, _ := l.ToNumber(1); int(n)%7 == 0 {
-				Errorf(l, "fail %d", int(n))
+				l.Errorf("fail %d", int(n))
 			}
 			return 0
 		})
@@ -436,8 +436,8 @@ func TestJITStackGrowsInGoCall(t *testing.T) {
 	end`
 	jit, interp, _ := runBothWith(t, src, func(l *State) {
 		l.Register("grow", func(l *State) int {
-			n := CheckInteger(l, 1)
-			CheckStackWithMessage(l, n, "grow")
+			n := l.CheckInteger(1)
+			l.CheckStackWithMessage(n, "grow")
 			for range n {
 				l.PushNil()
 			}
@@ -468,12 +468,12 @@ func TestJITTrigMatchesGo(t *testing.T) {
 	saved := jitThreshold
 	jitThreshold = 0
 	defer func() { jitThreshold = saved }()
-	l := NewState(WithJIT())
+	l := NewState()
 	OpenLibraries(l)
 	var bad int
-	l.Register("x", func(l *State) int { l.PushNumber(xs[CheckInteger(l, 1)-1]); return 1 })
+	l.Register("x", func(l *State) int { l.PushNumber(xs[l.CheckInteger(1)-1]); return 1 })
 	l.Register("check", func(l *State) int {
-		x, s, c := CheckNumber(l, 1), CheckNumber(l, 2), CheckNumber(l, 3)
+		x, s, c := l.CheckNumber(1), l.CheckNumber(2), l.CheckNumber(3)
 		if math.Float64bits(s) != math.Float64bits(math.Sin(x)) || math.Float64bits(c) != math.Float64bits(math.Cos(x)) {
 			if bad++; bad < 5 {
 				t.Errorf("x %v (%#x): sin %v, want %v; cos %v, want %v", x, math.Float64bits(x), s, math.Sin(x), c, math.Cos(x))
@@ -483,7 +483,7 @@ func TestJITTrigMatchesGo(t *testing.T) {
 	})
 	src := fmt.Sprintf(`local sin, cos = math.sin, math.cos
 		for i = 1, %d do local v = x(i); check(v, sin(v), cos(v)) end`, len(xs))
-	if err := DoString(l, src); err != nil {
+	if err := l.DoString(src); err != nil {
 		t.Fatal(err)
 	}
 	if bad > 0 {

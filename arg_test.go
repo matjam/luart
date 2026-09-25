@@ -37,7 +37,7 @@ func TestArg(t *testing.T) {
 				}
 				return 0
 			})
-			err := DoString(l, tt.call)
+			err := l.DoString(tt.call)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("err = %v, want %q", err, tt.wantErr)

@@ -10,7 +10,7 @@ import (
 )
 
 func load(l *State, t *testing.T, fileName string) *luaClosure {
-	if err := LoadFile(l, fileName, "bt"); err != nil {
+	if err := l.LoadFile(fileName, "bt"); err != nil {
 		return nil
 	}
 	return l.ToValue(-1).(*luaClosure)
@@ -39,7 +39,7 @@ func TestParser(t *testing.T) {
 
 func TestEmptyString(t *testing.T) {
 	l := NewState()
-	if err := LoadString(l, ""); err != nil {
+	if err := l.LoadString(""); err != nil {
 		t.Fatal(err.Error())
 	}
 	l.Call(0, 0)

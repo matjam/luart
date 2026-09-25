@@ -17,7 +17,7 @@ func newLuart(b *testing.B, src string, options ...luart.Option) *luart.State {
 		set(int(x), int(y), v)
 		return 0
 	})
-	if err := luart.DoString(l, src); err != nil {
+	if err := l.DoString(src); err != nil {
 		b.Fatal(err)
 	}
 	return l

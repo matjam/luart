@@ -13,11 +13,11 @@ func (l *State) Arg[T ArgType](index int) T {
 	var r T
 	switch p := any(&r).(type) {
 	case *float64:
-		*p = CheckNumber(l, index)
+		*p = l.CheckNumber(index)
 	case *int:
-		*p = CheckInteger(l, index)
+		*p = l.CheckInteger(index)
 	case *string:
-		*p = CheckString(l, index)
+		*p = l.CheckString(index)
 	case *bool:
 		*p = l.ToBoolean(index)
 	}

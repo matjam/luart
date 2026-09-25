@@ -16,12 +16,12 @@ type stream struct {
 	close Function
 }
 
-func toStream(l *State) *stream { return CheckUserData(l, 1, fileHandle).(*stream) }
+func toStream(l *State) *stream { return l.CheckUserData[*stream](1, fileHandle) }
 
 func toFile(l *State) *os.File {
 	s := toStream(l)
 	if s.close == nil {
-		Errorf(l, "attempt to use a closed file")
+		l.Errorf("attempt to use a closed file")
 	}
 	l.assert(s.f != nil)
 	return s.f
@@ -30,19 +30,19 @@ func toFile(l *State) *os.File {
 func newStream(l *State, f *os.File, close Function) *stream {
 	s := &stream{f: f, close: close}
 	l.PushUserData(s)
-	SetMetaTableNamed(l, fileHandle)
+	l.SetMetaTableNamed(fileHandle)
 	return s
 }
 
 func newFile(l *State) *stream {
-	return newStream(l, nil, func(l *State) int { return FileResult(l, toStream(l).f.Close(), "") })
+	return newStream(l, nil, func(l *State) int { return l.FileResult(toStream(l).f.Close(), "") })
 }
 
 func ioFile(l *State, name string) *os.File {
 	l.Field(RegistryIndex, name)
 	s := l.ToUserData(-1).(*stream)
 	if s.close == nil {
-		Errorf(l, fmt.Sprintf("standard %s file is closed", name[len("_IO_"):]))
+		l.Errorf(fmt.Sprintf("standard %s file is closed", name[len("_IO_"):]))
 	}
 	return s.f
 }
@@ -54,7 +54,7 @@ func forceOpen(l *State, name, mode string) {
 		s.f, err = os.OpenFile(name, flags, 0666)
 	}
 	if err != nil {
-		Errorf(l, fmt.Sprintf("cannot open file '%s' (%s)", name, err.Error()))
+		l.Errorf(fmt.Sprintf("cannot open file '%s' (%s)", name, err.Error()))
 	}
 }
 
@@ -95,13 +95,13 @@ func write(l *State, f *os.File, argIndex int) int {
 		if n, ok := l.ToNumber(argIndex); ok {
 			_, err = f.WriteString(numberToString(n))
 		} else {
-			_, err = f.WriteString(CheckString(l, argIndex))
+			_, err = f.WriteString(l.CheckString(argIndex))
 		}
 	}
 	if err == nil {
 		return 1
 	}
-	return FileResult(l, err, "")
+	return l.FileResult(err, "")
 }
 
 func readNumber(l *State, f *os.File) (err error) {
@@ -124,7 +124,7 @@ func read(l *State, f *os.File, argIndex int) int {
 		// TODO
 	}
 	if err != nil {
-		return FileResult(l, err, "")
+		return l.FileResult(err, "")
 	}
 	if err == io.EOF {
 		l.Pop(1)
@@ -137,7 +137,7 @@ func readLine(l *State) int {
 	s := l.ToUserData(UpValueIndex(1)).(*stream)
 	argCount, _ := l.ToInteger(UpValueIndex(2))
 	if s.close == nil {
-		Errorf(l, "file is already closed")
+		l.Errorf("file is already closed")
 	}
 	l.SetTop(1)
 	for i := 1; i <= argCount; i++ {
@@ -150,7 +150,7 @@ func readLine(l *State) int {
 	}
 	if resultCount > 1 {
 		m, _ := l.ToString(-resultCount + 1)
-		Errorf(l, m)
+		l.Errorf(m)
 	}
 	if l.ToBoolean(UpValueIndex(3)) {
 		l.SetTop(0)
@@ -162,7 +162,7 @@ func readLine(l *State) int {
 
 func lines(l *State, shouldClose bool) {
 	argCount := l.Top() - 1
-	ArgumentCheck(l, argCount <= MinStack-3, MinStack-3, "too many options")
+	l.ArgumentCheck(argCount <= MinStack-3, MinStack-3, "too many options")
 	l.PushValue(1)
 	l.PushInteger(argCount)
 	l.PushBoolean(shouldClose)
@@ -197,7 +197,7 @@ func flags(m string) (f int, err error) {
 
 var ioLibrary = []RegistryFunction{
 	{"close", close},
-	{"flush", func(l *State) int { return FileResult(l, ioFile(l, output).Sync(), "") }},
+	{"flush", func(l *State) int { return l.FileResult(ioFile(l, output).Sync(), "") }},
 	{"input", ioFileHelper(input, "r")},
 	{"lines", func(l *State) int {
 		if l.IsNone(1) {
@@ -209,25 +209,25 @@ var ioLibrary = []RegistryFunction{
 			toFile(l)
 			lines(l, false)
 		} else {
-			forceOpen(l, CheckString(l, 1), "r")
+			forceOpen(l, l.CheckString(1), "r")
 			l.Replace(1)
 			lines(l, true)
 		}
 		return 1
 	}},
 	{"open", func(l *State) int {
-		name := CheckString(l, 1)
-		flags, err := flags(OptString(l, 2, "r"))
+		name := l.CheckString(1)
+		flags, err := flags(l.OptString(2, "r"))
 		s := newFile(l)
-		ArgumentCheck(l, err == nil, 2, "invalid mode")
+		l.ArgumentCheck(err == nil, 2, "invalid mode")
 		s.f, err = os.OpenFile(name, flags, 0666)
 		if err == nil {
 			return 1
 		}
-		return FileResult(l, err, name)
+		return l.FileResult(err, name)
 	}},
 	{"output", ioFileHelper(output, "w")},
-	{"popen", func(l *State) int { Errorf(l, "'popen' not supported"); panic("unreachable") }},
+	{"popen", func(l *State) int { l.Errorf("'popen' not supported"); panic("unreachable") }},
 	{"read", func(l *State) int { return read(l, ioFile(l, input), 1) }},
 	{"tmpfile", func(l *State) int {
 		s := newFile(l)
@@ -236,11 +236,11 @@ var ioLibrary = []RegistryFunction{
 			s.f = f
 			return 1
 		}
-		return FileResult(l, err, "")
+		return l.FileResult(err, "")
 	}},
 	{"type", func(l *State) int {
-		CheckAny(l, 1)
-		if f, ok := TestUserData(l, 1, fileHandle).(*stream); !ok {
+		l.CheckAny(1)
+		if f, ok := l.TestUserData(1, fileHandle).(*stream); !ok {
 			l.PushNil()
 		} else if f.close == nil {
 			l.PushString("closed file")
@@ -254,19 +254,19 @@ var ioLibrary = []RegistryFunction{
 
 var fileHandleMethods = []RegistryFunction{
 	{"close", close},
-	{"flush", func(l *State) int { return FileResult(l, toFile(l).Sync(), "") }},
+	{"flush", func(l *State) int { return l.FileResult(toFile(l).Sync(), "") }},
 	{"lines", func(l *State) int { toFile(l); lines(l, false); return 1 }},
 	{"read", func(l *State) int { return read(l, toFile(l), 2) }},
 	{"seek", func(l *State) int {
 		whence := []int{os.SEEK_SET, os.SEEK_CUR, os.SEEK_END}
 		f := toFile(l)
-		op := CheckOption(l, 2, "cur", []string{"set", "cur", "end"})
-		p3 := OptNumber(l, 3, 0)
+		op := l.CheckOption(2, "cur", []string{"set", "cur", "end"})
+		p3 := l.OptNumber(3, 0)
 		offset := int64(p3)
-		ArgumentCheck(l, float64(offset) == p3, 3, "not an integer in proper range")
+		l.ArgumentCheck(float64(offset) == p3, 3, "not an integer in proper range")
 		ret, err := f.Seek(offset, whence[op])
 		if err != nil {
-			return FileResult(l, err, "")
+			return l.FileResult(err, "")
 		}
 		l.PushNumber(float64(ret))
 		return 1
@@ -276,7 +276,7 @@ var fileHandleMethods = []RegistryFunction{
 		//		op := CheckOption(l, 2, "", []string{"no", "full", "line"})
 		//		size := OptInteger(l, 3, 1024)
 		// TODO err := setvbuf(f, nil, mode[op], size)
-		return FileResult(l, nil, "")
+		return l.FileResult(nil, "")
 	}},
 	{"write", func(l *State) int { l.PushValue(1); return write(l, toFile(l), 2) }},
 	//	{"__gc", },
@@ -308,12 +308,12 @@ func registerStdFile(l *State, f *os.File, reg, name string) {
 
 // IOOpen opens the io library. Usually passed to Require.
 func IOOpen(l *State) int {
-	NewLibrary(l, ioLibrary)
+	l.NewLibrary(ioLibrary)
 
-	NewMetaTable(l, fileHandle)
+	l.NewMetaTable(fileHandle)
 	l.PushValue(-1)
 	l.SetField(-2, "__index")
-	SetFunctions(l, fileHandleMethods, 0)
+	l.SetFunctions(fileHandleMethods, 0)
 	l.Pop(1)
 
 	registerStdFile(l, os.Stdin, input, "stdin")

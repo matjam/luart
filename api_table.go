@@ -231,8 +231,8 @@ func (l *State) SetMetaTable(index int) {
 //	// Table is on top of the stack (index -1).
 //	l.PushNil() // Add nil entry on stack (need 2 free slots).
 //	for l.Next(-2) {
-//		key := lua.CheckString(l, -2)
-//		val := lua.CheckString(l, -1)
+//		key := l.CheckString(-2)
+//		val := l.CheckString(-1)
 //		l.Pop(1) // Remove val, but need key for the next iter.
 //	}
 //
