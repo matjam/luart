@@ -24,7 +24,7 @@ func field(l *lua.State, key string, def int) int {
 
 var osLibrary = []lua.RegistryFunction{
 	{Name: "clock", Function: clock},
-	// {"date", os_date},
+	{Name: "date", Function: osDate},
 	{Name: "difftime", Function: func(l *lua.State) int {
 		l.PushNumber(time.Unix(int64(l.CheckNumber(1)), 0).Sub(time.Unix(int64(l.OptNumber(2, 0)), 0)).Seconds())
 		return 1
@@ -108,24 +108,22 @@ var osLibrary = []lua.RegistryFunction{
 	{Name: "getenv", Function: func(l *lua.State) int { l.PushString(os.Getenv(l.CheckString(1))); return 1 }},
 	{Name: "remove", Function: func(l *lua.State) int { name := l.CheckString(1); return l.FileResult(os.Remove(name), name) }},
 	{Name: "rename", Function: func(l *lua.State) int { return l.FileResult(os.Rename(l.CheckString(1), l.CheckString(2)), "") }},
-	// {"setlocale", func(l *State) int {
-	// 	op := CheckOption(l, 2, "all", []string{"all", "collate", "ctype", "monetary", "numeric", "time"})
-	// 	l.PushString(setlocale([]int{LC_ALL, LC_COLLATE, LC_CTYPE, LC_MONETARY, LC_NUMERIC, LC_TIME}, OptString(l, 1, "")))
-	// 	return 1
-	// }},
+	{Name: "setlocale", Function: osSetlocale},
 	{Name: "time", Function: func(l *lua.State) int {
 		if l.IsNoneOrNil(1) {
 			l.PushNumber(float64(time.Now().Unix()))
 		} else {
 			l.CheckType(1, lua.TypeTable)
 			l.SetTop(1)
-			year := field(l, "year", -1) - 1900
-			month := field(l, "month", -1) - 1
-			day := field(l, "day", -1)
-			hour := field(l, "hour", 12)
-			min := field(l, "min", 0)
+			// In loslib.c's order, which decides which missing field an
+			// error names. Out-of-range fields normalise, as with mktime;
+			// isdst is not used: Go resolves the offset from the zone.
 			sec := field(l, "sec", 0)
-			// dst := boolField(l, "isdst") // TODO how to use dst?
+			min := field(l, "min", 0)
+			hour := field(l, "hour", 12)
+			day := field(l, "day", -1)
+			month := field(l, "month", -1)
+			year := field(l, "year", -1)
 			l.PushNumber(float64(time.Date(year, time.Month(month), day, hour, min, sec, 0, time.Local).Unix()))
 		}
 		return 1
