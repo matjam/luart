@@ -81,6 +81,12 @@ no-op.
     of a crossing's cost otherwise.
   - Anything else goes back to the interpreter. The interpreter reloads
     its frame from `l.callInfo` after every hand-over.
+  - When Go calls a compiled Lua function (`l.call`), `callJIT` runs it
+    with `runJIT` straight from `preCall`, without the interpreter. That
+    frame is `runJIT`'s `bottom`: at its RETURN, `jitReturnToGo` does the
+    interpreter's general return and `runJIT` reports that the call is
+    done. If compiled code stops anywhere else, `execute` carries on from
+    `l.callInfo`.
 - **Compilers:**
   - `jit_arm64*.go` and `jit_amd64*.go` are separate, with the same
     structure.
@@ -141,14 +147,14 @@ bench/README.md has full tables for Apple M1 Pro (arm64) and AMD Ryzen 9
 
 | Workload | luart | luart + JIT | Native Go |
 |---|---|---|---|
-| numeric loop | 8.45 ms | 1.17 ms | 0.78 ms |
-| fib(25) | 5.61 ms | 1.57 ms | 0.22 ms |
-| array fill and sum | 2.73 ms | 1.17 ms | 0.44 ms |
+| numeric loop | 8.66 ms | 1.00 ms | 0.77 ms |
+| fib(25) | 5.55 ms | 1.57 ms | 0.22 ms |
+| array fill and sum | 2.70 ms | 1.19 ms | 0.43 ms |
 | plasma frame | 1.35 ms | 0.82 ms | 0.29 ms |
 | particles frame | 0.25 ms | 0.10 ms | 0.005 ms |
-| closures | 5.32 ms | 4.72 ms | 0.22 ms |
-| sort with comparator | 4.97 ms | 5.55 ms | 1.28 ms |
-| calls into Go | 1.72 ms | 1.47 ms | 0.22 ms |
+| closures | 5.32 ms | 4.66 ms | 0.22 ms |
+| sort with comparator | 3.61 ms | 3.54 ms | 1.28 ms |
+| calls into Go | 1.74 ms | 1.47 ms | 0.22 ms |
 
 Apple M1 Pro, arm64, before the Go-call exit:
 
@@ -190,11 +196,14 @@ In order of expected payoff for real-time scripts such as visualisers:
      registers. Measure with go-calls.
 2. **Go calling compiled Lua** (the `table.sort` comparator, callbacks
    from host code).
-   - *Cost today:* each `l.Call` from Go enters the interpreter, reaches
-     pc 0's `opJITEnter`, and returns through the interpreter's slow
-     RETURN, because the frame is not a re-entry.
-   - *Fix:* let `call` (stack.go) enter a compiled prototype directly,
-     and give the driver a return path for frames called from Go.
+   - *Done:* `callJIT` and `jitReturnToGo`, and `table.sort` working on
+     the table and stack directly rather than through the API. Sort went
+     from 5.6 to 3.6 ms with the JIT, and 5.0 to 3.6 ms without it.
+   - *Left:* compiled code could run the RETURN of the frame Go called
+     itself, as `returnLua` does for re-entries. It would need a call
+     status bit on `callJIT`'s frame, cleared when the interpreter takes
+     over. `call` and `preCall` also still run their general cases for
+     every call.
 3. **Loop-invariant global and upvalue loads.**
    - *Cost today:* GETTABUP of a global (`set`, `math`) re-walks upvalue →
      table → shape → cache → slot every iteration.

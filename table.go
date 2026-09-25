@@ -6,9 +6,15 @@ import (
 	"strings"
 )
 
+// sortHelper sorts t[1..n] for table.sort. It works on the table and the
+// stack directly, as RawGetInt, RawSetInt, Call and Compare would: sort
+// calls Less and Swap n log n times, and resolving stack indices through
+// the API each time was most of the cost.
 type sortHelper struct {
 	l           *State
+	t           *table
 	n           int
+	function    value // the comparator, when hasFunction
 	hasFunction bool
 }
 
@@ -18,30 +24,29 @@ func (h sortHelper) Swap(i, j int) {
 	// Convert Go to Lua indices
 	i++
 	j++
-	h.l.RawGetInt(1, i)
-	h.l.RawGetInt(1, j)
-	h.l.RawSetInt(1, i)
-	h.l.RawSetInt(1, j)
+	vi, vj := h.t.atInt(i), h.t.atInt(j)
+	h.t.putAtInt(i, vj)
+	h.t.putAtInt(j, vi)
 }
 
 func (h sortHelper) Less(i, j int) bool {
 	// Convert Go to Lua indices
 	i++
 	j++
+	l := h.l
+	a, b := h.t.atInt(i), h.t.atInt(j)
 	if h.hasFunction {
-		h.l.PushValue(2)
-		h.l.RawGetInt(1, i)
-		h.l.RawGetInt(1, j)
-		h.l.Call(2, 1)
-		b := h.l.ToBoolean(-1)
-		h.l.Pop(1)
-		return b
+		f := l.top
+		l.stack[f], l.stack[f+1], l.stack[f+2] = h.function, a, b
+		l.top = f + 3
+		l.call(f, 1, false)
+		l.top--
+		return !isFalse(l.stack[l.top])
 	}
-	h.l.RawGetInt(1, i)
-	h.l.RawGetInt(1, j)
-	b := h.l.Compare(-2, -1, OpLT)
-	h.l.Pop(2)
-	return b
+	if a.isNil() || b.isNil() {
+		return false
+	}
+	return l.lessThan(a, b)
 }
 
 var tableLibrary = []RegistryFunction{
@@ -154,7 +159,10 @@ var tableLibrary = []RegistryFunction{
 			CheckType(l, 2, TypeFunction)
 		}
 		l.SetTop(2)
-		h := sortHelper{l, n, hasFunction}
+		h := sortHelper{l: l, t: l.indexToValue(1).table(), n: n, hasFunction: hasFunction}
+		if hasFunction {
+			h.function = l.indexToValue(2)
+		}
 		sort.Sort(h)
 		// Check result is sorted.
 		if n > 0 && h.Less(n-1, 0) {

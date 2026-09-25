@@ -375,7 +375,9 @@ func (l *State) call(function int, resultCount int, allowYield bool) {
 		l.nonYieldableCallCount++
 	}
 	if !l.preCall(function, resultCount) { // is a Lua function?
-		l.execute() // call it
+		if !l.global.jit || !l.callJIT() { // compiled code may run all of it
+			l.execute()
+		}
 	}
 	if !allowYield {
 		l.nonYieldableCallCount--

@@ -123,7 +123,7 @@ func (l *State) jitInstruction(i instruction, ip pc) (instruction, pc) {
 	if i.opCode() == opJITCount {
 		l.countJIT(ci.closure.prototype)
 	} else if l.hookMask == 0 {
-		l.runJIT(ci, ip-1)
+		l.runJIT(ci, ip-1, nil)
 		ci = l.callInfo
 		ip = ci.savedPC + 1
 		ci.savedPC = ip
@@ -266,10 +266,14 @@ func isExtraArg(code []instruction, ip int) bool {
 // the interpreter must run: that instruction's pc is left in the savedPC
 // of l.callInfo, which may now be another frame.
 //
+// bottom, when not nil, is a frame that Go called through l.call. runJIT
+// returns from it to Go itself, as the interpreter would, and then reports
+// true.
+//
 // c and p follow ci, and are reloaded only when ci changes: an exit for a
 // Go call comes back to the frame it left, and the chain of loads from ci
 // to its prototype would otherwise be repeated on every crossing.
-func (l *State) runJIT(ci *callInfo, ip pc) {
+func (l *State) runJIT(ci *callInfo, ip pc, bottom *callInfo) bool {
 	c := ci.closure
 	p := c.prototype
 	for {
@@ -311,7 +315,11 @@ func (l *State) runJIT(ci *callInfo, ip pc) {
 				continue
 			}
 		case opReturn:
-			if l.jitReturn(ci, i) {
+			if ci == bottom {
+				if l.jitReturnToGo(ci, p, i) {
+					return true
+				}
+			} else if l.jitReturn(ci, i) {
 				ci = l.callInfo
 				ip, c = ci.savedPC, ci.closure
 				p = c.prototype
@@ -332,6 +340,35 @@ func (l *State) runJIT(ci *callInfo, ip pc) {
 		break
 	}
 	ci.savedPC = ip
+	return false
+}
+
+// callJIT runs the Lua function that preCall has just entered for l.call,
+// if it is compiled. It reports whether the function has returned;
+// otherwise the interpreter goes on from the savedPC of l.callInfo.
+func (l *State) callJIT() bool {
+	ci := l.callInfo
+	if ci.closure.prototype.jit == nil || l.hookMask != 0 {
+		return false
+	}
+	return l.runJIT(ci, 0, ci)
+}
+
+// jitReturnToGo runs the RETURN i that compiled code exited at in ci, a
+// frame Go called running p, as the interpreter's general RETURN does. It
+// reports false, having changed nothing, when the results run up to
+// l.top, which compiled code does not track.
+func (l *State) jitReturnToGo(ci *callInfo, p *prototype, i instruction) bool {
+	a, b := i.a(), i.b()
+	if b == 0 {
+		return false
+	}
+	l.top = ci.stackIndex(a + b - 1)
+	if len(p.prototypes) > 0 {
+		l.close(ci.base())
+	}
+	l.postCall(ci.stackIndex(a))
+	return true
 }
 
 // jitSteps reports whether runJIT runs op itself when compiled code exits
