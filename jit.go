@@ -12,19 +12,27 @@ import (
 // An Option configures a State created by NewState.
 type Option func(*State)
 
-// WithJIT compiles hot Lua functions to machine code on platforms that
-// support it: linux and darwin on arm64 and amd64. Elsewhere it does
-// nothing. Compiled code runs only while no debug hook is set. Setting the
-// environment variable LUART_JIT=off disables it.
+// A new State compiles hot Lua functions to machine code on platforms that
+// support it: linux and darwin on arm64 and amd64. Elsewhere it
+// interprets them. Compiled code runs only while no debug hook is set.
+// Setting the environment variable LUART_JIT=off disables compilation for
+// every State.
+
+// WithJIT turns the JIT on. It is on by default; WithJIT remains for code
+// written when it was not.
 func WithJIT() Option {
 	return func(l *State) { l.global.jit = jitSupported && !jitDisabled }
 }
 
+// WithoutJIT turns the JIT off, so the State only interprets.
+func WithoutJIT() Option {
+	return func(l *State) { l.global.jit = false }
+}
+
 var jitDisabled = os.Getenv("LUART_JIT") == "off"
 
-// jitDefault turns the JIT on for every new state. The tests set it to run
-// the whole suite compiled.
-var jitDefault = false
+// jitDefault is whether a new State compiles.
+var jitDefault = true
 
 // jitThreshold is how many calls and loop iterations a function runs in
 // the interpreter before it is compiled. Tests set it to zero.

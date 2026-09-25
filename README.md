@@ -64,47 +64,51 @@ Inherited from go-lua:
 ## Performance
 
 [`bench/suite_test.go`](bench/suite_test.go) runs ten workloads in native
-Go, luart and Shopify/go-lua, with the same Lua source for both
-interpreters. `TestSuiteAgrees` checks that all three compute the same
-result. Apple M1 Pro, Go 1.27.1, `CGO_ENABLED=0`, medians of 6 runs:
+Go, luart without and with the JIT, and Shopify/go-lua, with the same Lua
+source for every interpreter. `TestSuiteAgrees` checks that all of them
+compute the same result. AMD Ryzen 9 9900X3D, linux/amd64, Go 1.27.1,
+`CGO_ENABLED=0`, medians of 6 runs; [`bench/README.md`](bench/README.md)
+also has Apple M1 results.
 
-| Workload | Native Go | luart | Shopify/go-lua | luart vs Shopify | luart vs Go |
-|---|---|---|---|---|---|
-| fib(25), recursive calls | 0.26 ms | 8.02 ms | 14.0 ms | 1.7× faster | 31× slower |
-| numeric loop, 1M iterations | 1.20 ms | 14.2 ms | 300 ms | 21× faster | 12× slower |
-| array fill and sum, 100k | 0.49 ms | 4.18 ms | 8.78 ms | 2.1× faster | 8.5× slower |
-| records, 10k tables | 0.13 ms | 1.36 ms | 4.47 ms | 3.3× faster | 10× slower |
-| closures, 100k | 0.36 ms | 8.25 ms | 14.7 ms | 1.8× faster | 23× slower |
-| sort 10k with comparator | 1.99 ms | 7.67 ms | 15.1 ms | 2.0× faster | 3.9× slower |
-| string build, 10k pieces | 0.62 ms | 1.08 ms | 105 ms | 97× faster | 1.7× slower |
-| calls into Go, 100k | 0.35 ms | 2.82 ms | 7.87 ms | 2.8× faster | 7.9× slower |
-| plasma frame | 0.34 ms | 2.15 ms | 5.93 ms | 2.8× faster | 6.4× slower |
-| particles frame | 0.006 ms | 0.38 ms | 1.67 ms | 4.4× faster | 63× slower |
+![How many times slower than native Go each interpreter runs each workload](bench/suite-amd64.svg)
+
+| Workload | Native Go | Luart (no JIT) | Luart (JIT) | go-lua | Luart (no JIT) vs Go | Luart (JIT) vs Go | go-lua vs Go |
+|---|---|---|---|---|---|---|---|
+| fib(25), recursive calls | 0.22 ms | 5.59 ms | 1.57 ms | 8.88 ms | 26× slower | 7.3× slower | 41× slower |
+| numeric loop, 1M iterations | 0.78 ms | 8.58 ms | 1.01 ms | 187 ms | 11× slower | 1.3× slower | 241× slower |
+| array fill and sum, 100k | 0.44 ms | 2.81 ms | 1.24 ms | 6.31 ms | 6.4× slower | 2.8× slower | 14× slower |
+| records, 10k tables | 0.09 ms | 0.89 ms | 0.64 ms | 3.13 ms | 9.8× slower | 7.1× slower | 34× slower |
+| closures, 100k | 0.22 ms | 5.37 ms | 4.60 ms | 9.71 ms | 24× slower | 21× slower | 44× slower |
+| sort 10k with comparator | 1.29 ms | 3.63 ms | 3.53 ms | 10.5 ms | 2.8× slower | 2.8× slower | 8.2× slower |
+| string build, 10k pieces | 0.37 ms | 0.72 ms | 0.60 ms | 51.6 ms | 1.9× slower | 1.6× slower | 139× slower |
+| calls into Go, 100k | 0.22 ms | 1.72 ms | 1.26 ms | 5.46 ms | 7.8× slower | 5.7× slower | 25× slower |
+| plasma frame | 0.29 ms | 1.36 ms | 0.74 ms | 4.25 ms | 4.6× slower | 2.5× slower | 14× slower |
+| particles frame | 0.005 ms | 0.25 ms | 0.10 ms | 1.35 ms | 49× slower | 19× slower | 263× slower |
 
 - luart allocates nothing on fib, the numeric loop, calls into Go, plasma
-  and particles, where Shopify allocates 25,000 to 4.9 million times per
+  and particles, where go-lua allocates 25,000 to 4.9 million times per
   run. Its remaining allocations are the objects the script creates, one
   per table, closure or string. [`bench/README.md`](bench/README.md) has
   the full allocation table.
-- Shopify's numeric loop is slow because its `%` calls `math.Mod`. Its
+- go-lua's numeric loop is slow because its `%` calls `math.Mod`. Its
   string build is quadratic because its `table.concat` appends with
   `s += str`.
 - The gap to Go is widest where Go inlines calls, as in particles and fib.
 - Plasma is a 200×100 per-pixel effect with three `math.sin` calls and one
   call into Go per pixel. Particles moves 2,000 particle tables by a method
-  and draws them. With `set` registered as a number function, plasma takes
-  2.1 ms.
+  and draws them.
 - `TestNumericFrameDoesNotAllocate` keeps numeric code and calls into Go
   allocation-free.
 
-## JIT (experimental)
+## JIT
 
-`lua.NewState(lua.WithJIT())` compiles hot Lua functions to machine code.
-It is opt-in while it matures, and states without it run the interpreter
-unchanged.
+`lua.NewState()` compiles hot Lua functions to machine code.
+`lua.NewState(lua.WithoutJIT())` makes a state that only interprets, and
+the environment variable `LUART_JIT=off` does that for every state.
+`WithJIT()` remains for code written when the JIT was opt-in.
 
 - Platforms: linux and darwin on arm64 and amd64. Elsewhere, Windows
-  included, `WithJIT` does nothing.
+  included, states interpret.
 - It compiles arithmetic, comparisons and branches, loops, upvalues,
   table fields (through the interpreter's inline caches) and arrays, calls
   and returns between compiled Lua functions, and `math.floor`, `ceil`,
@@ -115,12 +119,13 @@ unchanged.
 - Compiled code shares the interpreter's stack frames. An instruction it
   cannot run, or a Go call, returns to Go and continues in compiled code
   after it, so every script runs correctly.
-- It is slower than the interpreter where a script crosses into Go every
-  few instructions, such as creating closures in a loop or a `table.sort`
-  comparator; see [bench](bench/README.md).
-- It pauses while a debug hook is set, and `LUART_JIT=off` disables it.
-- CI runs the whole test suite with every function compiled
-  (`LUART_JIT_TEST=1`) on linux/amd64, linux/arm64 and macOS.
+- It gains least where a script crosses into Go every few instructions,
+  such as creating closures in a loop or a `table.sort` comparator; see
+  [bench](bench/README.md).
+- It pauses while a debug hook is set.
+- CI runs the whole test suite with the JIT, with every function compiled
+  (`LUART_JIT_TEST=1`) on linux/amd64, linux/arm64 and macOS, and
+  interpreted (`LUART_JIT=off`).
 
 ## Usage
 

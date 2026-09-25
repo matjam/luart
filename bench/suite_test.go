@@ -231,11 +231,11 @@ func runShopify(l *shopify.State) float64 {
 func TestSuiteAgrees(t *testing.T) {
 	for _, w := range workloads {
 		t.Run(w.name, func(t *testing.T) {
-			lr, sh := runLuart(newSuiteLuart(t, w.lua)), runShopify(newSuiteShopify(t, w.lua))
+			lr, sh := runLuart(newSuiteLuart(t, w.lua, luart.WithoutJIT())), runShopify(newSuiteShopify(t, w.lua))
 			if lr != sh {
 				t.Errorf("luart %v, shopify %v", lr, sh)
 			}
-			lj := newSuiteLuart(t, w.lua, luart.WithJIT())
+			lj := newSuiteLuart(t, w.lua)
 			for range 3 { // later runs use code compiled during earlier ones
 				if j := runLuart(lj); j != lr {
 					t.Errorf("luart with JIT %v, luart %v", j, lr)
@@ -260,13 +260,13 @@ func BenchmarkSuite(b *testing.B) {
 			})
 		}
 		b.Run(w.name+"/luart", func(b *testing.B) {
-			l := newSuiteLuart(b, w.lua)
+			l := newSuiteLuart(b, w.lua, luart.WithoutJIT())
 			for b.Loop() {
 				sink = runLuart(l)
 			}
 		})
 		b.Run(w.name+"/luart-jit", func(b *testing.B) {
-			l := newSuiteLuart(b, w.lua, luart.WithJIT())
+			l := newSuiteLuart(b, w.lua)
 			for b.Loop() {
 				sink = runLuart(l)
 			}
