@@ -14,7 +14,7 @@ func functionName(l *State, d Debug) string {
 		return fmt.Sprintf("function '%s'", d.Name)
 	case d.What == "main":
 		return "main chunk"
-	case d.What == "Go":
+	case d.What == l.global.goName:
 		if pushGlobalFunctionName(l, Frame{d.callInfo}) {
 			s, _ := l.ToString(-1)
 			l.Pop(1)
@@ -144,12 +144,17 @@ func findField(l *State, objectIndex, level int) bool {
 	if level == 0 || !l.IsTable(-1) {
 		return false
 	}
+	// Fields of the table itself first, so a global is found by its own
+	// name before as a field of _G, whatever order the table visits keys.
 	for l.PushNil(); l.Next(-2); l.Pop(1) { // for each pair in table
+		if l.IsString(-2) && l.RawEqual(objectIndex, -1) { // found object?
+			l.Pop(1) // remove value (but keep name)
+			return true
+		}
+	}
+	for l.PushNil(); l.Next(-2); l.Pop(1) {
 		if l.IsString(-2) { // ignore non-string keys
-			if l.RawEqual(objectIndex, -1) { // found object?
-				l.Pop(1) // remove value (but keep name)
-				return true
-			} else if findField(l, objectIndex, level-1) { // try recursively
+			if findField(l, objectIndex, level-1) { // try recursively
 				l.Remove(-2) // remove table (but keep name)
 				l.PushString(".")
 				l.Insert(-2) // place "." between the two names

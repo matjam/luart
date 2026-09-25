@@ -88,14 +88,14 @@ func (l *State) Frame(level int) (f Frame, ok bool) {
 	return
 }
 
-func functionInfo(p Debug, f closure) (d Debug) {
+func (l *State) functionInfo(p Debug, f closure) (d Debug) {
 	d = p
-	if l, ok := f.(*luaClosure); !ok {
-		d.Source = "=[Go]"
+	if lc, ok := f.(*luaClosure); !ok {
+		d.Source = "=[" + l.global.goName + "]"
 		d.LineDefined, d.LastLineDefined = -1, -1
-		d.What = "Go"
+		d.What = l.global.goName
 	} else {
-		p := l.prototype
+		p := lc.prototype
 		d.Source = p.Source
 		if d.Source == "" {
 			d.Source = "=?"
@@ -222,7 +222,7 @@ func (l *State) Info(what string, frame Frame) (d Debug, ok bool) {
 	for _, r := range what {
 		switch r {
 		case 'S':
-			d = functionInfo(d, f)
+			d = l.functionInfo(d, f)
 		case 'l':
 			d.CurrentLine = -1
 			if where != nil && ci.isLua() {

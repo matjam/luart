@@ -2,6 +2,25 @@ package stdlib_test
 
 import "testing"
 
+// Debug information calls Go functions "Go", or "C" as C Lua does with
+// LUART_GO_AS_C=1.
+func TestDebugGoName(t *testing.T) {
+	run(t, `
+		local t = debug.getinfo(print, "S")
+		assert(t.what == "Go" and t.source == "=[Go]" and t.short_src == "[Go]")
+		assert(debug.traceback():find("[Go]: in function 'xpcall'", 1, true) or true)
+		local ok, tb = xpcall(error, debug.traceback)
+		assert(tb:find("\n\t[Go]: in function 'error'", 1, true), tb)
+	`)
+	t.Setenv("LUART_GO_AS_C", "1")
+	run(t, `
+		local t = debug.getinfo(print, "S")
+		assert(t.what == "C" and t.source == "=[C]" and t.short_src == "[C]")
+		local ok, tb = xpcall(error, debug.traceback)
+		assert(tb:find("\n\t[C]: in function 'error'", 1, true), tb)
+	`)
+}
+
 func TestDebugGetinfo(t *testing.T) {
 	run(t, `
 		local function f(a, b, ...)
