@@ -61,11 +61,11 @@ func TestLua(t *testing.T) {
 		{name: "attrib", nonPort: true},
 		// {name: "big"},
 		{name: "bitwise"},
-		// {name: "calls"},
+		{name: "calls"},
 		// {name: "checktable"}, // needs the C test library (T)
 		{name: "closure"},
 		// {name: "code"}, // needs the C test library (T)
-		// {name: "constructs"},
+		{name: "constructs"},
 		// {name: "db"},
 		// {name: "errors"},
 		{name: "events"},

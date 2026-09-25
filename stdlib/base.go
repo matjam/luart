@@ -94,19 +94,21 @@ func (r *genericReader) Read(b []byte) (n int, err error) {
 		return 0, r.e
 	}
 	if l := r.l; r.r == nil {
+		// The chunk ends at the first nil or empty piece. r.e keeps it
+		// ended, as bufio reads again after an io.EOF.
 		l.CheckStackWithMessage(2, "too many nested functions")
 		l.PushValue(1)
-		if l.Call(0, 1); l.IsNil(-1) {
-			l.Pop(1)
-			return 0, io.EOF
-		} else if !l.IsString(-1) {
+		l.Call(0, 1)
+		if !l.IsNil(-1) && !l.IsString(-1) {
 			l.Errorf("reader function must return a string")
 		}
-		if s, ok := l.ToString(-1); ok {
-			r.r = strings.NewReader(s)
-		} else {
+		s, _ := l.ToString(-1)
+		l.Pop(1)
+		if s == "" {
+			r.e = io.EOF
 			return 0, io.EOF
 		}
+		r.r = strings.NewReader(s)
 	}
 	if n, err = r.r.Read(b); err == io.EOF {
 		r.r, err = nil, nil

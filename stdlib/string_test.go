@@ -1,17 +1,24 @@
 package stdlib_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/matjam/luart/lua"
 	"github.com/matjam/luart/stdlib"
 )
 
+// run runs script as the chunk "=test" in a state with the standard
+// libraries.
 func run(t *testing.T, script string) {
 	t.Helper()
 	l := lua.NewState()
 	stdlib.Open(l)
-	if err := l.DoString(script); err != nil {
+	err := l.Load(strings.NewReader(script), "=test", "t")
+	if err == nil {
+		err = l.ProtectedCall(0, 0, 0)
+	}
+	if err != nil {
 		msg, _ := l.ToString(-1)
 		t.Fatal(err, msg)
 	}

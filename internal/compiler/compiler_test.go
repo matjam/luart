@@ -67,12 +67,66 @@ func TestParse(t *testing.T) {
 	}
 
 	_, err = Parse(strings.NewReader("x = = 1"), "=test", 0)
-	if err == nil || err.Error() != "test:1: unexpected symbol near =" {
+	if err == nil || err.Error() != "test:1: unexpected symbol near '='" {
 		t.Errorf("syntax error: %v", err)
 	}
 	_, err = Parse(strings.NewReader("return 1"), "=test", 1000)
 	if err == nil || !strings.Contains(err.Error(), "Go levels") {
 		t.Errorf("nesting beyond MaxCallCount: %v", err)
+	}
+}
+
+// Syntax errors name the token as llex.c's txtToken does: symbols and
+// reserved words quoted, names, strings and numerals as their source text
+// quoted, and the end of the chunk as <eof>.
+func TestSyntaxErrors(t *testing.T) {
+	for _, tt := range []struct{ source, want string }{
+		{"x = = 1", "unexpected symbol near '='"},
+		{"x = 1 end", "<eof> expected near 'end'"},
+		{"local = 1", "<name> expected near '='"},
+		{"x = 3 3", "unexpected symbol near '3'"},
+		{"x = 0x10 y", "syntax error near <eof>"},
+		{"x = 'abc' 'd'", "unexpected symbol near ''d''"},
+		{"x =", "unexpected symbol near <eof>"},
+		{"x = \x01", "unexpected symbol near char(1)"},
+		{`x = "abc\x"`, `hexadecimal digit expected near '\x"'`},
+		{`x = "abc\q"`, `invalid escape sequence near '\q'`},
+		{`x = "abc\300"`, `decimal escape too large near '\300'`},
+		{"x = \"abc\ny\"", `unfinished string near '"abc'`},
+		{"x = 3f", "malformed number near '3f'"},
+		{"x = 0x", "malformed number near '0x'"},
+		{"x = 1e", "malformed number near '1e'"},
+		{"x = 1..2", "malformed number near '1..2'"},
+		// Names are ASCII letters, digits and '_', as in the C locale.
+		{"\xe9 = 1", "unexpected symbol near char(233)"},
+		{"a\xe91 = 1", "syntax error near char(233)"},
+	} {
+		_, err := Parse(strings.NewReader(tt.source), "=test", 0)
+		if want := "test:1: " + tt.want; err == nil || err.Error() != want {
+			t.Errorf("%q: got %v, want %s", tt.source, err, want)
+		}
+	}
+}
+
+// Numerals convert as Lua's do, hexadecimal fractions and exponents
+// included; one too large to represent is infinite.
+func TestNumerals(t *testing.T) {
+	for _, tt := range []struct {
+		source string
+		want   float64
+	}{
+		{"3", 3}, {"3.", 3}, {".5", 0.5}, {"3e2", 300}, {"3E-2", 0.03}, {"0012", 12},
+		{"0x10", 16}, {"0xA.8p1", 21}, {"0x.8", 0.5}, {"0x1P-2", 0.25},
+		{"1e999", math.Inf(1)},
+	} {
+		p, err := Parse(strings.NewReader("return "+tt.source), "=test", 0)
+		if err != nil {
+			t.Errorf("%s: %v", tt.source, err)
+			continue
+		}
+		if !containsConstant(p.Constants, tt.want) {
+			t.Errorf("%s: constants %v, want %v", tt.source, p.Constants, tt.want)
+		}
 	}
 }
 
