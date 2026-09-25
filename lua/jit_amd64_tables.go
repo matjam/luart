@@ -99,7 +99,7 @@ func (c *amd64Compiler) readField(ip int) {
 	a := &c.a
 	exit := c.exit(ip)
 	c.cachedShape(ip)
-	fromIndex, haveMeta, chain, load, done := a.NewLabel(), a.NewLabel(), a.NewLabel(), a.NewLabel(), a.NewLabel()
+	fromIndex, haveMeta, done := a.NewLabel(), a.NewLabel(), a.NewLabel()
 	a.Bt(rIdx, 31)
 	a.J(B, fromIndex)
 	c.element(rT, offTSlots, rIdx, rSlot, ip)
@@ -117,6 +117,18 @@ func (c *amd64Compiler) readField(ip int) {
 	a.Test(rT2, rT2)
 	a.J(E, exit)
 	a.Bind(haveMeta)
+	c.readIndex(ip)
+	a.Bind(done)
+}
+
+// readIndex loads into rP and rN the field that the fieldCache in rCache,
+// of the instruction at ip, names through the metatable in rT2: in its
+// __index table or in the table after that. It exits for anything else,
+// and for nil, after which Go goes on looking.
+func (c *amd64Compiler) readIndex(ip int) {
+	a := &c.a
+	exit := c.exit(ip)
+	chain, load := a.NewLabel(), a.NewLabel()
 	a.Load(rIdx, rT2, offTShape)
 	a.Load(rLen, rCache, offCMtShape)
 	a.Cmp(rIdx, rLen)
@@ -167,7 +179,23 @@ func (c *amd64Compiler) readField(ip int) {
 	c.load(operand{rSlot, 0})
 	a.Test(rP, rP)
 	a.J(E, exit)
-	a.Bind(done)
+}
+
+// readStringMethod loads into rP and rN the field of a string that the
+// fieldCache of the instruction at ip names, through the string metatable.
+func (c *amd64Compiler) readStringMethod(ip int) {
+	a := &c.a
+	exit := c.exit(ip)
+	a.MovImm(rCache, uint64(uintptr(unsafe.Pointer(&c.p.fields[ip]))))
+	a.Load(rIdx, rCache, offCShape)
+	a.MovImm(rLen, uint64(uintptr(unsafe.Pointer(stringShape))))
+	a.Cmp(rIdx, rLen)
+	a.J(NE, exit)
+	a.MovImm(rT2, uint64(uintptr(unsafe.Pointer(&c.g.metaTables[TypeString]))))
+	a.Load(rT2, rT2, 0)
+	a.Test(rT2, rT2)
+	a.J(E, exit)
+	c.readIndex(ip)
 }
 
 // absentIsNil handles a nil just read from the table in rT: it exits at ip
@@ -192,14 +220,46 @@ func (c *amd64Compiler) getField(ip int, dst operand) {
 
 func (c *amd64Compiler) selfField(ip int, i bytecode.Instruction) {
 	a := &c.a
-	fn, self := reg(i.A()), reg(i.A()+1)
-	c.tableOf(reg(i.B()), ip)
+	fn, self, recv := reg(i.A()), reg(i.A()+1), reg(i.B())
+	// tableOf, going to selfString's code, which stubs emits out of line,
+	// for other kinds.
+	c.strSelf[ip] = a.NewLabel()
+	a.Load(rTmp, recv.base, recv.off+offN)
+	a.MovImm(rTmp2, tagOf(vkTable))
+	a.Cmp(rTmp, rTmp2)
+	a.J(NE, c.strSelf[ip])
+	a.Load(rT, recv.base, recv.off+offP)
+	a.Cmp(rT, rNumber) // a number whose bits match the tag
+	a.J(E, c.exit(ip))
 	c.readField(ip)
 	c.guardStore(fn, rP, ip)
 	c.guardStore(self, rT, ip)
 	c.store(fn)
 	a.MovImm(rTmp, tagOf(vkTable))
 	a.Store(self.base, self.off+offN, rTmp)
+	a.Store(self.base, self.off+offP, rT)
+}
+
+// selfString runs the SELF i at ip for a receiver that is not a table,
+// with its second word in rTmp: a string, whose methods come through the
+// string metatable, and anything else exits. Self is the string, both of
+// whose words are kept before fn is stored, as fn may be the register the
+// string is in.
+func (c *amd64Compiler) selfString(ip int, i bytecode.Instruction) {
+	a := &c.a
+	fn, self, recv := reg(i.A()), reg(i.A()+1), reg(i.B())
+	a.Shr(rTmp, kindShift)
+	a.CmpImm(rTmp, int32(vkString))
+	a.J(NE, c.exit(ip))
+	a.Load(rT, recv.base, recv.off+offP)
+	a.Cmp(rT, rNumber) // a number whose bits match the tag
+	a.J(E, c.exit(ip))
+	c.readStringMethod(ip)
+	c.guardStore(fn, rP, ip)
+	c.guardStore(self, rT, ip)
+	a.Load(rCache, recv.base, recv.off+offN)
+	c.store(fn)
+	a.Store(self.base, self.off+offN, rCache)
 	a.Store(self.base, self.off+offP, rT)
 }
 

@@ -192,6 +192,53 @@ func TestJITTablesAndCalls(t *testing.T) {
 		{"string values", `function run() local t = {"a", "b"}; local s = ""; for i = 1, 2 do s = s .. t[i]; t[i] = s end; return s, t[2] end`},
 		{"indexing a non-table", `function run() local ok, err = pcall(function() local x = 5; return x.y end); return ok, err end`},
 		{"string methods", `function run() local s = "abc"; return s:upper(), s:len() end`},
+		{"string methods in loops", `
+			local obj = {sub = function(self, i, j) return "T" end}
+			function run()
+			  local out = {}
+			  local s = "hello world"
+			  for i = 1, 20 do
+			    local x = s:sub(i % 5 + 1, i % 5 + 2)
+			    x = x:upper()
+			    local r = (i % 2 == 0 and s or obj):sub(1, 1)
+			    out[#out + 1] = x .. r .. s:byte(i % 11 + 1)
+			    if i == 10 then function string.shout(t) return t .. "!" end end
+			    if i > 10 then out[#out + 1] = s:shout() end
+			  end
+			  local ok, err = pcall(function() return s:nosuch() end)
+			  return table.concat(out, ","), ok, err
+			end`},
+		{"string metatable __index replaced", `
+			local mt = getmetatable("")
+			local lib = mt.__index
+			-- Every name, in another order, each returning its own length,
+			-- so that a slot read from the old layout gives a wrong answer.
+			local names = {}
+			for k in pairs(lib) do names[#names + 1] = k end
+			table.sort(names, function(a, b) return a > b end)
+			local other = {}
+			for _, k in ipairs(names) do other[k] = function() return -#k end end
+			function run()
+			  local s = 0
+			  for i = 1, 20 do
+			    s = s + ("abc"):len()
+			    if i == 10 then mt.__index = other end
+			  end
+			  mt.__index = lib
+			  return s
+			end`},
+		{"lengths", `
+			local strs = {"", "a", "hello", string.rep("x", 1000), "a" .. "bc"}
+			local t = {1, 2, 3}
+			function run()
+			  local s = 0
+			  for i = 1, 20 do
+			    local v = strs[i % #strs + 1]
+			    s = s + #v + #t
+			  end
+			  local ok, err = pcall(function() local n = 5; return #n end)
+			  return s, ok, err
+			end`},
 		{"lua calls", `
 			local function add(a, b) return a + b end
 			function run() local s = 0; for i = 1, 100 do s = add(s, i) end; return s end`},

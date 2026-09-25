@@ -177,7 +177,7 @@ func (l *State) countJIT(p *prototype) {
 		return
 	}
 	copy(p.exec, p.jitOrig) // remove the counters
-	code, offsets, entries, kernels := compileJIT(p)
+	code, offsets, entries, kernels := compileJIT(p, l.global)
 	if code == nil {
 		return
 	}
@@ -471,7 +471,11 @@ func (l *State) jitStep(ci *callInfo, i bytecode.Instruction, ip pc) {
 			t = frame[i.B()]
 		}
 		key := constants[i.C()]
-		v, ok := getField(t, key, &closure.prototype.fields[ip])
+		fc := &closure.prototype.fields[ip]
+		v, ok := getField(t, key, fc)
+		if !ok && t.isString() { // the interpreter leaves strings to tableAt
+			v, ok = getStringField(l.global.metaTables[TypeString], key, fc)
+		}
 		if !ok {
 			v = l.tableAt(t, key)
 			frame = ci.frame

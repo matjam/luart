@@ -44,6 +44,7 @@ const maxOffset = 32768
 type arm64Compiler struct {
 	a       Asm
 	p       *prototype
+	g       *globalState // the state p runs in, whose string metatable SELF reads
 	code    []bytecode.Instruction
 	pcs     []Label // start of each pc's code
 	exits   []Label // exit to the interpreter at each pc, created on demand
@@ -51,24 +52,26 @@ type arm64Compiler struct {
 	goCall  []Label // exits at a CALL of a Go function, created on demand
 	numCall []Label // exits at a CALL of a number function, created on demand
 	notLua  []Label // a CALL's out-of-line code for callees other than Lua closures
+	strSelf []Label // a SELF's out-of-line code for receivers other than tables
 	always  []bool  // instructions compiled as an unconditional exit
 }
 
-func compileJIT(p *prototype) (code []byte, offsets []int32, entries []int, kernels int) {
+func compileJIT(p *prototype, g *globalState) (code []byte, offsets []int32, entries []int, kernels int) {
 	if len(p.Code) > 1<<16 || uint32(p.MaxStackSize+3)*valueSize >= maxOffset {
 		return nil, nil, nil, 0
 	}
-	c := &arm64Compiler{p: p, code: p.jitOrig}
+	c := &arm64Compiler{p: p, g: g, code: p.jitOrig}
 	c.pcs = make([]Label, len(c.code))
 	c.exits = make([]Label, len(c.code))
 	c.budget = make([]Label, len(c.code))
 	c.goCall = make([]Label, len(c.code))
 	c.numCall = make([]Label, len(c.code))
 	c.notLua = make([]Label, len(c.code))
+	c.strSelf = make([]Label, len(c.code))
 	c.always = make([]bool, len(c.code))
 	for i := range c.pcs {
 		c.pcs[i], c.exits[i], c.budget[i] = c.a.NewLabel(), -1, -1
-		c.goCall[i], c.numCall[i], c.notLua[i] = -1, -1, -1
+		c.goCall[i], c.numCall[i], c.notLua[i], c.strSelf[i] = -1, -1, -1, -1
 	}
 	c.prologue()
 	loops := map[int]*kernel{}
@@ -131,6 +134,13 @@ func (c *arm64Compiler) stubs() {
 			a.Bind(l)
 			c.goCallee(ip, c.code[ip])
 			a.B(c.exit(ip))
+		}
+	}
+	for ip, l := range c.strSelf {
+		if l >= 0 {
+			a.Bind(l)
+			c.selfString(ip, c.code[ip])
+			a.B(c.pcs[ip+1])
 		}
 	}
 	for ip, l := range c.exits {
@@ -231,6 +241,25 @@ func (c *arm64Compiler) constant(k int) (operand, bool) {
 // isNumberConstant reports whether an RK field is a number constant.
 func (c *arm64Compiler) isNumberConstant(field int) bool {
 	return bytecode.IsConstant(field) && c.p.Constants[bytecode.ConstantIndex(field)].isNumber()
+}
+
+// length compiles LEN of a string, whose length is its second word less
+// the kind; anything else exits, and Go measures a table.
+func (c *arm64Compiler) length(ip int, i bytecode.Instruction) {
+	a := &c.a
+	src, dst := reg(i.B()), reg(i.A())
+	a.Ldr(rP, src.base, src.off+offP)
+	a.Cmp(rP, rNumber)
+	a.BCond(EQ, c.exit(ip))
+	a.Ldr(rN, src.base, src.off+offN)
+	a.Lsr(rTmp, rN, kindShift)
+	a.CmpImm(rTmp, uint32(vkString))
+	a.BCond(NE, c.exit(ip))
+	a.MovImm(rTmp, tagOf(vkString))
+	a.Sub(rN, rN, rTmp)
+	c.guardStore(dst, noReg, ip)
+	a.Scvtf(0, rN)
+	c.storeNumber(dst, 0)
 }
 
 // rk returns the operand for an RK field.
@@ -667,6 +696,8 @@ func (c *arm64Compiler) instruction(ip int) int {
 		c.call(ip, orig)
 	case bytecode.OpReturn:
 		c.returnLua(ip, orig)
+	case bytecode.OpLength:
+		c.length(ip, orig)
 	case bytecode.OpLoadConstantEx, bytecode.OpSetList:
 		c.exitAlways(ip)
 		if op == bytecode.OpLoadConstantEx || orig.C() == 0 {
