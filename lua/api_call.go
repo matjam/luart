@@ -1,6 +1,7 @@
 package lua
 
 import (
+	"errors"
 	"io"
 
 	"github.com/matjam/luart/internal/chunk"
@@ -175,17 +176,20 @@ func (l *State) Load(r io.Reader, chunkName string, mode string) error {
 	return nil
 }
 
+var errNotLuaFunction = errors.New("lua: not a Lua function")
+
 // Dump dumps a function as a binary chunk. It receives a Lua function on
 // the top of the stack and produces a binary chunk that, if loaded again,
-// results in a function equivalent to the one dumped.
+// results in a function equivalent to the one dumped. It returns an error
+// if the value on the top of the stack is not a Lua function.
 //
-// http://www.lua.org/manual/5.3/manual.html#lua_dump
+// http://www.lua.org/manual/5.2/manual.html#lua_dump
 func (l *State) Dump(w io.Writer) error {
 	l.checkElementCount(1)
 	if f := l.stack[l.top-1].luaClosure(); f != nil {
 		return chunk.Dump(w, protoOf(f.prototype))
 	}
-	panic("closure expected")
+	return errNotLuaFunction
 }
 
 // Error generates a Lua error.  The error message must be on the stack top.

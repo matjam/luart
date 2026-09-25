@@ -53,14 +53,15 @@ Work so far:
   the wrong instruction)
 - Line and call hooks work (go-lua crashed)
 - Assigning nil to an existing field no longer calls `__newindex`
+- Lua patterns (`string.find`, `match`, `gmatch` and `gsub`), ported from
+  Lua 5.2's lstrlib.c and checked by the Lua test suite's pm.lua, and
+  `string.dump`
 
 Inherited from go-lua:
 
-- Most core libraries are implemented. The main gaps are patterns
-  (`string.match`, `gmatch` and `gsub`), coroutines and `string.dump`.
-  `string.find` without a fourth argument treats a pattern's special
-  characters as plain text (Lua would match the pattern); with a false or
-  nil fourth argument, a pattern with special characters raises an error.
+- Most core libraries are implemented. The gaps are the coroutine library,
+  `debug.getinfo`, `getlocal`, `setlocal` and `debug`, `os.date` and
+  `os.setlocale`, and `io.popen`.
 - Weak tables are not supported. Go's `weak` package (Go 1.24) could make
   them possible.
 
