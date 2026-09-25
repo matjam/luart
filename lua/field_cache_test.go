@@ -164,6 +164,44 @@ func TestFieldCacheInvalidation(t *testing.T) {
 			end
 			function A.kind() return "A" end
 			assert(call(objs[1]) == "aA" and call(objs[2]) == "bbase")`},
+		{"nil stored in an object with a metatable", `
+			local C = {}
+			local o = setmetatable({x = 1, y = 2}, {__index = C})
+			local function set(v) o.x = v end
+			for i = 1, 3 do set(nil); assert(o.x == nil); set(i); assert(o.x == i) end
+			assert(o.y == 2)`},
+		{"__newindex added after stores were cached", `
+			local log = 0
+			local mt = {}
+			local o = setmetatable({x = 1}, mt)
+			local function set(v) o.x = v end
+			for i = 1, 3 do set(nil); set(i) end
+			set(nil)
+			mt.__newindex = function(t, k, v) log = log + 1; rawset(t, k, v) end
+			set(5)
+			assert(log == 1 and o.x == 5)`},
+		{"__newindex added by rawset after stores were cached", `
+			local log = 0
+			local mt = {}
+			local o = setmetatable({x = 1}, mt)
+			local function set(v) o.x = v end
+			for i = 1, 3 do set(nil); set(i) end
+			set(nil)
+			rawset(mt, "__newindex", function(t, k, v) log = log + 1 end)
+			set(5)
+			assert(log == 1 and o.x == nil)`},
+		{"nil stores in a dictionary", `
+			local d = {}
+			for i = 1, 60 do d["k" .. i] = i end
+			local function clear() d.k1 = nil; d.k2 = nil; d.k3 = nil end
+			local function fill() d.k1 = 1; d.k2 = 2; d.k3 = 3 end
+			for _ = 1, 3 do clear(); fill() end
+			clear()
+			for i = 4, 50 do d["k" .. i] = nil end
+			for i = 61, 70 do d["k" .. i] = i end -- may compact
+			local n = 0
+			for k, v in pairs(d) do n = n + 1; assert(d[k] == v) end
+			assert(n == 20 and d.k1 == nil and d.k55 == 55 and d.k70 == 70, n)`},
 		{"tag method cache sees fields set through the cache", `
 			local mt = {__index = function() return "fn" end}
 			local o = setmetatable({}, mt)

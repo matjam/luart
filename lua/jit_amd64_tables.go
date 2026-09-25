@@ -149,26 +149,29 @@ func (c *amd64Compiler) selfField(ip int, i bytecode.Instruction) {
 	a.Store(self.base, self.off+offP, rT)
 }
 
-// loadRK loads RK field into rP and rN, exiting at ip if it is nil. It
-// reports false for a nil constant or one out of reach.
-func (c *amd64Compiler) loadRK(field, ip int) bool {
+// loadRK loads RK field into rP and rN, exiting at ip if it is nil unless
+// nilOK. It reports false for a constant out of reach, or a nil one unless
+// nilOK.
+func (c *amd64Compiler) loadRK(field, ip int, nilOK bool) bool {
 	src := reg(field)
 	if bytecode.IsConstant(field) {
 		k, ok := c.constant(bytecode.ConstantIndex(field))
-		if !ok || c.p.Constants[bytecode.ConstantIndex(field)].isNil() {
+		if !ok || !nilOK && c.p.Constants[bytecode.ConstantIndex(field)].isNil() {
 			return false
 		}
 		src = k
 	}
 	c.load(src)
-	c.a.Test(rP, rP)
-	c.a.J(E, c.exit(ip))
+	if !nilOK {
+		c.a.Test(rP, rP)
+		c.a.J(E, c.exit(ip))
+	}
 	return true
 }
 
 func (c *amd64Compiler) setField(ip int, i bytecode.Instruction, up bool) {
 	a := &c.a
-	if !c.loadRK(i.C(), ip) {
+	if !c.loadRK(i.C(), ip, true) {
 		c.exitAlways(ip)
 		return
 	}
@@ -179,20 +182,32 @@ func (c *amd64Compiler) setField(ip int, i bytecode.Instruction, up bool) {
 	}
 	c.tableOf(t, ip)
 	c.cachedSlot(ip, false)
-	// An absent key: setField stores it only in a table without a
-	// metatable and with a shared shape.
-	slot, present := operand{rSlot, 0}, a.NewLabel()
+	// An absent key: setField stores it only in a table with a shared
+	// shape and without a metatable, or one known to lack __newindex. A
+	// dictionary counts its nil slots, so storing nil in one exits too.
+	slot, present, store := operand{rSlot, 0}, a.NewLabel(), a.NewLabel()
 	a.Load(rTmp, rSlot, offP)
 	a.Test(rTmp, rTmp)
 	a.J(NE, present)
-	a.Load(rTmp, rT, offTMeta)
-	a.Test(rTmp, rTmp)
-	a.J(NE, c.exit(ip))
 	a.Load(rTmp, rT, offTShape)
 	a.Load8(rTmp, rTmp, offShapeDict)
 	a.Test(rTmp, rTmp)
 	a.J(NE, c.exit(ip))
+	a.Load(rTmp, rT, offTMeta)
+	a.Test(rTmp, rTmp)
+	a.J(E, store)
+	a.Load8(rTmp, rTmp, offTFlags)
+	a.Bt(rTmp, uint8(tmNewIndex))
+	a.J(AE, c.exit(ip)) // __newindex may be there
+	a.Jmp(store)
 	a.Bind(present)
+	a.Test(rP, rP)
+	a.J(NE, store)
+	a.Load(rTmp, rT, offTShape)
+	a.Load8(rTmp, rTmp, offShapeDict)
+	a.Test(rTmp, rTmp)
+	a.J(NE, c.exit(ip))
+	a.Bind(store)
 	c.guardStore(slot, rP, ip)
 	c.store(slot)
 	a.StoreZero8(rT, offTFlags) // invalidateTagMethodCache
@@ -248,7 +263,7 @@ func (c *amd64Compiler) getIndex(ip int, i bytecode.Instruction, up bool) {
 // element; other keys exit.
 func (c *amd64Compiler) setIndex(ip int, i bytecode.Instruction, up bool) {
 	a := &c.a
-	if !c.loadRK(i.C(), ip) {
+	if !c.loadRK(i.C(), ip, false) {
 		c.exitAlways(ip)
 		return
 	}

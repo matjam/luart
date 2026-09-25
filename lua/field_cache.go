@@ -177,15 +177,17 @@ func (c *fieldCache) fill(tt *table, k value) (value, bool) {
 
 // setField stores t[key] = v for a constant string key whose slot exists
 // when no __newindex metamethod can apply: the field already holds a value,
-// or the table has no metatable. It reports false when the caller must take
+// or the table has no metatable, or one known to lack __newindex. A
+// dictionary counts its nil slots, so storing nil in one, or filling one,
+// is left to the generic path. It reports false when the caller must take
 // the generic path.
 func setField(t value, key value, v value, c *fieldCache) bool {
 	tt := t.table()
-	if tt == nil || v.isNil() {
+	if tt == nil {
 		return false
 	}
 	s := tt.shape
-	if s == nil {
+	if s == nil || s.dict && v.isNil() {
 		return false
 	}
 	if s != c.shape || c.slot < 0 {
@@ -197,7 +199,7 @@ func setField(t value, key value, v value, c *fieldCache) bool {
 		*c = fieldCache{shape: s, slot: i, chain: c.chain}
 	}
 	if tt.slots[c.slot].isNil() {
-		if tt.metaTable != nil || s.dict {
+		if s.dict || tt.metaTable != nil && tt.metaTable.flags&(1<<tmNewIndex) == 0 {
 			return false
 		}
 	}

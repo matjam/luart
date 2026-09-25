@@ -224,6 +224,37 @@ func TestJITTablesAndCalls(t *testing.T) {
 		{"deep recursion", `local function d(n) if n == 0 then return 0 end return 1 + d(n - 1) end; function run() return d(5000) end`},
 		{"closures in loops", `function run() local s = 0; for i = 1, 20 do local f = function(x) return x + i end; s = s + f(1) end; return s end`},
 		{"tail calls", `local function t(n, acc) if n == 0 then return acc end return t(n - 1, acc + n) end; function run() return t(100, 0) end`},
+		{"tail calls to Go", `
+			local C = {}
+			local function new(x) return setmetatable({x = x}, {__index = C}) end
+			local function two(x) return select(1, x, x * 2) end
+			local function all(...) return select("#", ...) end
+			function run()
+			  local s = 0
+			  for i = 1, 20 do
+			    local a, b = two(i)
+			    s = s + new(i).x + a + b + all(two(i)) + select("#", two(i))
+			  end
+			  return s, two(3)
+			end`},
+		{"tail calls to Lua and varargs", `
+			local function sum(...) local s = 0; for i = 1, select("#", ...) do s = s + select(i, ...) end; return s end
+			local function fwd(a, b, c) return sum(a, b, c) end
+			local function fixed(a, b) return a - b end
+			local function viafixed(a, b) return fixed(b, a) end
+			function run() local s = 0; for i = 1, 20 do s = s + fwd(i, 1, 2) + viafixed(i, 1) end; return s end`},
+		{"tail call to a callable table", `
+			local callable = setmetatable({}, {__call = function(_, x) return x + 1 end})
+			local function f(x) return callable(x) end
+			function run() local s = 0; for i = 1, 20 do s = s + f(i) end; return s end`},
+		{"yield from a tail-called Go function", `
+			local function y(x) return coroutine.yield(x) end
+			function run()
+			  local co = coroutine.wrap(function() local s = 0; for i = 1, 10 do s = s + y(i) end; return s end)
+			  local v = co()
+			  for i = 1, 9 do v = co(v * 2) end
+			  return co(v * 2)
+			end`},
 		// A compiled function returns from a frame another function
 		// tail-called, whose callInfo the next compiled call reuses.
 		{"calls after returning from a tail-called frame", `
@@ -672,6 +703,22 @@ func TestJITCompilesHotLoops(t *testing.T) {
 				t.Fatal("the loop never ran compiled")
 			}
 		})
+	}
+}
+
+// Compiled code can tail-call a function that has never run.
+func TestJITTailCallToFunctionNotYetRun(t *testing.T) {
+	skipWithoutJIT(t)
+	l := NewState()
+	openLibraries(l)
+	err := l.DoString(`
+		local function never(x) return x + 1 end
+		local function hot(i) if i == 3000 then return never(i) end return i end
+		local s = 0
+		for i = 1, 3000 do s = s + hot(i) end
+		assert(s == 3000 * 3001 / 2 + 1, s)`)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
