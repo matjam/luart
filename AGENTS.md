@@ -11,8 +11,7 @@ today, the rules it depends on, and where performance work should go next.
   - `gofmt -l .` must print nothing.
   - `go generate ./...` must leave the tree unchanged; it rewrites
     `vm_jit.go`.
-  - `go vet -unreachable=false ./...` (debug.go has two known
-    unreachable-code reports).
+  - `go vet ./...`.
   - `go test ./...`, which runs with the JIT at its normal threshold;
     again with `LUART_JIT_TEST=1`, which compiles every function on first
     use; again with `LUART_JIT=off`, which only interprets; and
