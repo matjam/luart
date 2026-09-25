@@ -44,6 +44,32 @@ jobs:
             GOOS=${target%/*} GOARCH=${target#*/} go build ./... || exit 1
           done
 
+  # The command is its own module, built against the luart version its
+  # go.mod pins, not the library in this checkout.
+  cli:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    defaults:
+      run:
+        working-directory: cmd/luart
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: cmd/luart/go.mod
+          cache-dependency-path: cmd/luart/go.sum
+      - name: vet
+        run: go vet ./...
+      - name: test
+        run: go test -race ./...
+      - name: cross-build
+        run: |
+          for target in windows/amd64 linux/arm64 darwin/amd64; do
+            GOOS=${target%/*} GOARCH=${target#*/} go build ./... || exit 1
+          done
+
   # The benchmarks compare with C Lua 5.4 and LuaJIT through cgo, one per
   # build tag; check that both build and agree with luart.
   c-lua:

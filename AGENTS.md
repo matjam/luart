@@ -69,6 +69,32 @@ today, the rules it depends on, and where performance work should go next.
   with `openLibraries` from export_test.go, which libs_test.go, an
   external test file in the same binary, sets to `stdlib.Open`.
 
+## The luart command
+
+- `cmd/luart` is its own module, so the library's go.mod stays free of
+  its dependencies (Bubble Tea v2, Bubbles, Lip Gloss, Chroma). It
+  requires a released luart pseudo-version; `go install ...@latest`
+  refuses replace directives. To use a newer library, bump it with
+  `cd cmd/luart && go get github.com/matjam/luart@<commit on main>`.
+- For local development against this checkout, make an untracked
+  workspace: `go work init . ./cmd/luart` (go.work is gitignored; a
+  committed one would put the root's `go test ./...` and bench/ in
+  workspace mode).
+- `standalone.go` ports lua.c: options, `LUA_INIT`, `arg`, `docall` with
+  a traceback handler and SIGINT calling `State.Interrupt`, and the plain
+  REPL. `tui.go` is the terminal REPL: an inline Bubble Tea program whose
+  transcript goes to the scrollback through `Program.Println`.
+- The TUI rules: Lua runs in a goroutine, and the state is touched only by
+  the event loop while idle or by the evaluation while running. Every
+  transcript line is printed from a goroutine (`print` blocks until the
+  event loop takes it, which keeps order), never from `Update`.
+  `capture` puts os.Stdout and os.Stderr through a pipe from startup, so
+  print, io.write and child processes land in the transcript; each
+  evaluation ends with `capture.Sync`, so no output is in flight when the
+  program exits.
+- Tests run the test binary as the command (`LUART_CLI_MAIN=1`) for lua.c
+  behaviour, and drive the TUI model with key messages.
+
 ## Interpreter
 
 - `value` (types.go) is 16 bytes: `p unsafe.Pointer` and `n float64`.
