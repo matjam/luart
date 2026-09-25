@@ -142,6 +142,29 @@ the environment variable `LUART_JIT=off` does that for every state.
   (`LUART_JIT_TEST=1`) on linux/amd64, linux/arm64 and macOS, and
   interpreted (`LUART_JIT=off`).
 
+## The luart command
+
+```sh
+go install github.com/matjam/luart/cmd/luart@latest
+```
+
+`luart` runs scripts as the standalone `lua` does, with the same options:
+`-e`, `-l`, `-i`, `-v`, `-E`, `-` for stdin, the `arg` table, `LUA_INIT`,
+and Ctrl-C to interrupt. On a terminal its REPL:
+
+- highlights Lua as you type, and runs a statement when it is complete
+  (an unfinished one gets another line; Alt-Enter adds one);
+- prints an expression's value, and tables as trees;
+- completes globals, fields and methods with Tab, from the running state;
+- keeps history in `~/.luart_history` (`$LUART_HISTORY` to move it, or
+  empty for none);
+- stops a runaway evaluation with Esc or Ctrl-C;
+- takes `/help`, `/load file.lua`, `/reset`, `/jit on|off`, `/clear` and
+  `/quit`.
+
+When stdin or stdout is not a terminal, `luart` behaves exactly as `lua.c`
+does: it runs piped input as a script, and `-i` gives its plain REPL.
+
 ## Usage
 
 ```sh
