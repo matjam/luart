@@ -1,41 +1,42 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 650" width="880" height="650" role="img" aria-labelledby="t d">
-<title id="t">How many times slower than native Go</title>
-<desc id="d">Apple M1 Pro, darwin/arm64. Median time of each workload divided by Go&#39;s; log scale, shorter is better.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 702" width="880" height="702" role="img" aria-labelledby="t d">
+<title id="t">Time relative to native Go</title>
+<desc id="d">Apple M1 Pro, darwin/arm64. Median time of each workload divided by that of native Go; log scale, left of 1× is faster.</desc>
 <style>
 text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 .bg { fill: #fcfcfb; }
 .title { fill: #0b0b0b; font-size: 16px; font-weight: 600; }
 .sub { fill: #52514e; font-size: 12px; }
 .label { fill: #0b0b0b; font-size: 12px; }
+.mean { font-weight: 600; }
 .value { fill: #52514e; font-size: 11px; font-variant-numeric: tabular-nums; }
 .tick { fill: #898781; font-size: 11px; font-variant-numeric: tabular-nums; }
 .grid { stroke: #e1e0d9; stroke-width: 1; }
 .base { stroke: #c3c2b7; stroke-width: 1; }
-.s0 { fill: #2a78d6; } .s1 { fill: #eb6834; } .s2 { fill: #1baf7a; }
+.s0 { fill: #2a78d6; } .s1 { fill: #eb6834; } .s2 { fill: #1baf7a; } .s3 { fill: #eda100; } .s4 { fill: #4a3aa7; }
 @media (prefers-color-scheme: dark) {
   .bg { fill: #1a1a19; }
   .title, .label { fill: #ffffff; }
   .sub, .value { fill: #c3c2b7; }
   .grid { stroke: #2c2c2a; }
   .base { stroke: #383835; }
-  .s0 { fill: #3987e5; } .s1 { fill: #d95926; } .s2 { fill: #199e70; }
+  .s0 { fill: #3987e5; } .s1 { fill: #d95926; } .s2 { fill: #199e70; } .s3 { fill: #c98500; } .s4 { fill: #9085e9; }
 }
 </style>
-<rect class="bg" width="880" height="650" rx="8"/>
-<text class="title" x="24" y="32">How many times slower than native Go</text>
-<text class="sub" x="24" y="52">Apple M1 Pro, darwin/arm64. Median time of each workload divided by Go&#39;s; log scale, shorter is better.</text>
+<rect class="bg" width="880" height="702" rx="8"/>
+<text class="title" x="24" y="32">Time relative to native Go</text>
+<text class="sub" x="24" y="52">Apple M1 Pro, darwin/arm64. Median time of each workload divided by that of native Go; log scale, left of 1× is faster.</text>
 <rect class="s1" x="24" y="70" width="12" height="12" rx="2"/><text class="label" x="42" y="80">Luart (JIT)</text>
 <rect class="s0" x="142.6" y="70" width="12" height="12" rx="2"/><text class="label" x="160.6" y="80">Luart (no JIT)</text>
 <rect class="s2" x="281" y="70" width="12" height="12" rx="2"/><text class="label" x="299" y="80">go-lua</text>
-<line class="base" x1="220.0" x2="220.0" y1="98" y2="612"/><text class="tick" x="220.0" y="630" text-anchor="middle">1×</text>
-<line class="grid" x1="286.5" x2="286.5" y1="98" y2="612"/><text class="tick" x="286.5" y="630" text-anchor="middle">2×</text>
-<line class="grid" x1="374.4" x2="374.4" y1="98" y2="612"/><text class="tick" x="374.4" y="630" text-anchor="middle">5×</text>
-<line class="grid" x1="440.8" x2="440.8" y1="98" y2="612"/><text class="tick" x="440.8" y="630" text-anchor="middle">10×</text>
-<line class="grid" x1="507.3" x2="507.3" y1="98" y2="612"/><text class="tick" x="507.3" y="630" text-anchor="middle">20×</text>
-<line class="grid" x1="595.2" x2="595.2" y1="98" y2="612"/><text class="tick" x="595.2" y="630" text-anchor="middle">50×</text>
-<line class="grid" x1="661.6" x2="661.6" y1="98" y2="612"/><text class="tick" x="661.6" y="630" text-anchor="middle">100×</text>
-<line class="grid" x1="728.1" x2="728.1" y1="98" y2="612"/><text class="tick" x="728.1" y="630" text-anchor="middle">200×</text>
-<line class="grid" x1="816.0" x2="816.0" y1="98" y2="612"/><text class="tick" x="816.0" y="630" text-anchor="middle">500×</text>
+<line class="base" x1="220.0" x2="220.0" y1="98" y2="664"/><text class="tick" x="220.0" y="682" text-anchor="middle">1×</text>
+<line class="grid" x1="286.5" x2="286.5" y1="98" y2="664"/><text class="tick" x="286.5" y="682" text-anchor="middle">2×</text>
+<line class="grid" x1="374.4" x2="374.4" y1="98" y2="664"/><text class="tick" x="374.4" y="682" text-anchor="middle">5×</text>
+<line class="grid" x1="440.8" x2="440.8" y1="98" y2="664"/><text class="tick" x="440.8" y="682" text-anchor="middle">10×</text>
+<line class="grid" x1="507.3" x2="507.3" y1="98" y2="664"/><text class="tick" x="507.3" y="682" text-anchor="middle">20×</text>
+<line class="grid" x1="595.2" x2="595.2" y1="98" y2="664"/><text class="tick" x="595.2" y="682" text-anchor="middle">50×</text>
+<line class="grid" x1="661.6" x2="661.6" y1="98" y2="664"/><text class="tick" x="661.6" y="682" text-anchor="middle">100×</text>
+<line class="grid" x1="728.1" x2="728.1" y1="98" y2="664"/><text class="tick" x="728.1" y="682" text-anchor="middle">200×</text>
+<line class="grid" x1="816.0" x2="816.0" y1="98" y2="664"/><text class="tick" x="816.0" y="682" text-anchor="middle">500×</text>
 <text class="label" x="208" y="121.0" text-anchor="end" dominant-baseline="middle">fib(25), recursive calls</text>
 <path class="s1" d="M220.0 104.0H443.8Q447.8 104.0 447.8 108.0V110.0Q447.8 114.0 443.8 114.0H220.0Z"><title>Luart (JIT): 11× slower</title></path><text class="value" x="452.8" y="109.0" text-anchor="start" dominant-baseline="middle">11×</text>
 <path class="s0" d="M220.0 116.0H547.9Q551.9 116.0 551.9 120.0V122.0Q551.9 126.0 547.9 126.0H220.0Z"><title>Luart (no JIT): 32× slower</title></path><text class="value" x="556.9" y="121.0" text-anchor="start" dominant-baseline="middle">32×</text>
@@ -76,4 +77,9 @@ text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 <path class="s1" d="M220.0 572.0H564.5Q568.5 572.0 568.5 576.0V578.0Q568.5 582.0 564.5 582.0H220.0Z"><title>Luart (JIT): 38× slower</title></path><text class="value" x="573.5" y="577.0" text-anchor="start" dominant-baseline="middle">38×</text>
 <path class="s0" d="M220.0 584.0H610.7Q614.7 584.0 614.7 588.0V590.0Q614.7 594.0 610.7 594.0H220.0Z"><title>Luart (no JIT): 61× slower</title></path><text class="value" x="619.7" y="589.0" text-anchor="start" dominant-baseline="middle">61×</text>
 <path class="s2" d="M220.0 596.0H753.0Q757.0 596.0 757.0 600.0V602.0Q757.0 606.0 753.0 606.0H220.0Z"><title>go-lua: 270× slower</title></path><text class="value" x="762.0" y="601.0" text-anchor="start" dominant-baseline="middle">270×</text>
+<line class="base" x1="24" x2="856" y1="615.0" y2="615.0"/>
+<text class="label mean" x="208" y="641.0" text-anchor="end" dominant-baseline="middle">geometric mean</text>
+<path class="s1" d="M220.0 624.0H400.6Q404.6 624.0 404.6 628.0V630.0Q404.6 634.0 400.6 634.0H220.0Z"><title>Luart (JIT): 6.9× slower</title></path><text class="value" x="409.6" y="629.0" text-anchor="start" dominant-baseline="middle">6.9×</text>
+<path class="s0" d="M220.0 636.0H442.7Q446.7 636.0 446.7 640.0V642.0Q446.7 646.0 442.7 646.0H220.0Z"><title>Luart (no JIT): 11× slower</title></path><text class="value" x="451.7" y="641.0" text-anchor="start" dominant-baseline="middle">11×</text>
+<path class="s2" d="M220.0 648.0H583.4Q587.4 648.0 587.4 652.0V654.0Q587.4 658.0 583.4 658.0H220.0Z"><title>go-lua: 46× slower</title></path><text class="value" x="592.4" y="653.0" text-anchor="start" dominant-baseline="middle">46×</text>
 </svg>

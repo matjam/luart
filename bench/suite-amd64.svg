@@ -1,79 +1,111 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 650" width="880" height="650" role="img" aria-labelledby="t d">
-<title id="t">How many times slower than native Go</title>
-<desc id="d">AMD Ryzen 9 9900X3D 12-Core Processor, linux/amd64. Median time of each workload divided by Go&#39;s; log scale, shorter is better.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 966" width="880" height="966" role="img" aria-labelledby="t d">
+<title id="t">Time relative to native Go</title>
+<desc id="d">AMD Ryzen 9 9900X3D 12-Core Processor, linux/amd64. Median time of each workload divided by that of native Go; log scale, left of 1× is faster.</desc>
 <style>
 text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 .bg { fill: #fcfcfb; }
 .title { fill: #0b0b0b; font-size: 16px; font-weight: 600; }
 .sub { fill: #52514e; font-size: 12px; }
 .label { fill: #0b0b0b; font-size: 12px; }
+.mean { font-weight: 600; }
 .value { fill: #52514e; font-size: 11px; font-variant-numeric: tabular-nums; }
 .tick { fill: #898781; font-size: 11px; font-variant-numeric: tabular-nums; }
 .grid { stroke: #e1e0d9; stroke-width: 1; }
 .base { stroke: #c3c2b7; stroke-width: 1; }
-.s0 { fill: #2a78d6; } .s1 { fill: #eb6834; } .s2 { fill: #1baf7a; }
+.s0 { fill: #2a78d6; } .s1 { fill: #eb6834; } .s2 { fill: #1baf7a; } .s3 { fill: #eda100; } .s4 { fill: #4a3aa7; }
 @media (prefers-color-scheme: dark) {
   .bg { fill: #1a1a19; }
   .title, .label { fill: #ffffff; }
   .sub, .value { fill: #c3c2b7; }
   .grid { stroke: #2c2c2a; }
   .base { stroke: #383835; }
-  .s0 { fill: #3987e5; } .s1 { fill: #d95926; } .s2 { fill: #199e70; }
+  .s0 { fill: #3987e5; } .s1 { fill: #d95926; } .s2 { fill: #199e70; } .s3 { fill: #c98500; } .s4 { fill: #9085e9; }
 }
 </style>
-<rect class="bg" width="880" height="650" rx="8"/>
-<text class="title" x="24" y="32">How many times slower than native Go</text>
-<text class="sub" x="24" y="52">AMD Ryzen 9 9900X3D 12-Core Processor, linux/amd64. Median time of each workload divided by Go&#39;s; log scale, shorter is better.</text>
+<rect class="bg" width="880" height="966" rx="8"/>
+<text class="title" x="24" y="32">Time relative to native Go</text>
+<text class="sub" x="24" y="52">AMD Ryzen 9 9900X3D 12-Core Processor, linux/amd64. Median time of each workload divided by that of native Go; log scale, left of 1× is faster.</text>
 <rect class="s1" x="24" y="70" width="12" height="12" rx="2"/><text class="label" x="42" y="80">Luart (JIT)</text>
 <rect class="s0" x="142.6" y="70" width="12" height="12" rx="2"/><text class="label" x="160.6" y="80">Luart (no JIT)</text>
 <rect class="s2" x="281" y="70" width="12" height="12" rx="2"/><text class="label" x="299" y="80">go-lua</text>
-<line class="base" x1="220.0" x2="220.0" y1="98" y2="612"/><text class="tick" x="220.0" y="630" text-anchor="middle">1×</text>
-<line class="grid" x1="286.5" x2="286.5" y1="98" y2="612"/><text class="tick" x="286.5" y="630" text-anchor="middle">2×</text>
-<line class="grid" x1="374.4" x2="374.4" y1="98" y2="612"/><text class="tick" x="374.4" y="630" text-anchor="middle">5×</text>
-<line class="grid" x1="440.8" x2="440.8" y1="98" y2="612"/><text class="tick" x="440.8" y="630" text-anchor="middle">10×</text>
-<line class="grid" x1="507.3" x2="507.3" y1="98" y2="612"/><text class="tick" x="507.3" y="630" text-anchor="middle">20×</text>
-<line class="grid" x1="595.2" x2="595.2" y1="98" y2="612"/><text class="tick" x="595.2" y="630" text-anchor="middle">50×</text>
-<line class="grid" x1="661.6" x2="661.6" y1="98" y2="612"/><text class="tick" x="661.6" y="630" text-anchor="middle">100×</text>
-<line class="grid" x1="728.1" x2="728.1" y1="98" y2="612"/><text class="tick" x="728.1" y="630" text-anchor="middle">200×</text>
-<line class="grid" x1="816.0" x2="816.0" y1="98" y2="612"/><text class="tick" x="816.0" y="630" text-anchor="middle">500×</text>
-<text class="label" x="208" y="121.0" text-anchor="end" dominant-baseline="middle">fib(25), recursive calls</text>
-<path class="s1" d="M220.0 104.0H406.4Q410.4 104.0 410.4 108.0V110.0Q410.4 114.0 406.4 114.0H220.0Z"><title>Luart (JIT): 7.3× slower</title></path><text class="value" x="415.4" y="109.0" text-anchor="start" dominant-baseline="middle">7.3×</text>
-<path class="s0" d="M220.0 116.0H526.9Q530.9 116.0 530.9 120.0V122.0Q530.9 126.0 526.9 126.0H220.0Z"><title>Luart (no JIT): 26× slower</title></path><text class="value" x="535.9" y="121.0" text-anchor="start" dominant-baseline="middle">26×</text>
-<path class="s2" d="M220.0 128.0H575.3Q579.3 128.0 579.3 132.0V134.0Q579.3 138.0 575.3 138.0H220.0Z"><title>go-lua: 42× slower</title></path><text class="value" x="584.3" y="133.0" text-anchor="start" dominant-baseline="middle">42×</text>
-<text class="label" x="208" y="173.0" text-anchor="end" dominant-baseline="middle">numeric loop, 1M iterations</text>
-<path class="s1" d="M220.0 156.0H235.4Q239.4 156.0 239.4 160.0V162.0Q239.4 166.0 235.4 166.0H220.0Z"><title>Luart (JIT): 1.2× slower</title></path><text class="value" x="244.4" y="161.0" text-anchor="start" dominant-baseline="middle">1.2×</text>
-<path class="s0" d="M220.0 168.0H445.0Q449.0 168.0 449.0 172.0V174.0Q449.0 178.0 445.0 178.0H220.0Z"><title>Luart (no JIT): 11× slower</title></path><text class="value" x="454.0" y="173.0" text-anchor="start" dominant-baseline="middle">11×</text>
-<path class="s2" d="M220.0 180.0H741.4Q745.4 180.0 745.4 184.0V186.0Q745.4 190.0 741.4 190.0H220.0Z"><title>go-lua: 239× slower</title></path><text class="value" x="750.4" y="185.0" text-anchor="start" dominant-baseline="middle">239×</text>
-<text class="label" x="208" y="225.0" text-anchor="end" dominant-baseline="middle">array fill and sum, 100k</text>
-<path class="s1" d="M220.0 208.0H306.5Q310.5 208.0 310.5 212.0V214.0Q310.5 218.0 306.5 218.0H220.0Z"><title>Luart (JIT): 2.6× slower</title></path><text class="value" x="315.5" y="213.0" text-anchor="start" dominant-baseline="middle">2.6×</text>
-<path class="s0" d="M220.0 220.0H387.3Q391.3 220.0 391.3 224.0V226.0Q391.3 230.0 387.3 230.0H220.0Z"><title>Luart (no JIT): 6.0× slower</title></path><text class="value" x="396.3" y="225.0" text-anchor="start" dominant-baseline="middle">6.0×</text>
-<path class="s2" d="M220.0 232.0H467.8Q471.8 232.0 471.8 236.0V238.0Q471.8 242.0 467.8 242.0H220.0Z"><title>go-lua: 14× slower</title></path><text class="value" x="476.8" y="237.0" text-anchor="start" dominant-baseline="middle">14×</text>
-<text class="label" x="208" y="277.0" text-anchor="end" dominant-baseline="middle">records, 10k tables</text>
-<path class="s1" d="M220.0 260.0H405.1Q409.1 260.0 409.1 264.0V266.0Q409.1 270.0 405.1 270.0H220.0Z"><title>Luart (JIT): 7.2× slower</title></path><text class="value" x="414.1" y="265.0" text-anchor="start" dominant-baseline="middle">7.2×</text>
-<path class="s0" d="M220.0 272.0H434.7Q438.7 272.0 438.7 276.0V278.0Q438.7 282.0 434.7 282.0H220.0Z"><title>Luart (no JIT): 9.8× slower</title></path><text class="value" x="443.7" y="277.0" text-anchor="start" dominant-baseline="middle">9.8×</text>
-<path class="s2" d="M220.0 284.0H552.8Q556.8 284.0 556.8 288.0V290.0Q556.8 294.0 552.8 294.0H220.0Z"><title>go-lua: 34× slower</title></path><text class="value" x="561.8" y="289.0" text-anchor="start" dominant-baseline="middle">34×</text>
-<text class="label" x="208" y="329.0" text-anchor="end" dominant-baseline="middle">closures, 100k</text>
-<path class="s1" d="M220.0 312.0H508.0Q512.0 312.0 512.0 316.0V318.0Q512.0 322.0 508.0 322.0H220.0Z"><title>Luart (JIT): 21× slower</title></path><text class="value" x="517.0" y="317.0" text-anchor="start" dominant-baseline="middle">21×</text>
-<path class="s0" d="M220.0 324.0H524.0Q528.0 324.0 528.0 328.0V330.0Q528.0 334.0 524.0 334.0H220.0Z"><title>Luart (no JIT): 25× slower</title></path><text class="value" x="533.0" y="329.0" text-anchor="start" dominant-baseline="middle">25×</text>
-<path class="s2" d="M220.0 336.0H579.0Q583.0 336.0 583.0 340.0V342.0Q583.0 346.0 579.0 346.0H220.0Z"><title>go-lua: 44× slower</title></path><text class="value" x="588.0" y="341.0" text-anchor="start" dominant-baseline="middle">44×</text>
-<text class="label" x="208" y="381.0" text-anchor="end" dominant-baseline="middle">sort 10k with comparator</text>
-<path class="s1" d="M220.0 364.0H313.9Q317.9 364.0 317.9 368.0V370.0Q317.9 374.0 313.9 374.0H220.0Z"><title>Luart (JIT): 2.8× slower</title></path><text class="value" x="322.9" y="369.0" text-anchor="start" dominant-baseline="middle">2.8×</text>
-<path class="s0" d="M220.0 376.0H315.8Q319.8 376.0 319.8 380.0V382.0Q319.8 386.0 315.8 386.0H220.0Z"><title>Luart (no JIT): 2.8× slower</title></path><text class="value" x="324.8" y="381.0" text-anchor="start" dominant-baseline="middle">2.8×</text>
-<path class="s2" d="M220.0 388.0H414.5Q418.5 388.0 418.5 392.0V394.0Q418.5 398.0 414.5 398.0H220.0Z"><title>go-lua: 7.9× slower</title></path><text class="value" x="423.5" y="393.0" text-anchor="start" dominant-baseline="middle">7.9×</text>
-<text class="label" x="208" y="433.0" text-anchor="end" dominant-baseline="middle">string build, 10k pieces</text>
-<path class="s1" d="M220.0 416.0H262.4Q266.4 416.0 266.4 420.0V422.0Q266.4 426.0 262.4 426.0H220.0Z"><title>Luart (JIT): 1.6× slower</title></path><text class="value" x="271.4" y="421.0" text-anchor="start" dominant-baseline="middle">1.6×</text>
-<path class="s0" d="M220.0 428.0H279.5Q283.5 428.0 283.5 432.0V434.0Q283.5 438.0 279.5 438.0H220.0Z"><title>Luart (no JIT): 1.9× slower</title></path><text class="value" x="288.5" y="433.0" text-anchor="start" dominant-baseline="middle">1.9×</text>
-<path class="s2" d="M220.0 440.0H704.7Q708.7 440.0 708.7 444.0V446.0Q708.7 450.0 704.7 450.0H220.0Z"><title>go-lua: 163× slower</title></path><text class="value" x="713.7" y="445.0" text-anchor="start" dominant-baseline="middle">163×</text>
-<text class="label" x="208" y="485.0" text-anchor="end" dominant-baseline="middle">calls into Go, 100k</text>
-<path class="s1" d="M220.0 468.0H382.3Q386.3 468.0 386.3 472.0V474.0Q386.3 478.0 382.3 478.0H220.0Z"><title>Luart (JIT): 5.7× slower</title></path><text class="value" x="391.3" y="473.0" text-anchor="start" dominant-baseline="middle">5.7×</text>
-<path class="s0" d="M220.0 480.0H412.6Q416.6 480.0 416.6 484.0V486.0Q416.6 490.0 412.6 490.0H220.0Z"><title>Luart (no JIT): 7.8× slower</title></path><text class="value" x="421.6" y="485.0" text-anchor="start" dominant-baseline="middle">7.8×</text>
-<path class="s2" d="M220.0 492.0H524.3Q528.3 492.0 528.3 496.0V498.0Q528.3 502.0 524.3 502.0H220.0Z"><title>go-lua: 25× slower</title></path><text class="value" x="533.3" y="497.0" text-anchor="start" dominant-baseline="middle">25×</text>
-<text class="label" x="208" y="537.0" text-anchor="end" dominant-baseline="middle">plasma frame</text>
-<path class="s1" d="M220.0 520.0H305.2Q309.2 520.0 309.2 524.0V526.0Q309.2 530.0 305.2 530.0H220.0Z"><title>Luart (JIT): 2.5× slower</title></path><text class="value" x="314.2" y="525.0" text-anchor="start" dominant-baseline="middle">2.5×</text>
-<path class="s0" d="M220.0 532.0H362.8Q366.8 532.0 366.8 536.0V538.0Q366.8 542.0 362.8 542.0H220.0Z"><title>Luart (no JIT): 4.6× slower</title></path><text class="value" x="371.8" y="537.0" text-anchor="start" dominant-baseline="middle">4.6×</text>
-<path class="s2" d="M220.0 544.0H472.6Q476.6 544.0 476.6 548.0V550.0Q476.6 554.0 472.6 554.0H220.0Z"><title>go-lua: 15× slower</title></path><text class="value" x="481.6" y="549.0" text-anchor="start" dominant-baseline="middle">15×</text>
-<text class="label" x="208" y="589.0" text-anchor="end" dominant-baseline="middle">particles frame</text>
-<path class="s1" d="M220.0 572.0H482.5Q486.5 572.0 486.5 576.0V578.0Q486.5 582.0 482.5 582.0H220.0Z"><title>Luart (JIT): 16× slower</title></path><text class="value" x="491.5" y="577.0" text-anchor="start" dominant-baseline="middle">16×</text>
-<path class="s0" d="M220.0 584.0H588.5Q592.5 584.0 592.5 588.0V590.0Q592.5 594.0 588.5 594.0H220.0Z"><title>Luart (no JIT): 49× slower</title></path><text class="value" x="597.5" y="589.0" text-anchor="start" dominant-baseline="middle">49×</text>
-<path class="s2" d="M220.0 596.0H740.0Q744.0 596.0 744.0 600.0V602.0Q744.0 606.0 740.0 606.0H220.0Z"><title>go-lua: 236× slower</title></path><text class="value" x="749.0" y="601.0" text-anchor="start" dominant-baseline="middle">236×</text>
+<rect class="s3" x="366.6" y="70" width="12" height="12" rx="2"/><text class="label" x="384.6" y="80">Lua 5.4</text>
+<rect class="s4" x="458.8" y="70" width="12" height="12" rx="2"/><text class="label" x="476.8" y="80">LuaJIT</text>
+<line class="grid" x1="220.0" x2="220.0" y1="98" y2="928"/><text class="tick" x="220.0" y="946" text-anchor="middle">0.2×</text>
+<line class="grid" x1="289.8" x2="289.8" y1="98" y2="928"/><text class="tick" x="289.8" y="946" text-anchor="middle">0.5×</text>
+<line class="base" x1="342.6" x2="342.6" y1="98" y2="928"/><text class="tick" x="342.6" y="946" text-anchor="middle">1×</text>
+<line class="grid" x1="395.4" x2="395.4" y1="98" y2="928"/><text class="tick" x="395.4" y="946" text-anchor="middle">2×</text>
+<line class="grid" x1="465.2" x2="465.2" y1="98" y2="928"/><text class="tick" x="465.2" y="946" text-anchor="middle">5×</text>
+<line class="grid" x1="518.0" x2="518.0" y1="98" y2="928"/><text class="tick" x="518.0" y="946" text-anchor="middle">10×</text>
+<line class="grid" x1="570.8" x2="570.8" y1="98" y2="928"/><text class="tick" x="570.8" y="946" text-anchor="middle">20×</text>
+<line class="grid" x1="640.6" x2="640.6" y1="98" y2="928"/><text class="tick" x="640.6" y="946" text-anchor="middle">50×</text>
+<line class="grid" x1="693.4" x2="693.4" y1="98" y2="928"/><text class="tick" x="693.4" y="946" text-anchor="middle">100×</text>
+<line class="grid" x1="746.2" x2="746.2" y1="98" y2="928"/><text class="tick" x="746.2" y="946" text-anchor="middle">200×</text>
+<line class="grid" x1="816.0" x2="816.0" y1="98" y2="928"/><text class="tick" x="816.0" y="946" text-anchor="middle">500×</text>
+<text class="label" x="208" y="133.0" text-anchor="end" dominant-baseline="middle">fib(25), recursive calls</text>
+<path class="s1" d="M342.6 104.0H490.2Q494.2 104.0 494.2 108.0V110.0Q494.2 114.0 490.2 114.0H342.6Z"><title>Luart (JIT): 7.3× slower</title></path><text class="value" x="499.2" y="109.0" text-anchor="start" dominant-baseline="middle">7.3×</text>
+<path class="s0" d="M342.6 116.0H587.6Q591.6 116.0 591.6 120.0V122.0Q591.6 126.0 587.6 126.0H342.6Z"><title>Luart (no JIT): 26× slower</title></path><text class="value" x="596.6" y="121.0" text-anchor="start" dominant-baseline="middle">26×</text>
+<path class="s2" d="M342.6 128.0H624.8Q628.8 128.0 628.8 132.0V134.0Q628.8 138.0 624.8 138.0H342.6Z"><title>go-lua: 43× slower</title></path><text class="value" x="633.8" y="133.0" text-anchor="start" dominant-baseline="middle">43×</text>
+<path class="s3" d="M342.6 140.0H520.5Q524.5 140.0 524.5 144.0V146.0Q524.5 150.0 520.5 150.0H342.6Z"><title>Lua 5.4: 11× slower</title></path><text class="value" x="529.5" y="145.0" text-anchor="start" dominant-baseline="middle">11×</text>
+<path class="s4" d="M342.6 152.0H358.5Q362.5 152.0 362.5 156.0V158.0Q362.5 162.0 358.5 162.0H342.6Z"><title>LuaJIT: 1.3× slower</title></path><text class="value" x="367.5" y="157.0" text-anchor="start" dominant-baseline="middle">1.3×</text>
+<text class="label" x="208" y="209.0" text-anchor="end" dominant-baseline="middle">numeric loop, 1M iterations</text>
+<path class="s1" d="M342.6 180.0H352.7Q356.7 180.0 356.7 184.0V186.0Q356.7 190.0 352.7 190.0H342.6Z"><title>Luart (JIT): 1.2× slower</title></path><text class="value" x="361.7" y="185.0" text-anchor="start" dominant-baseline="middle">1.2×</text>
+<path class="s0" d="M342.6 192.0H523.0Q527.0 192.0 527.0 196.0V198.0Q527.0 202.0 523.0 202.0H342.6Z"><title>Luart (no JIT): 11× slower</title></path><text class="value" x="532.0" y="197.0" text-anchor="start" dominant-baseline="middle">11×</text>
+<path class="s2" d="M342.6 204.0H754.3Q758.3 204.0 758.3 208.0V210.0Q758.3 214.0 754.3 214.0H342.6Z"><title>go-lua: 234× slower</title></path><text class="value" x="763.3" y="209.0" text-anchor="start" dominant-baseline="middle">234×</text>
+<path class="s3" d="M342.6 216.0H471.6Q475.6 216.0 475.6 220.0V222.0Q475.6 226.0 471.6 226.0H342.6Z"><title>Lua 5.4: 5.7× slower</title></path><text class="value" x="480.6" y="221.0" text-anchor="start" dominant-baseline="middle">5.7×</text>
+<path class="s4" d="M342.6 228.0H342.6Q341.6 228.0 341.6 229.0V237.0Q341.6 238.0 342.6 238.0H342.6Z"><title>LuaJIT: 1.0× faster</title></path><text class="value" x="336.6" y="233.0" text-anchor="end" dominant-baseline="middle">0.99×</text>
+<text class="label" x="208" y="285.0" text-anchor="end" dominant-baseline="middle">array fill and sum, 100k</text>
+<path class="s1" d="M342.6 256.0H408.3Q412.3 256.0 412.3 260.0V262.0Q412.3 266.0 408.3 266.0H342.6Z"><title>Luart (JIT): 2.5× slower</title></path><text class="value" x="417.3" y="261.0" text-anchor="start" dominant-baseline="middle">2.5×</text>
+<path class="s0" d="M342.6 268.0H470.5Q474.5 268.0 474.5 272.0V274.0Q474.5 278.0 470.5 278.0H342.6Z"><title>Luart (no JIT): 5.6× slower</title></path><text class="value" x="479.5" y="273.0" text-anchor="start" dominant-baseline="middle">5.6×</text>
+<path class="s2" d="M342.6 280.0H536.7Q540.7 280.0 540.7 284.0V286.0Q540.7 290.0 536.7 290.0H342.6Z"><title>go-lua: 13× slower</title></path><text class="value" x="545.7" y="285.0" text-anchor="start" dominant-baseline="middle">13×</text>
+<path class="s3" d="M342.6 292.0H376.9Q380.9 292.0 380.9 296.0V298.0Q380.9 302.0 376.9 302.0H342.6Z"><title>Lua 5.4: 1.7× slower</title></path><text class="value" x="385.9" y="297.0" text-anchor="start" dominant-baseline="middle">1.7×</text>
+<path class="s4" d="M342.6 304.0H283.0Q279.0 304.0 279.0 308.0V310.0Q279.0 314.0 283.0 314.0H342.6Z"><title>LuaJIT: 2.3× faster</title></path><text class="value" x="274.0" y="309.0" text-anchor="end" dominant-baseline="middle">0.43×</text>
+<text class="label" x="208" y="361.0" text-anchor="end" dominant-baseline="middle">records, 10k tables</text>
+<path class="s1" d="M342.6 332.0H486.2Q490.2 332.0 490.2 336.0V338.0Q490.2 342.0 486.2 342.0H342.6Z"><title>Luart (JIT): 6.9× slower</title></path><text class="value" x="495.2" y="337.0" text-anchor="start" dominant-baseline="middle">6.9×</text>
+<path class="s0" d="M342.6 344.0H512.6Q516.6 344.0 516.6 348.0V350.0Q516.6 354.0 512.6 354.0H342.6Z"><title>Luart (no JIT): 9.8× slower</title></path><text class="value" x="521.6" y="349.0" text-anchor="start" dominant-baseline="middle">9.8×</text>
+<path class="s2" d="M342.6 356.0H602.3Q606.3 356.0 606.3 360.0V362.0Q606.3 366.0 602.3 366.0H342.6Z"><title>go-lua: 32× slower</title></path><text class="value" x="611.3" y="361.0" text-anchor="start" dominant-baseline="middle">32×</text>
+<path class="s3" d="M342.6 368.0H512.3Q516.3 368.0 516.3 372.0V374.0Q516.3 378.0 512.3 378.0H342.6Z"><title>Lua 5.4: 9.8× slower</title></path><text class="value" x="521.3" y="373.0" text-anchor="start" dominant-baseline="middle">9.8×</text>
+<path class="s4" d="M342.6 380.0H424.5Q428.5 380.0 428.5 384.0V386.0Q428.5 390.0 424.5 390.0H342.6Z"><title>LuaJIT: 3.1× slower</title></path><text class="value" x="433.5" y="385.0" text-anchor="start" dominant-baseline="middle">3.1×</text>
+<text class="label" x="208" y="437.0" text-anchor="end" dominant-baseline="middle">closures, 100k</text>
+<path class="s1" d="M342.6 408.0H569.6Q573.6 408.0 573.6 412.0V414.0Q573.6 418.0 569.6 418.0H342.6Z"><title>Luart (JIT): 21× slower</title></path><text class="value" x="578.6" y="413.0" text-anchor="start" dominant-baseline="middle">21×</text>
+<path class="s0" d="M342.6 420.0H579.3Q583.3 420.0 583.3 424.0V426.0Q583.3 430.0 579.3 430.0H342.6Z"><title>Luart (no JIT): 24× slower</title></path><text class="value" x="588.3" y="425.0" text-anchor="start" dominant-baseline="middle">24×</text>
+<path class="s2" d="M342.6 432.0H625.2Q629.2 432.0 629.2 436.0V438.0Q629.2 442.0 625.2 442.0H342.6Z"><title>go-lua: 43× slower</title></path><text class="value" x="634.2" y="437.0" text-anchor="start" dominant-baseline="middle">43×</text>
+<path class="s3" d="M342.6 444.0H599.9Q603.9 444.0 603.9 448.0V450.0Q603.9 454.0 599.9 454.0H342.6Z"><title>Lua 5.4: 31× slower</title></path><text class="value" x="608.9" y="449.0" text-anchor="start" dominant-baseline="middle">31×</text>
+<path class="s4" d="M342.6 456.0H546.5Q550.5 456.0 550.5 460.0V462.0Q550.5 466.0 546.5 466.0H342.6Z"><title>LuaJIT: 15× slower</title></path><text class="value" x="555.5" y="461.0" text-anchor="start" dominant-baseline="middle">15×</text>
+<text class="label" x="208" y="513.0" text-anchor="end" dominant-baseline="middle">sort 10k with comparator</text>
+<path class="s1" d="M342.6 484.0H417.2Q421.2 484.0 421.2 488.0V490.0Q421.2 494.0 417.2 494.0H342.6Z"><title>Luart (JIT): 2.8× slower</title></path><text class="value" x="426.2" y="489.0" text-anchor="start" dominant-baseline="middle">2.8×</text>
+<path class="s0" d="M342.6 496.0H420.1Q424.1 496.0 424.1 500.0V502.0Q424.1 506.0 420.1 506.0H342.6Z"><title>Luart (no JIT): 2.9× slower</title></path><text class="value" x="429.1" y="501.0" text-anchor="start" dominant-baseline="middle">2.9×</text>
+<path class="s2" d="M342.6 508.0H508.1Q512.1 508.0 512.1 512.0V514.0Q512.1 518.0 508.1 518.0H342.6Z"><title>go-lua: 9.3× slower</title></path><text class="value" x="517.1" y="513.0" text-anchor="start" dominant-baseline="middle">9.3×</text>
+<path class="s3" d="M342.6 520.0H410.1Q414.1 520.0 414.1 524.0V526.0Q414.1 530.0 410.1 530.0H342.6Z"><title>Lua 5.4: 2.6× slower</title></path><text class="value" x="419.1" y="525.0" text-anchor="start" dominant-baseline="middle">2.6×</text>
+<path class="s4" d="M342.6 532.0H412.0Q416.0 532.0 416.0 536.0V538.0Q416.0 542.0 412.0 542.0H342.6Z"><title>LuaJIT: 2.6× slower</title></path><text class="value" x="421.0" y="537.0" text-anchor="start" dominant-baseline="middle">2.6×</text>
+<text class="label" x="208" y="589.0" text-anchor="end" dominant-baseline="middle">string build, 10k pieces</text>
+<path class="s1" d="M342.6 560.0H372.5Q376.5 560.0 376.5 564.0V566.0Q376.5 570.0 372.5 570.0H342.6Z"><title>Luart (JIT): 1.6× slower</title></path><text class="value" x="381.5" y="565.0" text-anchor="start" dominant-baseline="middle">1.6×</text>
+<path class="s0" d="M342.6 572.0H387.0Q391.0 572.0 391.0 576.0V578.0Q391.0 582.0 387.0 582.0H342.6Z"><title>Luart (no JIT): 1.9× slower</title></path><text class="value" x="396.0" y="577.0" text-anchor="start" dominant-baseline="middle">1.9×</text>
+<path class="s2" d="M342.6 584.0H745.5Q749.5 584.0 749.5 588.0V590.0Q749.5 594.0 745.5 594.0H342.6Z"><title>go-lua: 209× slower</title></path><text class="value" x="754.5" y="589.0" text-anchor="start" dominant-baseline="middle">209×</text>
+<path class="s3" d="M342.6 596.0H411.2Q415.2 596.0 415.2 600.0V602.0Q415.2 606.0 411.2 606.0H342.6Z"><title>Lua 5.4: 2.6× slower</title></path><text class="value" x="420.2" y="601.0" text-anchor="start" dominant-baseline="middle">2.6×</text>
+<path class="s4" d="M342.6 608.0H332.5Q328.5 608.0 328.5 612.0V614.0Q328.5 618.0 332.5 618.0H342.6Z"><title>LuaJIT: 1.2× faster</title></path><text class="value" x="323.5" y="613.0" text-anchor="end" dominant-baseline="middle">0.83×</text>
+<text class="label" x="208" y="665.0" text-anchor="end" dominant-baseline="middle">calls into Go, 100k</text>
+<path class="s1" d="M342.6 636.0H472.4Q476.4 636.0 476.4 640.0V642.0Q476.4 646.0 472.4 646.0H342.6Z"><title>Luart (JIT): 5.8× slower</title></path><text class="value" x="481.4" y="641.0" text-anchor="start" dominant-baseline="middle">5.8×</text>
+<path class="s0" d="M342.6 648.0H495.8Q499.8 648.0 499.8 652.0V654.0Q499.8 658.0 495.8 658.0H342.6Z"><title>Luart (no JIT): 7.9× slower</title></path><text class="value" x="504.8" y="653.0" text-anchor="start" dominant-baseline="middle">7.9×</text>
+<path class="s2" d="M342.6 660.0H580.4Q584.4 660.0 584.4 664.0V666.0Q584.4 670.0 580.4 670.0H342.6Z"><title>go-lua: 24× slower</title></path><text class="value" x="589.4" y="665.0" text-anchor="start" dominant-baseline="middle">24×</text>
+<path class="s3" d="M342.6 672.0H458.8Q462.8 672.0 462.8 676.0V678.0Q462.8 682.0 458.8 682.0H342.6Z"><title>Lua 5.4: 4.8× slower</title></path><text class="value" x="467.8" y="677.0" text-anchor="start" dominant-baseline="middle">4.8×</text>
+<path class="s4" d="M342.6 684.0H425.5Q429.5 684.0 429.5 688.0V690.0Q429.5 694.0 425.5 694.0H342.6Z"><title>LuaJIT: 3.1× slower</title></path><text class="value" x="434.5" y="689.0" text-anchor="start" dominant-baseline="middle">3.1×</text>
+<text class="label" x="208" y="741.0" text-anchor="end" dominant-baseline="middle">plasma frame</text>
+<path class="s1" d="M342.6 712.0H409.8Q413.8 712.0 413.8 716.0V718.0Q413.8 722.0 409.8 722.0H342.6Z"><title>Luart (JIT): 2.5× slower</title></path><text class="value" x="418.8" y="717.0" text-anchor="start" dominant-baseline="middle">2.5×</text>
+<path class="s0" d="M342.6 724.0H456.5Q460.5 724.0 460.5 728.0V730.0Q460.5 734.0 456.5 734.0H342.6Z"><title>Luart (no JIT): 4.7× slower</title></path><text class="value" x="465.5" y="729.0" text-anchor="start" dominant-baseline="middle">4.7×</text>
+<path class="s2" d="M342.6 736.0H540.8Q544.8 736.0 544.8 740.0V742.0Q544.8 746.0 540.8 746.0H342.6Z"><title>go-lua: 14× slower</title></path><text class="value" x="549.8" y="741.0" text-anchor="start" dominant-baseline="middle">14×</text>
+<path class="s3" d="M342.6 748.0H460.4Q464.4 748.0 464.4 752.0V754.0Q464.4 758.0 460.4 758.0H342.6Z"><title>Lua 5.4: 4.9× slower</title></path><text class="value" x="469.4" y="753.0" text-anchor="start" dominant-baseline="middle">4.9×</text>
+<path class="s4" d="M342.6 760.0H384.5Q388.5 760.0 388.5 764.0V766.0Q388.5 770.0 384.5 770.0H342.6Z"><title>LuaJIT: 1.8× slower</title></path><text class="value" x="393.5" y="765.0" text-anchor="start" dominant-baseline="middle">1.8×</text>
+<text class="label" x="208" y="817.0" text-anchor="end" dominant-baseline="middle">particles frame</text>
+<path class="s1" d="M342.6 788.0H551.0Q555.0 788.0 555.0 792.0V794.0Q555.0 798.0 551.0 798.0H342.6Z"><title>Luart (JIT): 16× slower</title></path><text class="value" x="560.0" y="793.0" text-anchor="start" dominant-baseline="middle">16×</text>
+<path class="s0" d="M342.6 800.0H637.5Q641.5 800.0 641.5 804.0V806.0Q641.5 810.0 637.5 810.0H342.6Z"><title>Luart (no JIT): 51× slower</title></path><text class="value" x="646.5" y="805.0" text-anchor="start" dominant-baseline="middle">51×</text>
+<path class="s2" d="M342.6 812.0H753.5Q757.5 812.0 757.5 816.0V818.0Q757.5 822.0 753.5 822.0H342.6Z"><title>go-lua: 232× slower</title></path><text class="value" x="762.5" y="817.0" text-anchor="start" dominant-baseline="middle">232×</text>
+<path class="s3" d="M342.6 824.0H592.4Q596.4 824.0 596.4 828.0V830.0Q596.4 834.0 592.4 834.0H342.6Z"><title>Lua 5.4: 28× slower</title></path><text class="value" x="601.4" y="829.0" text-anchor="start" dominant-baseline="middle">28×</text>
+<path class="s4" d="M342.6 836.0H469.4Q473.4 836.0 473.4 840.0V842.0Q473.4 846.0 469.4 846.0H342.6Z"><title>LuaJIT: 5.6× slower</title></path><text class="value" x="478.4" y="841.0" text-anchor="start" dominant-baseline="middle">5.6×</text>
+<line class="base" x1="24" x2="856" y1="855.0" y2="855.0"/>
+<text class="label mean" x="208" y="893.0" text-anchor="end" dominant-baseline="middle">geometric mean</text>
+<path class="s1" d="M342.6 864.0H453.0Q457.0 864.0 457.0 868.0V870.0Q457.0 874.0 453.0 874.0H342.6Z"><title>Luart (JIT): 4.5× slower</title></path><text class="value" x="462.0" y="869.0" text-anchor="start" dominant-baseline="middle">4.5×</text>
+<path class="s0" d="M342.6 876.0H507.0Q511.0 876.0 511.0 880.0V882.0Q511.0 886.0 507.0 886.0H342.6Z"><title>Luart (no JIT): 9.1× slower</title></path><text class="value" x="516.0" y="881.0" text-anchor="start" dominant-baseline="middle">9.1×</text>
+<path class="s2" d="M342.6 888.0H627.2Q631.2 888.0 631.2 892.0V894.0Q631.2 898.0 627.2 898.0H342.6Z"><title>go-lua: 44× slower</title></path><text class="value" x="636.2" y="893.0" text-anchor="start" dominant-baseline="middle">44×</text>
+<path class="s3" d="M342.6 900.0H481.4Q485.4 900.0 485.4 904.0V906.0Q485.4 910.0 481.4 910.0H342.6Z"><title>Lua 5.4: 6.5× slower</title></path><text class="value" x="490.4" y="905.0" text-anchor="start" dominant-baseline="middle">6.5×</text>
+<path class="s4" d="M342.6 912.0H395.8Q399.8 912.0 399.8 916.0V918.0Q399.8 922.0 395.8 922.0H342.6Z"><title>LuaJIT: 2.1× slower</title></path><text class="value" x="404.8" y="917.0" text-anchor="start" dominant-baseline="middle">2.1×</text>
 </svg>

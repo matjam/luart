@@ -247,6 +247,11 @@ func TestSuiteAgrees(t *testing.T) {
 					t.Errorf("go %v, luart %v", g, lr)
 				}
 			}
+			for _, c := range cLuas {
+				if v := runC(t, newSuiteC(t, c, w.lua)); v != lr {
+					t.Errorf("%s %v, luart %v", c.name, v, lr)
+				}
+			}
 		})
 	}
 }
@@ -278,5 +283,30 @@ func BenchmarkSuite(b *testing.B) {
 				sink = runShopify(l)
 			}
 		})
+		for _, c := range cLuas {
+			b.Run(w.name+"/"+c.name, func(b *testing.B) {
+				l := newSuiteC(b, c, w.lua)
+				for b.Loop() {
+					sink = runC(b, l)
+				}
+			})
+		}
 	}
+}
+
+func newSuiteC(tb testing.TB, c cLua, src string) cState {
+	l, err := c.new(src)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	tb.Cleanup(l.close)
+	return l
+}
+
+func runC(tb testing.TB, l cState) float64 {
+	v, err := l.run()
+	if err != nil {
+		tb.Fatal(err)
+	}
+	return v
 }
