@@ -77,7 +77,7 @@ nothing compiles.
     in Go.
   - Compiled code exits with `jitExitCallGo` at a CALL whose callee is a
     Go closure, or a Go function that is neither an inline intrinsic nor a
-    number function. The exit stub leaves the callee's object in
+    number function, and with `jitExitCallNumber` for a number function. The exit stub leaves the callee's object in
     `jitContext.callee` and the frame register in `jitContext.frame`
     (native calls move the frame without updating the context), and the
     driver calls it (`jitCallGoFunction`) and re-enters after it. The
@@ -204,9 +204,12 @@ In order of expected payoff for real-time scripts such as visualisers:
      runtime call); reloading the prototype only when the frame changes;
      and a leaner `enterJIT`. Calls into Go went from 16.6 to 12.5 ns on
      amd64.
-   - *Left:* number functions take the general exit so `tryCall` can
-     call them frameless; they could have their own reason and be called
-     from the argument registers.
+   - Number functions exit with `jitExitCallNumber`, the same way, and
+     `jitCallNumber` calls them frameless through `tryCall`, falling back
+     to an ordinary Go call when the arguments do not fit.
+     `numberFunction.call` takes its arguments as separate float64s: as
+     an array by value they went through memory, where 16-byte copies of
+     8-byte stores stalled on store forwarding.
 2. **Go calling compiled Lua** (the `table.sort` comparator, callbacks
    from host code).
    - *Done:* `callJIT` and `jitReturnToGo`, and `table.sort` working on

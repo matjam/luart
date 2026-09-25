@@ -302,8 +302,14 @@ func TestJITGoCallExits(t *testing.T) {
 			local p, q, r = two(i)
 			local u = two(i)
 			if r == nil then s = s + p + q + u end
+			-- number functions: frameless, and falling back when the
+			-- arguments do not fit
+			s = s + mad(i, 2, 3) + mad(i, 2, 3, 4) + mad(i, "2", 3) + (hyp(i, 1))
+			record(i, s, 1)
+			local w, z = hyp(3, i)
+			if z == nil then s = s + w end
 		end
-		return s, counter()
+		return s, counter(), recorded()
 	end`
 	jit, interp, _ := runBothWith(t, src, func(l *State) {
 		l.Register("gofn", func(l *State) int {
@@ -311,6 +317,14 @@ func TestJITGoCallExits(t *testing.T) {
 			l.PushNumber(v * 2)
 			return 1
 		})
+		l.PushNumberFunction(func(a, b, c float64) float64 { return a*b + c })
+		l.SetGlobal("mad")
+		l.PushNumberFunction(math.Hypot)
+		l.SetGlobal("hyp")
+		recorded := 0.0
+		l.PushNumberFunction(func(a, b, c float64) { recorded += a + b*c })
+		l.SetGlobal("record")
+		l.Register("recorded", func(l *State) int { l.PushNumber(recorded); return 1 })
 		l.Register("two", func(l *State) int {
 			v, _ := l.ToNumber(1)
 			l.PushNumber(v + 1)

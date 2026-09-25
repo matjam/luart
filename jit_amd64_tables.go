@@ -320,9 +320,9 @@ func (c *amd64Compiler) goCallee(ip int, i instruction) {
 	a.Load(rT, fn.base, fn.off+offP)
 	a.Cmp(rT, rNumber) // a number whose bits match the tag
 	a.J(E, notGo)
-	a.Load(rTmp, rT, offGFNumber) // number functions take the general exit,
-	a.Test(rTmp, rTmp)            // where runJIT may call them frameless
-	a.J(NE, notGo)
+	a.Load(rTmp, rT, offGFNumber)
+	a.Test(rTmp, rTmp)
+	a.J(NE, c.numCallExit(ip)) // runJIT may call it frameless
 	a.Jmp(c.goCallExit(ip))
 	a.Bind(closure)
 	a.Load(rT, fn.base, fn.off+offP)
@@ -360,7 +360,7 @@ func (c *amd64Compiler) intrinsic(ip int, i instruction, notGo Label) {
 		a.Jmp(done)
 		a.Bind(next)
 	}
-	a.Jmp(c.exit(ip)) // a number function runJIT may call frameless
+	a.Jmp(c.numCallExit(ip)) // a number function runJIT may call frameless
 	a.Bind(done)
 	c.guardStore(fn, noReg, ip)
 	c.storeNumber(fn, 0)

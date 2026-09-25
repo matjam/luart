@@ -41,15 +41,16 @@ const maxOffset = 32768
 // anything, so a failed check can exit to the interpreter at that
 // instruction, which then runs it from the start.
 type arm64Compiler struct {
-	a      Asm
-	p      *prototype
-	code   []instruction
-	pcs    []Label // start of each pc's code
-	exits  []Label // exit to the interpreter at each pc, created on demand
-	budget []Label // budget exits by back-edge target pc, created on demand
-	goCall []Label // exits at a CALL of a Go function, created on demand
-	notLua []Label // a CALL's out-of-line code for callees other than Lua closures
-	always []bool  // instructions compiled as an unconditional exit
+	a       Asm
+	p       *prototype
+	code    []instruction
+	pcs     []Label // start of each pc's code
+	exits   []Label // exit to the interpreter at each pc, created on demand
+	budget  []Label // budget exits by back-edge target pc, created on demand
+	goCall  []Label // exits at a CALL of a Go function, created on demand
+	numCall []Label // exits at a CALL of a number function, created on demand
+	notLua  []Label // a CALL's out-of-line code for callees other than Lua closures
+	always  []bool  // instructions compiled as an unconditional exit
 }
 
 func compileJIT(p *prototype) (code []byte, offsets []int32, entries []int, kernels int) {
@@ -61,10 +62,12 @@ func compileJIT(p *prototype) (code []byte, offsets []int32, entries []int, kern
 	c.exits = make([]Label, len(c.code))
 	c.budget = make([]Label, len(c.code))
 	c.goCall = make([]Label, len(c.code))
+	c.numCall = make([]Label, len(c.code))
 	c.notLua = make([]Label, len(c.code))
 	c.always = make([]bool, len(c.code))
 	for i := range c.pcs {
-		c.pcs[i], c.exits[i], c.budget[i], c.goCall[i], c.notLua[i] = c.a.NewLabel(), -1, -1, -1, -1
+		c.pcs[i], c.exits[i], c.budget[i] = c.a.NewLabel(), -1, -1
+		c.goCall[i], c.numCall[i], c.notLua[i] = -1, -1, -1
 	}
 	c.prologue()
 	loops := map[int]*kernel{}
@@ -143,17 +146,6 @@ func (c *arm64Compiler) stubs() {
 			a.B(budget)
 		}
 	}
-	goCall := a.NewLabel()
-	for ip, l := range c.goCall {
-		if l >= 0 {
-			a.Bind(l)
-			fn := reg(c.code[ip].a())
-			a.Ldr(rTmp, fn.base, fn.off+offP)
-			a.Str(rTmp, rCtx, offCallee)
-			a.MovImm(rExitPC, uint64(ip))
-			a.B(goCall)
-		}
-	}
 	a.Bind(common)
 	a.Str(rExitPC, rCtx, offExitPC)
 	a.MovImm(0, jitExitInstruction)
@@ -162,11 +154,36 @@ func (c *arm64Compiler) stubs() {
 	a.Str(rExitPC, rCtx, offExitPC)
 	a.MovImm(0, jitExitBudget)
 	a.Ret()
-	a.Bind(goCall)
-	a.Str(rFrame, rCtx, offFrame) // compiled calls may have moved it
-	a.Str(rExitPC, rCtx, offExitPC)
-	a.MovImm(0, jitExitCallGo)
-	a.Ret()
+	for _, calls := range []struct {
+		labels []Label
+		reason uint64
+	}{{c.goCall, jitExitCallGo}, {c.numCall, jitExitCallNumber}} {
+		tail := a.NewLabel()
+		for ip, l := range calls.labels {
+			if l >= 0 {
+				a.Bind(l)
+				fn := reg(c.code[ip].a())
+				a.Ldr(rTmp, fn.base, fn.off+offP)
+				a.Str(rTmp, rCtx, offCallee)
+				a.MovImm(rExitPC, uint64(ip))
+				a.B(tail)
+			}
+		}
+		a.Bind(tail)
+		a.Str(rFrame, rCtx, offFrame) // compiled calls may have moved it
+		a.Str(rExitPC, rCtx, offExitPC)
+		a.MovImm(0, calls.reason)
+		a.Ret()
+	}
+}
+
+// numCallExit returns the label that exits at the CALL at ip for runJIT to
+// call the number function in its register.
+func (c *arm64Compiler) numCallExit(ip int) Label {
+	if c.numCall[ip] < 0 {
+		c.numCall[ip] = c.a.NewLabel()
+	}
+	return c.numCall[ip]
 }
 
 // goCallExit returns the label that exits at the CALL at ip for runJIT to
