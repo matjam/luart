@@ -48,6 +48,7 @@ var suites = map[string]suite{
 		{"closures", "closures, 100k"},
 		{"sort", "sort 10k with comparator"},
 		{"string-build", "string build, 10k pieces"},
+		{"string-scan", "string scan, 11k characters"},
 		{"go-calls", "calls into Go, 100k"},
 		{"plasma", "plasma frame"},
 		{"particles", "particles frame"},

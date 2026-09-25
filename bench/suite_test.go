@@ -134,6 +134,38 @@ var workloads = []workload{
 			return float64(len(strings.Join(t, ",")))
 		}},
 
+	{"string-scan", `
+		local text = string.rep("the quick brown fox jumps over the lazy dog ", 250)
+		function run()
+		  local words, vowels, inword = 0, 0, false
+		  for i = 1, #text do
+		    if text:byte(i) == 32 then
+		      inword = false
+		    elseif not inword then
+		      inword, words = true, words + 1
+		    end
+		    local c = text:sub(i, i)
+		    if c == "a" or c == "e" or c == "i" or c == "o" or c == "u" then vowels = vowels + 1 end
+		  end
+		  return words * 100000 + vowels
+		end`,
+		func() float64 {
+			text := strings.Repeat("the quick brown fox jumps over the lazy dog ", 250)
+			words, vowels, inword := 0, 0, false
+			for i := 0; i < len(text); i++ {
+				if text[i] == ' ' {
+					inword = false
+				} else if !inword {
+					inword, words = true, words+1
+				}
+				switch text[i : i+1] {
+				case "a", "e", "i", "o", "u":
+					vowels++
+				}
+			}
+			return float64(words*100000 + vowels)
+		}},
+
 	{"go-calls", `
 		function run()
 		  local s = 0
