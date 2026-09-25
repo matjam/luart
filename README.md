@@ -7,6 +7,14 @@ luart ("Lua RT") is a Lua 5.2 VM in pure Go, built for real-time use such as
 per-frame scripts in games, visualisers and audio tools. It is a fork of
 [Shopify/go-lua](https://github.com/Shopify/go-lua).
 
+## Why
+
+I embed Lua in Go programs I write. go-lua is stable, but it no longer
+receives updates, and it leaves a lot of performance on the table. luart is
+also an experiment: I wanted to see how far I could push an interpreter with
+generative AI doing the engineering, from modernising the code to writing a
+JIT compiler. Quite far, it turns out.
+
 ## Goals
 
 - **Real-time performance.** Fix the interpreter's obvious performance
