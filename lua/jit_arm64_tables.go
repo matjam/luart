@@ -151,19 +151,22 @@ func (c *arm64Compiler) selfField(ip int, i bytecode.Instruction) {
 	a.Str(rT, self.base, self.off+offP)
 }
 
-// loadRK loads RK field into rP and rN, exiting at ip if it is nil or a
-// constant out of reach.
-func (c *arm64Compiler) loadRK(field, ip int) bool {
+// loadRK loads RK field into rP and rN, exiting at ip if it is nil unless
+// nilOK. It reports false for a constant out of reach, or a nil one unless
+// nilOK.
+func (c *arm64Compiler) loadRK(field, ip int, nilOK bool) bool {
 	src := reg(field)
 	if bytecode.IsConstant(field) {
 		k, ok := c.constant(bytecode.ConstantIndex(field))
-		if !ok || c.p.Constants[bytecode.ConstantIndex(field)].isNil() {
+		if !ok || !nilOK && c.p.Constants[bytecode.ConstantIndex(field)].isNil() {
 			return false
 		}
 		src = k
 	}
 	c.load(src)
-	c.a.Cbz(rP, c.exit(ip))
+	if !nilOK {
+		c.a.Cbz(rP, c.exit(ip))
+	}
 	return true
 }
 
@@ -171,7 +174,7 @@ func (c *arm64Compiler) loadRK(field, ip int) bool {
 // string key, storing RK(C) to the cached slot as setField does.
 func (c *arm64Compiler) setField(ip int, i bytecode.Instruction, up bool) {
 	a := &c.a
-	if !c.loadRK(i.C(), ip) {
+	if !c.loadRK(i.C(), ip, true) {
 		c.exitAlways(ip)
 		return
 	}
@@ -183,17 +186,26 @@ func (c *arm64Compiler) setField(ip int, i bytecode.Instruction, up bool) {
 	c.tableOf(t, ip)
 	c.cachedSlot(ip, false)
 	slot := operand{rSlot, 0}
-	// An absent key: setField stores it only in a table without a
-	// metatable and with a shared shape.
-	present := a.NewLabel()
+	// An absent key: setField stores it only in a table with a shared
+	// shape and without a metatable, or one known to lack __newindex. A
+	// dictionary counts its nil slots, so storing nil in one exits too.
+	present, store := a.NewLabel(), a.NewLabel()
 	a.Ldr(rTmp, rSlot, offP)
 	a.Cbnz(rTmp, present)
-	a.Ldr(rTmp, rT, offTMeta)
-	a.Cbnz(rTmp, c.exit(ip))
 	a.Ldr(rTmp, rT, offTShape)
 	a.Ldrb(rTmp, rTmp, offShapeDict)
 	a.Cbnz(rTmp, c.exit(ip))
+	a.Ldr(rTmp, rT, offTMeta)
+	a.Cbz(rTmp, store)
+	a.Ldrb(rTmp, rTmp, offTFlags)
+	a.Tbz(rTmp, uint32(tmNewIndex), c.exit(ip)) // __newindex may be there
+	a.B(store)
 	a.Bind(present)
+	a.Cbnz(rP, store)
+	a.Ldr(rTmp, rT, offTShape)
+	a.Ldrb(rTmp, rTmp, offShapeDict)
+	a.Cbnz(rTmp, c.exit(ip))
+	a.Bind(store)
 	c.guardStore(slot, rP, ip)
 	c.store(slot)
 	a.Strb(ZR, rT, offTFlags) // invalidateTagMethodCache
@@ -252,7 +264,7 @@ func (c *arm64Compiler) getIndex(ip int, i bytecode.Instruction, up bool) {
 // element; other keys exit.
 func (c *arm64Compiler) setIndex(ip int, i bytecode.Instruction, up bool) {
 	a := &c.a
-	if !c.loadRK(i.C(), ip) {
+	if !c.loadRK(i.C(), ip, false) {
 		c.exitAlways(ip)
 		return
 	}
