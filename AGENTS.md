@@ -172,9 +172,11 @@ nothing compiles.
     internal/jitvm generates from `executeSwitch`. It adds one check for
     the patched opcodes `opJITCount` and `opJITEnter`, so states without
     the JIT run the original loop.
-  - `jitOrig` keeps the unpatched instructions. The counter sits at pc 0
-    and each FORLOOP; after `jitThreshold` (1000) counts `compileJIT`
-    runs, and `opJITEnter` goes at the entries `jitEntries` picks.
+  - `jitOrig` keeps the unpatched instructions. The counter sits at pc 0,
+    each FORLOOP, and the head of every other loop (the target of a
+    backward JMP or of TFORLOOP), so a function run once with a hot while
+    loop compiles; after `jitThreshold` (1000) counts `compileJIT` runs,
+    and `opJITEnter` goes at the entries `jitEntries` picks.
   - Never patch an instruction its predecessor consumes: the JMP after a
     test, TFORLOOP after TFORCALL, or an EXTRAARG word.
 - **Driver (`runJIT`, jit.go):**
