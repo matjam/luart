@@ -3,6 +3,7 @@
 package luart
 
 import (
+	"github.com/matjam/luart/internal/bytecode"
 	. "github.com/matjam/luart/internal/jit/amd64"
 )
 
@@ -39,7 +40,7 @@ const maxOffset = 1 << 30
 type amd64Compiler struct {
 	a       Asm
 	p       *prototype
-	code    []instruction
+	code    []bytecode.Instruction
 	pcs     []Label
 	exits   []Label
 	budget  []Label
@@ -70,7 +71,7 @@ func compileJIT(p *prototype) (code []byte, offsets []int32, entries []int, kern
 	c.prologue()
 	loops := map[int]*kernel{}
 	for ip, i := range c.p.code {
-		if i.opCode() == opForLoop && !isExtraArg(c.p.code, ip) {
+		if i.OpCode() == bytecode.OpForLoop && !isExtraArg(c.p.code, ip) {
 			if k := c.findKernel(ip); k != nil {
 				loops[ip] = k
 			}
@@ -143,7 +144,7 @@ func (c *amd64Compiler) stubs() {
 		for ip, l := range calls.labels {
 			if l >= 0 {
 				a.Bind(l)
-				fn := reg(c.code[ip].a())
+				fn := reg(c.code[ip].A())
 				a.Load(rTmp, fn.base, fn.off+offP)
 				a.Store(rCtx, offCallee, rTmp)
 				a.Store(rCtx, offFrame, rFrame) // compiled calls may have moved it
@@ -210,10 +211,10 @@ func (c *amd64Compiler) constant(k int) (operand, bool) {
 // rkNumber returns the operand for an RK field that must be a number, and
 // false for a constant that is not one.
 func (c *amd64Compiler) rkNumber(field int) (operand, bool) {
-	if !isConstant(field) {
+	if !bytecode.IsConstant(field) {
 		return reg(field), true
 	}
-	k := constantIndex(field)
+	k := bytecode.ConstantIndex(field)
 	if !c.p.constants[k].isNumber() {
 		return operand{}, false
 	}
@@ -338,18 +339,18 @@ func (c *amd64Compiler) jumpTo(ip, target int) {
 
 func (c *amd64Compiler) jumpAfter(ip int) (int, bool) {
 	j := c.code[ip+1]
-	if j.a() != 0 {
+	if j.A() != 0 {
 		return 0, false
 	}
-	return ip + 2 + j.sbx(), true
+	return ip + 2 + j.SBx(), true
 }
 
 // compare branches to yes when x op y is jump, where op is EQ, LT or LE,
 // and to no otherwise. NaN makes every comparison false.
-func (c *amd64Compiler) compare(op opCode, jump bool, x, y XReg, yes, no Label) {
+func (c *amd64Compiler) compare(op bytecode.OpCode, jump bool, x, y XReg, yes, no Label) {
 	a := &c.a
 	switch op {
-	case opEqual:
+	case bytecode.OpEqual:
 		a.Ucomisd(x, y)
 		if jump {
 			a.J(P, no)
@@ -358,14 +359,14 @@ func (c *amd64Compiler) compare(op opCode, jump bool, x, y XReg, yes, no Label) 
 			a.J(P, yes)
 			a.J(NE, yes)
 		}
-	case opLessThan:
+	case bytecode.OpLessThan:
 		a.Ucomisd(y, x) // A: y > x
 		if jump {
 			a.J(A, yes)
 		} else {
 			a.J(BE, yes)
 		}
-	case opLessOrEqual:
+	case bytecode.OpLessOrEqual:
 		a.Ucomisd(y, x) // AE: y >= x
 		if jump {
 			a.J(AE, yes)
@@ -384,21 +385,21 @@ func (c *amd64Compiler) signMask(x XReg) {
 
 // arith computes x0 = x0 op x1 for ADD to MOD. It reports false for MOD
 // without ROUNDSD.
-func (c *amd64Compiler) arith(op opCode, d, x, y XReg) bool {
+func (c *amd64Compiler) arith(op bytecode.OpCode, d, x, y XReg) bool {
 	a := &c.a
 	if d != x {
 		a.MovSD(d, x)
 	}
 	switch op {
-	case opAdd:
+	case bytecode.OpAdd:
 		a.AddSD(d, y)
-	case opSub:
+	case bytecode.OpSub:
 		a.SubSD(d, y)
-	case opMul:
+	case bytecode.OpMul:
 		a.MulSD(d, y)
-	case opDiv:
+	case bytecode.OpDiv:
 		a.DivSD(d, y)
-	case opMod: // b - floor(b/c)*c, rounded step by step as arith does
+	case bytecode.OpMod: // b - floor(b/c)*c, rounded step by step as arith does
 		if !c.sse41 {
 			return false
 		}
@@ -416,49 +417,49 @@ func (c *amd64Compiler) arith(op opCode, d, x, y XReg) bool {
 func (c *amd64Compiler) instruction(ip int) int {
 	a := &c.a
 	orig := c.p.code[ip]
-	switch op := orig.opCode(); op {
-	case opMove:
-		c.copyValue(reg(orig.a()), reg(orig.b()), ip)
-	case opLoadConstant:
-		k, ok := c.constant(orig.bx())
+	switch op := orig.OpCode(); op {
+	case bytecode.OpMove:
+		c.copyValue(reg(orig.A()), reg(orig.B()), ip)
+	case bytecode.OpLoadConstant:
+		k, ok := c.constant(orig.Bx())
 		if !ok {
 			c.exitAlways(ip)
 			break
 		}
-		c.copyValue(reg(orig.a()), k, ip)
-	case opLoadBool:
-		dst := reg(orig.a())
+		c.copyValue(reg(orig.A()), k, ip)
+	case bytecode.OpLoadBool:
+		dst := reg(orig.A())
 		c.guardStore(dst, noReg, ip)
 		bits := tagOf(vkBool)
-		if orig.b() != 0 {
+		if orig.B() != 0 {
 			bits |= 1
 		}
 		c.storeBool(dst, bits)
-		if orig.c() != 0 {
+		if orig.C() != 0 {
 			a.Jmp(c.pcs[ip+2])
 		}
-	case opLoadNil:
-		for r := orig.a(); r <= orig.a()+orig.b(); r++ {
+	case bytecode.OpLoadNil:
+		for r := orig.A(); r <= orig.A()+orig.B(); r++ {
 			c.guardStore(reg(r), noReg, ip)
 		}
-		for r := orig.a(); r <= orig.a()+orig.b(); r++ {
+		for r := orig.A(); r <= orig.A()+orig.B(); r++ {
 			a.StoreZero(rFrame, reg(r).off+offP)
 			a.StoreZero(rFrame, reg(r).off+offN)
 		}
-	case opGetUpValue:
-		c.upValueAddr(orig.b())
-		c.copyValue(reg(orig.a()), operand{rAddr, 0}, ip)
-	case opSetUpValue:
-		c.upValueAddr(orig.b())
-		c.copyValue(operand{rAddr, 0}, reg(orig.a()), ip)
-	case opAdd, opSub, opMul, opDiv, opMod:
-		b, okB := c.rkNumber(orig.b())
-		cc, okC := c.rkNumber(orig.c())
-		if !okB || !okC || op == opMod && !c.sse41 {
+	case bytecode.OpGetUpValue:
+		c.upValueAddr(orig.B())
+		c.copyValue(reg(orig.A()), operand{rAddr, 0}, ip)
+	case bytecode.OpSetUpValue:
+		c.upValueAddr(orig.B())
+		c.copyValue(operand{rAddr, 0}, reg(orig.A()), ip)
+	case bytecode.OpAdd, bytecode.OpSub, bytecode.OpMul, bytecode.OpDiv, bytecode.OpMod:
+		b, okB := c.rkNumber(orig.B())
+		cc, okC := c.rkNumber(orig.C())
+		if !okB || !okC || op == bytecode.OpMod && !c.sse41 {
 			c.exitAlways(ip)
 			break
 		}
-		dst := reg(orig.a())
+		dst := reg(orig.A())
 		c.guardNumber(b, ip)
 		c.guardNumber(cc, ip)
 		c.guardStore(dst, noReg, ip)
@@ -466,16 +467,16 @@ func (c *amd64Compiler) instruction(ip int) int {
 		a.LoadSD(1, cc.base, cc.off+offN)
 		c.arith(op, 0, 0, 1)
 		c.storeNumber(dst, 0)
-	case opUnaryMinus:
-		src, dst := reg(orig.b()), reg(orig.a())
+	case bytecode.OpUnaryMinus:
+		src, dst := reg(orig.B()), reg(orig.A())
 		c.guardNumber(src, ip)
 		c.guardStore(dst, noReg, ip)
 		a.LoadSD(0, src.base, src.off+offN)
 		c.signMask(1)
 		a.XorPD(0, 1)
 		c.storeNumber(dst, 0)
-	case opNot:
-		src, dst := reg(orig.b()), reg(orig.a())
+	case bytecode.OpNot:
+		src, dst := reg(orig.B()), reg(orig.A())
 		c.guardStore(dst, noReg, ip)
 		falsy, done := a.NewLabel(), a.NewLabel()
 		c.branchFalsy(src, falsy)
@@ -484,16 +485,16 @@ func (c *amd64Compiler) instruction(ip int) int {
 		a.Bind(falsy)
 		c.storeBool(dst, tagOf(vkBool)|1)
 		a.Bind(done)
-	case opJump:
-		if orig.a() != 0 {
+	case bytecode.OpJump:
+		if orig.A() != 0 {
 			c.exitAlways(ip)
 			break
 		}
-		c.jumpTo(ip, ip+1+orig.sbx())
-	case opEqual, opLessThan, opLessOrEqual:
+		c.jumpTo(ip, ip+1+orig.SBx())
+	case bytecode.OpEqual, bytecode.OpLessThan, bytecode.OpLessOrEqual:
 		target, ok := c.jumpAfter(ip)
-		b, okB := c.rkNumber(orig.b())
-		cc, okC := c.rkNumber(orig.c())
+		b, okB := c.rkNumber(orig.B())
+		cc, okC := c.rkNumber(orig.C())
 		if !ok || !okB || !okC {
 			c.exitAlways(ip)
 			break
@@ -508,34 +509,34 @@ func (c *amd64Compiler) instruction(ip int) int {
 		if target <= ip {
 			yes = back
 		}
-		c.compare(op, orig.a() != 0, 0, 1, yes, c.pcs[ip+2])
+		c.compare(op, orig.A() != 0, 0, 1, yes, c.pcs[ip+2])
 		if target <= ip {
 			a.Bind(back)
 			c.backEdge(target)
 		}
-	case opTest:
+	case bytecode.OpTest:
 		target, ok := c.jumpAfter(ip)
 		if !ok || target <= ip {
 			c.exitAlways(ip)
 			break
 		}
 		jump, skip := c.pcs[target], c.pcs[ip+2]
-		if orig.c() == 0 {
-			c.branchFalsy(reg(orig.a()), jump)
+		if orig.C() == 0 {
+			c.branchFalsy(reg(orig.A()), jump)
 			a.Jmp(skip)
 		} else {
-			c.branchFalsy(reg(orig.a()), skip)
+			c.branchFalsy(reg(orig.A()), skip)
 			a.Jmp(jump)
 		}
-	case opTestSet:
+	case bytecode.OpTestSet:
 		target, ok := c.jumpAfter(ip)
 		if !ok || target <= ip {
 			c.exitAlways(ip)
 			break
 		}
-		src, dst := reg(orig.b()), reg(orig.a())
+		src, dst := reg(orig.B()), reg(orig.A())
 		assign, skip := a.NewLabel(), c.pcs[ip+2]
-		if orig.c() == 0 {
+		if orig.C() == 0 {
 			c.branchFalsy(src, assign)
 			a.Jmp(skip)
 		} else {
@@ -544,8 +545,8 @@ func (c *amd64Compiler) instruction(ip int) int {
 		a.Bind(assign)
 		c.copyValue(dst, src, ip)
 		a.Jmp(c.pcs[target])
-	case opForPrep:
-		init, limit, step := reg(orig.a()), reg(orig.a()+1), reg(orig.a()+2)
+	case bytecode.OpForPrep:
+		init, limit, step := reg(orig.A()), reg(orig.A()+1), reg(orig.A()+2)
 		c.guardNumber(init, ip)
 		c.guardNumber(limit, ip)
 		c.guardNumber(step, ip)
@@ -553,9 +554,9 @@ func (c *amd64Compiler) instruction(ip int) int {
 		a.LoadSD(2, step.base, step.off+offN)
 		a.SubSD(0, 2)
 		a.StoreSD(init.base, init.off+offN, 0)
-		a.Jmp(c.pcs[ip+1+orig.sbx()])
-	case opForLoop:
-		idx, limit, step, ext := reg(orig.a()), reg(orig.a()+1), reg(orig.a()+2), reg(orig.a()+3)
+		a.Jmp(c.pcs[ip+1+orig.SBx()])
+	case bytecode.OpForLoop:
+		idx, limit, step, ext := reg(orig.A()), reg(orig.A()+1), reg(orig.A()+2), reg(orig.A()+3)
 		take := a.NewLabel()
 		a.LoadSD(0, idx.base, idx.off+offN)
 		a.LoadSD(1, limit.base, limit.off+offN)
@@ -565,16 +566,16 @@ func (c *amd64Compiler) instruction(ip int) int {
 		c.guardStore(ext, noReg, ip)
 		a.StoreSD(idx.base, idx.off+offN, 0)
 		c.storeNumber(ext, 0)
-		c.backEdge(ip + 1 + orig.sbx())
-	case opGetTable, opGetTableUp, opSelf, opSetTable, opSetTableUp:
+		c.backEdge(ip + 1 + orig.SBx())
+	case bytecode.OpGetTable, bytecode.OpGetTableUp, bytecode.OpSelf, bytecode.OpSetTable, bytecode.OpSetTableUp:
 		c.tableAccess(ip, c.code[ip])
-	case opCall:
+	case bytecode.OpCall:
 		c.call(ip, orig)
-	case opReturn:
+	case bytecode.OpReturn:
 		c.returnLua(ip, orig)
-	case opLoadConstantEx, opSetList:
+	case bytecode.OpLoadConstantEx, bytecode.OpSetList:
 		c.exitAlways(ip)
-		if op == opLoadConstantEx || orig.c() == 0 {
+		if op == bytecode.OpLoadConstantEx || orig.C() == 0 {
 			return 1 // the extra-argument word is not an instruction
 		}
 	default:

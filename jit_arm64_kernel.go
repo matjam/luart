@@ -3,6 +3,7 @@
 package luart
 
 import (
+	"github.com/matjam/luart/internal/bytecode"
 	. "github.com/matjam/luart/internal/jit/arm64"
 )
 
@@ -44,7 +45,7 @@ func (c *arm64Compiler) findKernel(latch int) *kernel {
 func (c *arm64Compiler) emitKernel(k *kernel, normal Label) {
 	a := &c.a
 	fl := c.p.code[k.latch]
-	base := fl.a()
+	base := fl.A()
 	idx, limit, step, ext := k.reg(base), k.reg(base+1), k.reg(base+2), k.reg(base+3)
 
 	// Entry: the write barrier is off, and the live-in registers hold
@@ -123,10 +124,10 @@ func (c *arm64Compiler) flush(k *kernel) {
 // kernelOperand returns the register holding RK field, loading a constant
 // into tmp.
 func (c *arm64Compiler) kernelOperand(k *kernel, field int, tmp FReg) FReg {
-	if !isConstant(field) {
+	if !bytecode.IsConstant(field) {
 		return k.reg(field)
 	}
-	o, _ := c.constant(constantIndex(field))
+	o, _ := c.constant(bytecode.ConstantIndex(field))
 	c.a.LdrD(tmp, o.base, o.off+offN)
 	return tmp
 }
@@ -144,51 +145,51 @@ func (k *kernel) target(t int, latch Label) Label {
 func (c *arm64Compiler) kernelInstruction(k *kernel, ip int, latch Label) int {
 	a := &c.a
 	i := c.p.code[ip]
-	switch op := i.opCode(); op {
-	case opMove:
-		a.Fmov(k.reg(i.a()), k.reg(i.b()))
-	case opLoadConstant:
-		o, _ := c.constant(i.bx())
-		a.LdrD(k.reg(i.a()), o.base, o.off+offN)
-	case opAdd, opSub, opMul, opDiv, opMod:
-		b, cc, d := c.kernelOperand(k, i.b(), 0), c.kernelOperand(k, i.c(), 1), k.reg(i.a())
+	switch op := i.OpCode(); op {
+	case bytecode.OpMove:
+		a.Fmov(k.reg(i.A()), k.reg(i.B()))
+	case bytecode.OpLoadConstant:
+		o, _ := c.constant(i.Bx())
+		a.LdrD(k.reg(i.A()), o.base, o.off+offN)
+	case bytecode.OpAdd, bytecode.OpSub, bytecode.OpMul, bytecode.OpDiv, bytecode.OpMod:
+		b, cc, d := c.kernelOperand(k, i.B(), 0), c.kernelOperand(k, i.C(), 1), k.reg(i.A())
 		switch op {
-		case opAdd:
+		case bytecode.OpAdd:
 			a.Fadd(d, b, cc)
-		case opSub:
+		case bytecode.OpSub:
 			a.Fsub(d, b, cc)
-		case opMul:
+		case bytecode.OpMul:
 			a.Fmul(d, b, cc)
-		case opDiv:
+		case bytecode.OpDiv:
 			a.Fdiv(d, b, cc)
-		case opMod: // b - floor(b/c)*c, rounded step by step as arith does
+		case bytecode.OpMod: // b - floor(b/c)*c, rounded step by step as arith does
 			a.Fdiv(2, b, cc)
 			a.Frintm(2, 2)
 			a.Fmul(2, 2, cc)
 			a.Fsub(d, b, 2)
 		}
-	case opUnaryMinus:
-		a.Fneg(k.reg(i.a()), k.reg(i.b()))
-	case opEqual, opLessThan, opLessOrEqual:
+	case bytecode.OpUnaryMinus:
+		a.Fneg(k.reg(i.A()), k.reg(i.B()))
+	case bytecode.OpEqual, bytecode.OpLessThan, bytecode.OpLessOrEqual:
 		t, _ := kernelJump(c.p.code, ip, k.latch)
-		b, cc := c.kernelOperand(k, i.b(), 0), c.kernelOperand(k, i.c(), 1)
+		b, cc := c.kernelOperand(k, i.B(), 0), c.kernelOperand(k, i.C(), 1)
 		a.Fcmp(b, cc)
 		var when Cond
 		switch op {
-		case opEqual:
+		case bytecode.OpEqual:
 			when = EQ
-		case opLessThan:
+		case bytecode.OpLessThan:
 			when = MI
-		case opLessOrEqual:
+		case bytecode.OpLessOrEqual:
 			when = LS
 		}
-		if i.a() == 0 {
+		if i.A() == 0 {
 			when = negate(when)
 		}
 		a.BCond(when, k.target(t, latch))
 		a.B(k.target(ip+2, latch))
 		return 1
-	case opJump:
+	case bytecode.OpJump:
 		t, _ := kernelJump(c.p.code, ip, k.latch)
 		a.B(k.target(t, latch))
 	}

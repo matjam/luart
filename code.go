@@ -3,6 +3,8 @@ package luart
 import (
 	"fmt"
 	"math"
+
+	"github.com/matjam/luart/internal/bytecode"
 )
 
 const (
@@ -14,7 +16,7 @@ const (
 
 const (
 	noJump            = -1
-	noRegister        = maxArgA
+	noRegister        = bytecode.MaxArgA
 	maxLocalVariables = 200
 )
 
@@ -118,7 +120,7 @@ func (f *function) OpenFunction(line int) {
 }
 
 func (f *function) CloseFunction() exprDesc {
-	e := f.previous.ExpressionToNextRegister(makeExpression(kindRelocatable, f.previous.encodeABx(opClosure, 0, len(f.previous.f.prototypes)-1)))
+	e := f.previous.ExpressionToNextRegister(makeExpression(kindRelocatable, f.previous.encodeABx(bytecode.OpClosure, 0, len(f.previous.f.prototypes)-1)))
 	f.ReturnNone()
 	f.LeaveBlock()
 	f.assert(f.block == nil)
@@ -274,14 +276,14 @@ func (f *function) semanticError(message string) {
 	f.p.syntaxError(message)
 }
 
-func (f *function) breakLabel()                         { f.FindGotos(f.MakeLabel("break", 0)) }
-func (f *function) unreachable()                        { f.assert(false) }
-func (f *function) assert(cond bool)                    { f.p.l.assert(cond) }
-func (f *function) Instruction(e exprDesc) *instruction { return &f.f.code[e.info] }
-func (e exprDesc) hasJumps() bool                       { return e.t != e.f }
-func (e exprDesc) isNumeral() bool                      { return e.kind == kindNumber && e.t == noJump && e.f == noJump }
-func (e exprDesc) isVariable() bool                     { return kindLocal <= e.kind && e.kind <= kindIndexed }
-func (e exprDesc) hasMultipleReturns() bool             { return e.kind == kindCall || e.kind == kindVarArg }
+func (f *function) breakLabel()                                  { f.FindGotos(f.MakeLabel("break", 0)) }
+func (f *function) unreachable()                                 { f.assert(false) }
+func (f *function) assert(cond bool)                             { f.p.l.assert(cond) }
+func (f *function) Instruction(e exprDesc) *bytecode.Instruction { return &f.f.code[e.info] }
+func (e exprDesc) hasJumps() bool                                { return e.t != e.f }
+func (e exprDesc) isNumeral() bool                               { return e.kind == kindNumber && e.t == noJump && e.f == noJump }
+func (e exprDesc) isVariable() bool                              { return kindLocal <= e.kind && e.kind <= kindIndexed }
+func (e exprDesc) hasMultipleReturns() bool                      { return e.kind == kindCall || e.kind == kindVarArg }
 
 func (f *function) assertEqual(a, b any) {
 	if a != b {
@@ -289,7 +291,7 @@ func (f *function) assertEqual(a, b any) {
 	}
 }
 
-func (f *function) encode(i instruction) int {
+func (f *function) encode(i bytecode.Instruction) int {
 	f.assert(len(f.f.code) == len(f.f.lineInfo))
 	f.dischargeJumpPC()
 	f.f.code = append(f.f.code, i)
@@ -303,33 +305,35 @@ func (f *function) dropLastInstruction() {
 	f.f.lineInfo = f.f.lineInfo[:len(f.f.lineInfo)-1]
 }
 
-func (f *function) EncodeABC(op opCode, a, b, c int) int {
-	f.assert(opMode(op) == iABC)
-	f.assert(bMode(op) != opArgN || b == 0)
-	f.assert(cMode(op) != opArgN || c == 0)
-	f.assert(a <= maxArgA && b <= maxArgB && c <= maxArgC)
-	return f.encode(createABC(op, a, b, c))
+func (f *function) EncodeABC(op bytecode.OpCode, a, b, c int) int {
+	f.assert(bytecode.OpMode(op) == bytecode.ModeABC)
+	f.assert(bytecode.BMode(op) != bytecode.ArgN || b == 0)
+	f.assert(bytecode.CMode(op) != bytecode.ArgN || c == 0)
+	f.assert(a <= bytecode.MaxArgA && b <= bytecode.MaxArgB && c <= bytecode.MaxArgC)
+	return f.encode(bytecode.CreateABC(op, a, b, c))
 }
 
-func (f *function) encodeABx(op opCode, a, bx int) int {
-	f.assert(opMode(op) == iABx || opMode(op) == iAsBx)
-	f.assert(cMode(op) == opArgN)
-	f.assert(a <= maxArgA && bx <= maxArgBx)
-	return f.encode(createABx(op, a, bx))
+func (f *function) encodeABx(op bytecode.OpCode, a, bx int) int {
+	f.assert(bytecode.OpMode(op) == bytecode.ModeABx || bytecode.OpMode(op) == bytecode.ModeAsBx)
+	f.assert(bytecode.CMode(op) == bytecode.ArgN)
+	f.assert(a <= bytecode.MaxArgA && bx <= bytecode.MaxArgBx)
+	return f.encode(bytecode.CreateABx(op, a, bx))
 }
 
-func (f *function) encodeAsBx(op opCode, a, sbx int) int { return f.encodeABx(op, a, sbx+maxArgSBx) }
+func (f *function) encodeAsBx(op bytecode.OpCode, a, sbx int) int {
+	return f.encodeABx(op, a, sbx+bytecode.MaxArgSBx)
+}
 
 func (f *function) encodeExtraArg(a int) int {
-	f.assert(a <= maxArgAx)
-	return f.encode(createAx(opExtraArg, a))
+	f.assert(a <= bytecode.MaxArgAx)
+	return f.encode(bytecode.CreateAx(bytecode.OpExtraArg, a))
 }
 
 func (f *function) EncodeConstant(r, constant int) int {
-	if constant <= maxArgBx {
-		return f.encodeABx(opLoadConstant, r, constant)
+	if constant <= bytecode.MaxArgBx {
+		return f.encodeABx(bytecode.OpLoadConstant, r, constant)
 	}
-	pc := f.encodeABx(opLoadConstant, r, 0)
+	pc := f.encodeABx(bytecode.OpLoadConstant, r, 0)
 	f.encodeExtraArg(constant)
 	return pc
 }
@@ -340,46 +344,46 @@ func (f *function) EncodeString(s string) exprDesc {
 
 func (f *function) loadNil(from, n int) {
 	if len(f.f.code) > f.lastTarget { // no jumps to current position
-		if previous := &f.f.code[len(f.f.code)-1]; previous.opCode() == opLoadNil {
-			if pf, pl, l := previous.a(), previous.a()+previous.b(), from+n-1; pf <= from && from <= pl+1 || from <= pf && pf <= l+1 { // can connect both
+		if previous := &f.f.code[len(f.f.code)-1]; previous.OpCode() == bytecode.OpLoadNil {
+			if pf, pl, l := previous.A(), previous.A()+previous.B(), from+n-1; pf <= from && from <= pl+1 || from <= pf && pf <= l+1 { // can connect both
 				from, l = min(from, pf), max(l, pl)
-				previous.setA(from)
-				previous.setB(l - from)
+				previous.SetA(from)
+				previous.SetB(l - from)
 				return
 			}
 		}
 	}
-	f.EncodeABC(opLoadNil, from, n-1, 0)
+	f.EncodeABC(bytecode.OpLoadNil, from, n-1, 0)
 }
 
 func (f *function) Jump() int {
 	f.assert(f.isJumpListWalkable(f.jumpPC))
 	jumpPC := f.jumpPC
 	f.jumpPC = noJump
-	return f.Concatenate(f.encodeAsBx(opJump, 0, noJump), jumpPC)
+	return f.Concatenate(f.encodeAsBx(bytecode.OpJump, 0, noJump), jumpPC)
 }
 
 func (f *function) JumpTo(target int)             { f.PatchList(f.Jump(), target) }
-func (f *function) ReturnNone()                   { f.EncodeABC(opReturn, 0, 1, 0) }
+func (f *function) ReturnNone()                   { f.EncodeABC(bytecode.OpReturn, 0, 1, 0) }
 func (f *function) SetMultipleReturns(e exprDesc) { f.setReturns(e, MultipleReturns) }
 
 func (f *function) Return(e exprDesc, resultCount int) {
 	if e.hasMultipleReturns() {
 		if f.SetMultipleReturns(e); e.kind == kindCall && resultCount == 1 {
-			f.Instruction(e).setOpCode(opTailCall)
-			f.assert(f.Instruction(e).a() == f.activeVariableCount)
+			f.Instruction(e).SetOpCode(bytecode.OpTailCall)
+			f.assert(f.Instruction(e).A() == f.activeVariableCount)
 		}
-		f.EncodeABC(opReturn, f.activeVariableCount, MultipleReturns+1, 0)
+		f.EncodeABC(bytecode.OpReturn, f.activeVariableCount, MultipleReturns+1, 0)
 	} else if resultCount == 1 {
-		f.EncodeABC(opReturn, f.ExpressionToAnyRegister(e).info, 1+1, 0)
+		f.EncodeABC(bytecode.OpReturn, f.ExpressionToAnyRegister(e).info, 1+1, 0)
 	} else {
 		_ = f.ExpressionToNextRegister(e)
 		f.assert(resultCount == f.freeRegisterCount-f.activeVariableCount)
-		f.EncodeABC(opReturn, f.activeVariableCount, resultCount+1, 0)
+		f.EncodeABC(bytecode.OpReturn, f.activeVariableCount, resultCount+1, 0)
 	}
 }
 
-func (f *function) conditionalJump(op opCode, a, b, c int) int {
+func (f *function) conditionalJump(op bytecode.OpCode, a, b, c int) int {
 	f.EncodeABC(op, a, b, c)
 	return f.Jump()
 }
@@ -388,10 +392,10 @@ func (f *function) fixJump(pc, dest int) {
 	f.assert(f.isJumpListWalkable(pc))
 	f.assert(dest != noJump)
 	offset := dest - (pc + 1)
-	if abs(offset) > maxArgSBx {
+	if abs(offset) > bytecode.MaxArgSBx {
 		f.p.syntaxError("control structure too long")
 	}
-	f.f.code[pc].setSBx(offset)
+	f.f.code[pc].SetSBx(offset)
 }
 
 func (f *function) Label() int {
@@ -401,7 +405,7 @@ func (f *function) Label() int {
 
 func (f *function) jump(pc int) int {
 	f.assert(f.isJumpListWalkable(pc))
-	if offset := f.f.code[pc].sbx(); offset != noJump {
+	if offset := f.f.code[pc].SBx(); offset != noJump {
 		return pc + 1 + offset
 	}
 	return noJump
@@ -414,12 +418,12 @@ func (f *function) isJumpListWalkable(list int) bool {
 	if list < 0 || list >= len(f.f.code) {
 		return false
 	}
-	offset := f.f.code[list].sbx()
+	offset := f.f.code[list].SBx()
 	return offset == noJump || f.isJumpListWalkable(list+1+offset)
 }
 
-func (f *function) jumpControl(pc int) *instruction {
-	if pc >= 1 && testTMode(f.f.code[pc-1].opCode()) {
+func (f *function) jumpControl(pc int) *bytecode.Instruction {
+	if pc >= 1 && bytecode.TestTMode(f.f.code[pc-1].OpCode()) {
 		return &f.f.code[pc-1]
 	}
 	return &f.f.code[pc]
@@ -428,7 +432,7 @@ func (f *function) jumpControl(pc int) *instruction {
 func (f *function) needValue(list int) bool {
 	f.assert(f.isJumpListWalkable(list))
 	for ; list != noJump; list = f.jump(list) {
-		if f.jumpControl(list).opCode() != opTestSet {
+		if f.jumpControl(list).OpCode() != bytecode.OpTestSet {
 			return true
 		}
 	}
@@ -436,12 +440,12 @@ func (f *function) needValue(list int) bool {
 }
 
 func (f *function) patchTestRegister(node, register int) bool {
-	if i := f.jumpControl(node); i.opCode() != opTestSet {
+	if i := f.jumpControl(node); i.OpCode() != bytecode.OpTestSet {
 		return false
-	} else if register != noRegister && register != i.b() {
-		i.setA(register)
+	} else if register != noRegister && register != i.B() {
+		i.SetA(register)
 	} else {
-		*i = createABC(opTest, i.b(), 0, i.c())
+		*i = bytecode.CreateABC(bytecode.OpTest, i.B(), 0, i.C())
 	}
 	return true
 }
@@ -485,8 +489,8 @@ func (f *function) PatchClose(list, level int) {
 	f.assert(f.isJumpListWalkable(list))
 	for level, next := level+1, 0; list != noJump; list = next {
 		next = f.jump(list)
-		f.assert(f.f.code[list].opCode() == opJump && f.f.code[list].a() == 0 || f.f.code[list].a() >= level)
-		f.f.code[list].setA(level)
+		f.assert(f.f.code[list].OpCode() == bytecode.OpJump && f.f.code[list].A() == 0 || f.f.code[list].A() >= level)
+		f.f.code[list].SetA(level)
 	}
 }
 
@@ -547,7 +551,7 @@ func (f *function) ReserveRegisters(n int) {
 }
 
 func (f *function) freeRegister(r int) {
-	if !isConstant(r) && r >= f.activeVariableCount {
+	if !bytecode.IsConstant(r) && r >= f.activeVariableCount {
 		f.freeRegisterCount--
 		f.assertEqual(r, f.freeRegisterCount)
 	}
@@ -565,19 +569,19 @@ func (f *function) nilConstant() int            { return f.addConstant(f, nilVal
 
 func (f *function) setReturns(e exprDesc, resultCount int) {
 	if e.kind == kindCall {
-		f.Instruction(e).setC(resultCount + 1)
+		f.Instruction(e).SetC(resultCount + 1)
 	} else if e.kind == kindVarArg {
-		f.Instruction(e).setB(resultCount + 1)
-		f.Instruction(e).setA(f.freeRegisterCount)
+		f.Instruction(e).SetB(resultCount + 1)
+		f.Instruction(e).SetA(f.freeRegisterCount)
 		f.ReserveRegisters(1)
 	}
 }
 
 func (f *function) SetReturn(e exprDesc) exprDesc {
 	if e.kind == kindCall {
-		e.kind, e.info = kindNonRelocatable, f.Instruction(e).a()
+		e.kind, e.info = kindNonRelocatable, f.Instruction(e).A()
 	} else if e.kind == kindVarArg {
-		f.Instruction(e).setB(2)
+		f.Instruction(e).SetB(2)
 		e.kind = kindRelocatable
 	}
 	return e
@@ -588,13 +592,13 @@ func (f *function) DischargeVariables(e exprDesc) exprDesc {
 	case kindLocal:
 		e.kind = kindNonRelocatable
 	case kindUpValue:
-		e.kind, e.info = kindRelocatable, f.EncodeABC(opGetUpValue, 0, e.info, 0)
+		e.kind, e.info = kindRelocatable, f.EncodeABC(bytecode.OpGetUpValue, 0, e.info, 0)
 	case kindIndexed:
 		if f.freeRegister(e.index); e.tableType == kindLocal {
 			f.freeRegister(e.table)
-			e.kind, e.info = kindRelocatable, f.EncodeABC(opGetTable, 0, e.table, e.index)
+			e.kind, e.info = kindRelocatable, f.EncodeABC(bytecode.OpGetTable, 0, e.table, e.index)
 		} else {
-			e.kind, e.info = kindRelocatable, f.EncodeABC(opGetTableUp, 0, e.table, e.index)
+			e.kind, e.info = kindRelocatable, f.EncodeABC(bytecode.OpGetTableUp, 0, e.table, e.index)
 		}
 	case kindVarArg, kindCall:
 		e = f.SetReturn(e)
@@ -607,18 +611,18 @@ func (f *function) dischargeToRegister(e exprDesc, r int) exprDesc {
 	case kindNil:
 		f.loadNil(r, 1)
 	case kindFalse:
-		f.EncodeABC(opLoadBool, r, 0, 0)
+		f.EncodeABC(bytecode.OpLoadBool, r, 0, 0)
 	case kindTrue:
-		f.EncodeABC(opLoadBool, r, 1, 0)
+		f.EncodeABC(bytecode.OpLoadBool, r, 1, 0)
 	case kindConstant:
 		f.EncodeConstant(r, e.info)
 	case kindNumber:
 		f.EncodeConstant(r, f.NumberConstant(e.value))
 	case kindRelocatable:
-		f.Instruction(e).setA(r)
+		f.Instruction(e).SetA(r)
 	case kindNonRelocatable:
 		if r != e.info {
-			f.EncodeABC(opMove, r, e.info, 0)
+			f.EncodeABC(bytecode.OpMove, r, e.info, 0)
 		}
 	default:
 		f.assert(e.kind == kindVoid || e.kind == kindJump)
@@ -638,7 +642,7 @@ func (f *function) dischargeToAnyRegister(e exprDesc) exprDesc {
 
 func (f *function) encodeLabel(a, b, jump int) int {
 	f.Label()
-	return f.EncodeABC(opLoadBool, a, b, jump)
+	return f.EncodeABC(bytecode.OpLoadBool, a, b, jump)
 }
 
 func (f *function) expressionToRegister(e exprDesc, r int) exprDesc {
@@ -699,21 +703,21 @@ func (f *function) ExpressionToValue(e exprDesc) exprDesc {
 func (f *function) expressionToRegisterOrConstant(e exprDesc) (exprDesc, int) {
 	switch e = f.ExpressionToValue(e); e.kind {
 	case kindTrue, kindFalse:
-		if len(f.f.constants) <= maxIndexRK {
+		if len(f.f.constants) <= bytecode.MaxIndexRK {
 			e.info, e.kind = f.booleanConstant(e.kind == kindTrue), kindConstant
-			return e, asConstant(e.info)
+			return e, bytecode.AsConstant(e.info)
 		}
 	case kindNil:
-		if len(f.f.constants) <= maxIndexRK {
+		if len(f.f.constants) <= bytecode.MaxIndexRK {
 			e.info, e.kind = f.nilConstant(), kindConstant
-			return e, asConstant(e.info)
+			return e, bytecode.AsConstant(e.info)
 		}
 	case kindNumber:
 		e.info, e.kind = f.NumberConstant(e.value), kindConstant
 		fallthrough
 	case kindConstant:
-		if e.info <= maxIndexRK {
-			return e, asConstant(e.info)
+		if e.info <= bytecode.MaxIndexRK {
+			return e, bytecode.AsConstant(e.info)
 		}
 	}
 	e = f.ExpressionToAnyRegister(e)
@@ -728,14 +732,14 @@ func (f *function) StoreVariable(v, e exprDesc) {
 		return
 	case kindUpValue:
 		e = f.ExpressionToAnyRegister(e)
-		f.EncodeABC(opSetUpValue, e.info, v.info, 0)
+		f.EncodeABC(bytecode.OpSetUpValue, e.info, v.info, 0)
 	case kindIndexed:
 		var r int
 		e, r = f.expressionToRegisterOrConstant(e)
 		if v.tableType == kindLocal {
-			f.EncodeABC(opSetTable, v.table, v.index, r)
+			f.EncodeABC(bytecode.OpSetTable, v.table, v.index, r)
 		} else {
-			f.EncodeABC(opSetTableUp, v.table, v.index, r)
+			f.EncodeABC(bytecode.OpSetTableUp, v.table, v.index, r)
 		}
 	default:
 		f.unreachable()
@@ -750,27 +754,27 @@ func (f *function) Self(e, key exprDesc) exprDesc {
 	result := exprDesc{info: f.freeRegisterCount, kind: kindNonRelocatable} // base register for opSelf
 	f.ReserveRegisters(2)                                                   // function and 'self' produced by opSelf
 	key, k := f.expressionToRegisterOrConstant(key)
-	f.EncodeABC(opSelf, result.info, r, k)
+	f.EncodeABC(bytecode.OpSelf, result.info, r, k)
 	f.freeExpression(key)
 	return result
 }
 
 func (f *function) invertJump(pc int) {
 	i := f.jumpControl(pc)
-	f.p.l.assert(testTMode(i.opCode()) && i.opCode() != opTestSet && i.opCode() != opTest)
-	i.setA(not(i.a()))
+	f.p.l.assert(bytecode.TestTMode(i.OpCode()) && i.OpCode() != bytecode.OpTestSet && i.OpCode() != bytecode.OpTest)
+	i.SetA(not(i.A()))
 }
 
 func (f *function) jumpOnCondition(e exprDesc, cond int) int {
 	if e.kind == kindRelocatable {
-		if i := f.Instruction(e); i.opCode() == opNot {
+		if i := f.Instruction(e); i.OpCode() == bytecode.OpNot {
 			f.dropLastInstruction() // remove previous opNot
-			return f.conditionalJump(opTest, i.b(), 0, not(cond))
+			return f.conditionalJump(bytecode.OpTest, i.B(), 0, not(cond))
 		}
 	}
 	e = f.dischargeToAnyRegister(e)
 	f.freeExpression(e)
-	return f.conditionalJump(opTestSet, noRegister, e.info, cond)
+	return f.conditionalJump(bytecode.OpTestSet, noRegister, e.info, cond)
 }
 
 func (f *function) GoIfTrue(e exprDesc) exprDesc {
@@ -815,7 +819,7 @@ func (f *function) encodeNot(e exprDesc) exprDesc {
 	case kindRelocatable, kindNonRelocatable:
 		e = f.dischargeToAnyRegister(e)
 		f.freeExpression(e)
-		e.info, e.kind = f.EncodeABC(opNot, 0, e.info, 0), kindRelocatable
+		e.info, e.kind = f.EncodeABC(bytecode.OpNot, 0, e.info, 0), kindRelocatable
 	default:
 		f.unreachable()
 	}
@@ -839,22 +843,22 @@ func (f *function) Indexed(t, k exprDesc) (r exprDesc) {
 	return
 }
 
-func foldConstants(op opCode, e1, e2 exprDesc) (exprDesc, bool) {
+func foldConstants(op bytecode.OpCode, e1, e2 exprDesc) (exprDesc, bool) {
 	if !e1.isNumeral() || !e2.isNumeral() {
 		return e1, false
-	} else if (op == opDiv || op == opMod) && e2.value == 0.0 {
+	} else if (op == bytecode.OpDiv || op == bytecode.OpMod) && e2.value == 0.0 {
 		return e1, false
 	}
-	e1.value = arith(Operator(op-opAdd)+OpAdd, e1.value, e2.value)
+	e1.value = arith(Operator(op-bytecode.OpAdd)+OpAdd, e1.value, e2.value)
 	return e1, true
 }
 
-func (f *function) encodeArithmetic(op opCode, e1, e2 exprDesc, line int) exprDesc {
+func (f *function) encodeArithmetic(op bytecode.OpCode, e1, e2 exprDesc, line int) exprDesc {
 	if e, folded := foldConstants(op, e1, e2); folded {
 		return e
 	}
 	o2 := 0
-	if op != opUnaryMinus && op != opLength {
+	if op != bytecode.OpUnaryMinus && op != bytecode.OpLength {
 		e2, o2 = f.expressionToRegisterOrConstant(e2)
 	}
 	e1, o1 := f.expressionToRegisterOrConstant(e1)
@@ -877,11 +881,11 @@ func (f *function) Prefix(op int, e exprDesc, line int) exprDesc {
 			e.value = -e.value
 			return e
 		}
-		return f.encodeArithmetic(opUnaryMinus, f.ExpressionToAnyRegister(e), makeExpression(kindNumber, 0), line)
+		return f.encodeArithmetic(bytecode.OpUnaryMinus, f.ExpressionToAnyRegister(e), makeExpression(kindNumber, 0), line)
 	case oprNot:
 		return f.encodeNot(e)
 	case oprLength:
-		return f.encodeArithmetic(opLength, f.ExpressionToAnyRegister(e), makeExpression(kindNumber, 0), line)
+		return f.encodeArithmetic(bytecode.OpLength, f.ExpressionToAnyRegister(e), makeExpression(kindNumber, 0), line)
 	}
 	panic("unreachable")
 }
@@ -904,12 +908,12 @@ func (f *function) Infix(op int, e exprDesc) exprDesc {
 	return e
 }
 
-func (f *function) encodeComparison(op opCode, cond int, e1, e2 exprDesc) exprDesc {
+func (f *function) encodeComparison(op bytecode.OpCode, cond int, e1, e2 exprDesc) exprDesc {
 	e1, o1 := f.expressionToRegisterOrConstant(e1)
 	e2, o2 := f.expressionToRegisterOrConstant(e2)
 	f.freeExpression(e2)
 	f.freeExpression(e1)
-	if cond == 0 && op != opEqual {
+	if cond == 0 && op != bytecode.OpEqual {
 		o1, o2, cond = o2, o1, 1
 	}
 	return makeExpression(kindJump, f.conditionalJump(op, cond, o1, o2))
@@ -928,19 +932,19 @@ func (f *function) Postfix(op int, e1, e2 exprDesc, line int) exprDesc {
 		e2.t = f.Concatenate(e2.t, e1.t)
 		return e2
 	case oprConcat:
-		if e2 = f.ExpressionToValue(e2); e2.kind == kindRelocatable && f.Instruction(e2).opCode() == opConcat {
-			f.assert(e1.info == f.Instruction(e2).b()-1)
+		if e2 = f.ExpressionToValue(e2); e2.kind == kindRelocatable && f.Instruction(e2).OpCode() == bytecode.OpConcat {
+			f.assert(e1.info == f.Instruction(e2).B()-1)
 			f.freeExpression(e1)
-			f.Instruction(e2).setB(e1.info)
+			f.Instruction(e2).SetB(e1.info)
 			return makeExpression(kindRelocatable, e2.info)
 		}
-		return f.encodeArithmetic(opConcat, e1, f.ExpressionToNextRegister(e2), line)
+		return f.encodeArithmetic(bytecode.OpConcat, e1, f.ExpressionToNextRegister(e2), line)
 	case oprAdd, oprSub, oprMul, oprDiv, oprMod, oprPow:
-		return f.encodeArithmetic(opCode(op-oprAdd)+opAdd, e1, e2, line)
+		return f.encodeArithmetic(bytecode.OpCode(op-oprAdd)+bytecode.OpAdd, e1, e2, line)
 	case oprEq, oprLT, oprLE:
-		return f.encodeComparison(opCode(op-oprEq)+opEqual, 1, e1, e2)
+		return f.encodeComparison(bytecode.OpCode(op-oprEq)+bytecode.OpEqual, 1, e1, e2)
 	case oprNE, oprGT, oprGE:
-		return f.encodeComparison(opCode(op-oprNE)+opEqual, 0, e1, e2)
+		return f.encodeComparison(bytecode.OpCode(op-oprNE)+bytecode.OpEqual, 0, e1, e2)
 	}
 	panic("unreachable")
 }
@@ -951,10 +955,10 @@ func (f *function) setList(base, elementCount, storeCount int) {
 	if f.assert(storeCount != 0); storeCount == MultipleReturns {
 		storeCount = 0
 	}
-	if c := (elementCount-1)/listItemsPerFlush + 1; c <= maxArgC {
-		f.EncodeABC(opSetList, base, storeCount, c)
-	} else if c <= maxArgAx {
-		f.EncodeABC(opSetList, base, storeCount, 0)
+	if c := (elementCount-1)/bytecode.ListItemsPerFlush + 1; c <= bytecode.MaxArgC {
+		f.EncodeABC(bytecode.OpSetList, base, storeCount, c)
+	} else if c <= bytecode.MaxArgAx {
+		f.EncodeABC(bytecode.OpSetList, base, storeCount, 0)
 		f.encodeExtraArg(c)
 	} else {
 		f.p.syntaxError("constructor too long")
@@ -978,9 +982,9 @@ func (f *function) CheckConflict(t *assignmentTarget, e exprDesc) {
 	}
 	if conflict {
 		if e.kind == kindLocal {
-			f.EncodeABC(opMove, extra, e.info, 0)
+			f.EncodeABC(bytecode.OpMove, extra, e.info, 0)
 		} else {
-			f.EncodeABC(opGetUpValue, extra, e.info, 0)
+			f.EncodeABC(bytecode.OpGetUpValue, extra, e.info, 0)
 		}
 		f.ReserveRegisters(1)
 	}
@@ -1065,7 +1069,7 @@ func (f *function) SingleVariable(name string) (e exprDesc) {
 }
 
 func (f *function) OpenConstructor() (pc int, t exprDesc) {
-	pc = f.EncodeABC(opNewTable, 0, 0, 0)
+	pc = f.EncodeABC(bytecode.OpNewTable, 0, 0, 0)
 	t = f.ExpressionToNextRegister(makeExpression(kindRelocatable, pc))
 	return
 }
@@ -1073,14 +1077,14 @@ func (f *function) OpenConstructor() (pc int, t exprDesc) {
 func (f *function) FlushFieldToConstructor(tableRegister, freeRegisterCount int, k exprDesc, v func() exprDesc) {
 	_, rk := f.expressionToRegisterOrConstant(k)
 	_, rv := f.expressionToRegisterOrConstant(v())
-	f.EncodeABC(opSetTable, tableRegister, rk, rv)
+	f.EncodeABC(bytecode.OpSetTable, tableRegister, rk, rv)
 	f.freeRegisterCount = freeRegisterCount
 }
 
 func (f *function) FlushToConstructor(tableRegister, pending, arrayCount int, e exprDesc) int {
 	f.ExpressionToNextRegister(e)
-	if pending == listItemsPerFlush {
-		f.setList(tableRegister, arrayCount, listItemsPerFlush)
+	if pending == bytecode.ListItemsPerFlush {
+		f.setList(tableRegister, arrayCount, bytecode.ListItemsPerFlush)
 		pending = 0
 	}
 	return pending
@@ -1099,13 +1103,13 @@ func (f *function) CloseConstructor(pc, tableRegister, pending, arrayCount, hash
 			f.setList(tableRegister, arrayCount, pending)
 		}
 	}
-	f.f.code[pc].setB(int(float8FromInt(arrayCount)))
-	f.f.code[pc].setC(int(float8FromInt(hashCount)))
+	f.f.code[pc].SetB(int(float8FromInt(arrayCount)))
+	f.f.code[pc].SetC(int(float8FromInt(hashCount)))
 }
 
 func (f *function) OpenForBody(base, n int, isNumeric bool) (prep int) {
 	if isNumeric {
-		prep = f.encodeAsBx(opForPrep, base, noJump)
+		prep = f.encodeAsBx(bytecode.OpForPrep, base, noJump)
 	} else {
 		prep = f.Jump()
 	}
@@ -1120,11 +1124,11 @@ func (f *function) CloseForBody(prep, base, line, n int, isNumeric bool) {
 	f.PatchToHere(prep)
 	var end int
 	if isNumeric {
-		end = f.encodeAsBx(opForLoop, base, noJump)
+		end = f.encodeAsBx(bytecode.OpForLoop, base, noJump)
 	} else {
-		f.EncodeABC(opTForCall, base, 0, n)
+		f.EncodeABC(bytecode.OpTForCall, base, 0, n)
 		f.FixLine(line)
-		end = f.encodeAsBx(opTForLoop, base+2, noJump)
+		end = f.encodeAsBx(bytecode.OpTForLoop, base+2, noJump)
 	}
 	f.PatchList(end, prep+1)
 	f.FixLine(line)

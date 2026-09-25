@@ -3,6 +3,7 @@
 package luart
 
 import (
+	"github.com/matjam/luart/internal/bytecode"
 	. "github.com/matjam/luart/internal/jit/amd64"
 )
 
@@ -13,9 +14,9 @@ import (
 // callLua compiles the CALL i at ip for a compiled, fixed-parameter Lua
 // closure. It jumps to notLua when the callee is not a Lua closure, and
 // exits for any other Lua closure.
-func (c *amd64Compiler) callLua(ip int, i instruction, notLua Label) {
+func (c *amd64Compiler) callLua(ip int, i bytecode.Instruction, notLua Label) {
 	a := &c.a
-	ra, b, results := i.a(), i.b(), i.c()-1
+	ra, b, results := i.A(), i.B(), i.C()-1
 	exit := c.exit(ip)
 	fn := reg(ra)
 	a.Load(rTmp, fn.base, fn.off+offN)
@@ -125,9 +126,9 @@ func (c *amd64Compiler) callLua(ip int, i instruction, notLua Label) {
 
 // returnLua compiles RETURN i at ip returning a fixed number of results to
 // a compiled Lua caller that wants a fixed number; anything else exits.
-func (c *amd64Compiler) returnLua(ip int, i instruction) {
+func (c *amd64Compiler) returnLua(ip int, i bytecode.Instruction) {
 	a := &c.a
-	ra, b := i.a(), i.b()
+	ra, b := i.A(), i.B()
 	if b == 0 || len(c.p.prototypes) > 0 {
 		c.exitAlways(ip)
 		return

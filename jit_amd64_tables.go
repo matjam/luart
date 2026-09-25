@@ -6,31 +6,32 @@ import (
 	"math"
 	"unsafe"
 
+	"github.com/matjam/luart/internal/bytecode"
 	. "github.com/matjam/luart/internal/jit/amd64"
 )
 
 // Table access and calls on amd64, mirroring jit_arm64_tables.go. Lua
 // calls and returns go through runJIT.
 
-func (c *amd64Compiler) tableAccess(ip int, i instruction) {
-	switch i.opCode() {
+func (c *amd64Compiler) tableAccess(ip int, i bytecode.Instruction) {
+	switch i.OpCode() {
 	case opGetField:
-		c.tableOf(reg(i.b()), ip)
-		c.getField(ip, reg(i.a()))
+		c.tableOf(reg(i.B()), ip)
+		c.getField(ip, reg(i.A()))
 	case opGetFieldUp:
-		c.upValueAddr(i.b())
+		c.upValueAddr(i.B())
 		c.tableOf(operand{rAddr, 0}, ip)
-		c.getField(ip, reg(i.a()))
+		c.getField(ip, reg(i.A()))
 	case opSelfField:
 		c.selfField(ip, i)
 	case opSetField:
 		c.setField(ip, i, false)
 	case opSetFieldUp:
 		c.setField(ip, i, true)
-	case opGetTable, opGetTableUp:
-		c.getIndex(ip, i, i.opCode() == opGetTableUp)
-	case opSetTable, opSetTableUp:
-		c.setIndex(ip, i, i.opCode() == opSetTableUp)
+	case bytecode.OpGetTable, bytecode.OpGetTableUp:
+		c.getIndex(ip, i, i.OpCode() == bytecode.OpGetTableUp)
+	case bytecode.OpSetTable, bytecode.OpSetTableUp:
+		c.setIndex(ip, i, i.OpCode() == bytecode.OpSetTableUp)
 	default:
 		c.exitAlways(ip)
 	}
@@ -133,10 +134,10 @@ func (c *amd64Compiler) getField(ip int, dst operand) {
 	c.store(dst)
 }
 
-func (c *amd64Compiler) selfField(ip int, i instruction) {
+func (c *amd64Compiler) selfField(ip int, i bytecode.Instruction) {
 	a := &c.a
-	fn, self := reg(i.a()), reg(i.a()+1)
-	c.tableOf(reg(i.b()), ip)
+	fn, self := reg(i.A()), reg(i.A()+1)
+	c.tableOf(reg(i.B()), ip)
 	c.cachedSlot(ip, true)
 	c.load(operand{rSlot, 0})
 	c.absentIsNil(ip)
@@ -152,9 +153,9 @@ func (c *amd64Compiler) selfField(ip int, i instruction) {
 // reports false for a nil constant or one out of reach.
 func (c *amd64Compiler) loadRK(field, ip int) bool {
 	src := reg(field)
-	if isConstant(field) {
-		k, ok := c.constant(constantIndex(field))
-		if !ok || c.p.constants[constantIndex(field)].isNil() {
+	if bytecode.IsConstant(field) {
+		k, ok := c.constant(bytecode.ConstantIndex(field))
+		if !ok || c.p.constants[bytecode.ConstantIndex(field)].isNil() {
 			return false
 		}
 		src = k
@@ -165,15 +166,15 @@ func (c *amd64Compiler) loadRK(field, ip int) bool {
 	return true
 }
 
-func (c *amd64Compiler) setField(ip int, i instruction, up bool) {
+func (c *amd64Compiler) setField(ip int, i bytecode.Instruction, up bool) {
 	a := &c.a
-	if !c.loadRK(i.c(), ip) {
+	if !c.loadRK(i.C(), ip) {
 		c.exitAlways(ip)
 		return
 	}
-	t := reg(i.a())
+	t := reg(i.A())
 	if up {
-		c.upValueAddr(i.a())
+		c.upValueAddr(i.A())
 		t = operand{rAddr, 0}
 	}
 	c.tableOf(t, ip)
@@ -225,38 +226,38 @@ func (c *amd64Compiler) upTableOf(n, ip int) {
 
 // getIndex compiles GETTABLE, or GETTABUP when up is set, for an array
 // element; other keys exit.
-func (c *amd64Compiler) getIndex(ip int, i instruction, up bool) {
+func (c *amd64Compiler) getIndex(ip int, i bytecode.Instruction, up bool) {
 	if up {
-		c.upTableOf(i.b(), ip)
+		c.upTableOf(i.B(), ip)
 	} else {
-		c.tableOf(reg(i.b()), ip)
+		c.tableOf(reg(i.B()), ip)
 	}
-	if !c.arrayIndex(i.c(), ip) {
+	if !c.arrayIndex(i.C(), ip) {
 		c.exitAlways(ip)
 		return
 	}
 	c.element(rT, offTArray, rIdx, rSlot, ip)
 	c.load(operand{rSlot, 0})
 	c.absentIsNil(ip)
-	dst := reg(i.a())
+	dst := reg(i.A())
 	c.guardStore(dst, rP, ip)
 	c.store(dst)
 }
 
 // setIndex compiles SETTABLE, or SETTABUP when up is set, for an array
 // element; other keys exit.
-func (c *amd64Compiler) setIndex(ip int, i instruction, up bool) {
+func (c *amd64Compiler) setIndex(ip int, i bytecode.Instruction, up bool) {
 	a := &c.a
-	if !c.loadRK(i.c(), ip) {
+	if !c.loadRK(i.C(), ip) {
 		c.exitAlways(ip)
 		return
 	}
 	if up {
-		c.upTableOf(i.a(), ip)
+		c.upTableOf(i.A(), ip)
 	} else {
-		c.tableOf(reg(i.a()), ip)
+		c.tableOf(reg(i.A()), ip)
 	}
-	if !c.arrayIndex(i.b(), ip) {
+	if !c.arrayIndex(i.B(), ip) {
 		c.exitAlways(ip)
 		return
 	}
@@ -307,13 +308,13 @@ func funcValue(f func(float64) float64) uint64 { return uint64(*(*uintptr)(unsaf
 // a call to a compiled Lua function enters it directly. A call to any
 // other Go function exits with jitExitCallGo, and runJIT makes it; other
 // calls exit to the interpreter.
-func (c *amd64Compiler) call(ip int, i instruction) {
-	if i.b() == 0 || i.c() == 0 { // arguments or results up to l.top
+func (c *amd64Compiler) call(ip int, i bytecode.Instruction) {
+	if i.B() == 0 || i.C() == 0 { // arguments or results up to l.top
 		c.exitAlways(ip)
 		return
 	}
 	notGoFunction := c.a.NewLabel()
-	if i.b() == 2 && i.c() == 2 {
+	if i.B() == 2 && i.C() == 2 {
 		c.intrinsic(ip, i, notGoFunction)
 	}
 	c.a.Bind(notGoFunction)
@@ -325,9 +326,9 @@ func (c *amd64Compiler) call(ip int, i instruction) {
 // a Go function or Go closure, and otherwise falls through. stubs emits it
 // out of line, after the Lua closure check, so calls between Lua functions
 // neither run it nor have it in their way.
-func (c *amd64Compiler) goCallee(ip int, i instruction) {
+func (c *amd64Compiler) goCallee(ip int, i bytecode.Instruction) {
 	a := &c.a
-	fn := reg(i.a())
+	fn := reg(i.A())
 	notGo, closure := a.NewLabel(), a.NewLabel()
 	a.Load(rTmp, fn.base, fn.off+offN)
 	a.MovImm(rTmp2, tagOf(vkGoClosure))
@@ -352,10 +353,10 @@ func (c *amd64Compiler) goCallee(ip int, i instruction) {
 
 // intrinsic compiles a unary intrinsic call, jumping to notGo when the
 // callee is not a Go function.
-func (c *amd64Compiler) intrinsic(ip int, i instruction, notGo Label) {
+func (c *amd64Compiler) intrinsic(ip int, i bytecode.Instruction, notGo Label) {
 	a := &c.a
 	c.ip = ip
-	fn, arg := reg(i.a()), reg(i.a()+1)
+	fn, arg := reg(i.A()), reg(i.A()+1)
 	a.Load(rTmp, fn.base, fn.off+offN)
 	a.MovImm(rTmp2, tagOf(vkGoFunction))
 	a.Cmp(rTmp, rTmp2)

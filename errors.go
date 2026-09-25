@@ -3,6 +3,8 @@ package luart
 import (
 	"fmt"
 	"strings"
+
+	"github.com/matjam/luart/internal/bytecode"
 )
 
 func (l *State) runtimeError(message string) {
@@ -38,38 +40,38 @@ func (l *State) typeError(v value, operation string) {
 }
 
 // operandUpValue reports the upvalue that instruction i indexes, if any.
-func operandUpValue(i instruction) (int, bool) {
-	switch i.opCode() {
-	case opGetTableUp:
-		return i.b(), true
-	case opSetTableUp:
-		return i.a(), true
+func operandUpValue(i bytecode.Instruction) (int, bool) {
+	switch i.OpCode() {
+	case bytecode.OpGetTableUp:
+		return i.B(), true
+	case bytecode.OpSetTableUp:
+		return i.A(), true
 	}
 	return 0, false
 }
 
 // operandRegister reports which register operand of instruction i holds v.
 // It replaces C Lua's pointer test for whether a value is in the stack.
-func operandRegister(i instruction, frame []value, v value) (int, bool) {
+func operandRegister(i bytecode.Instruction, frame []value, v value) (int, bool) {
 	var candidates [2]int
 	n := 0
 	add := func(r int) {
-		if !isConstant(r) && r < len(frame) {
+		if !bytecode.IsConstant(r) && r < len(frame) {
 			candidates[n] = r
 			n++
 		}
 	}
-	switch i.opCode() {
-	case opGetTable, opSelf, opUnaryMinus, opLength:
-		add(i.b())
-	case opSetTable, opCall, opTailCall:
-		add(i.a())
-	case opAdd, opSub, opMul, opDiv, opMod, opPow:
-		add(i.b())
-		add(i.c())
-	case opConcat: // concat fails on the last two operands
-		add(i.c() - 1)
-		add(i.c())
+	switch i.OpCode() {
+	case bytecode.OpGetTable, bytecode.OpSelf, bytecode.OpUnaryMinus, bytecode.OpLength:
+		add(i.B())
+	case bytecode.OpSetTable, bytecode.OpCall, bytecode.OpTailCall:
+		add(i.A())
+	case bytecode.OpAdd, bytecode.OpSub, bytecode.OpMul, bytecode.OpDiv, bytecode.OpMod, bytecode.OpPow:
+		add(i.B())
+		add(i.C())
+	case bytecode.OpConcat: // concat fails on the last two operands
+		add(i.C() - 1)
+		add(i.C())
 	}
 	for _, r := range candidates[:n] {
 		if frame[r].identical(v) {

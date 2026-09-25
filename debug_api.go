@@ -1,5 +1,7 @@
 package luart
 
+import "github.com/matjam/luart/internal/bytecode"
+
 // A Frame identifies an activation record. It is returned by State.Frame and
 // passed to State.Info; its zero value identifies none.
 type Frame struct{ ci *callInfo }
@@ -110,38 +112,38 @@ func (l *State) functionName(ci *callInfo) (name, kind string) {
 	var tm tm
 	p := l.prototype(ci)
 	pc := ci.savedPC - 1 // the calling instruction
-	switch i := p.code[pc]; i.opCode() {
-	case opCall, opTailCall:
-		return p.objectName(i.a(), pc)
-	case opTForCall:
+	switch i := p.code[pc]; i.OpCode() {
+	case bytecode.OpCall, bytecode.OpTailCall:
+		return p.objectName(i.A(), pc)
+	case bytecode.OpTForCall:
 		return "for iterator", "for iterator"
-	case opSelf, opGetTableUp, opGetTable:
+	case bytecode.OpSelf, bytecode.OpGetTableUp, bytecode.OpGetTable:
 		tm = tmIndex
-	case opSetTableUp, opSetTable:
+	case bytecode.OpSetTableUp, bytecode.OpSetTable:
 		tm = tmNewIndex
-	case opEqual:
+	case bytecode.OpEqual:
 		tm = tmEq
-	case opAdd:
+	case bytecode.OpAdd:
 		tm = tmAdd
-	case opSub:
+	case bytecode.OpSub:
 		tm = tmSub
-	case opMul:
+	case bytecode.OpMul:
 		tm = tmMul
-	case opDiv:
+	case bytecode.OpDiv:
 		tm = tmDiv
-	case opMod:
+	case bytecode.OpMod:
 		tm = tmMod
-	case opPow:
+	case bytecode.OpPow:
 		tm = tmPow
-	case opUnaryMinus:
+	case bytecode.OpUnaryMinus:
 		tm = tmUnaryMinus
-	case opLength:
+	case bytecode.OpLength:
 		tm = tmLen
-	case opLessThan:
+	case bytecode.OpLessThan:
 		tm = tmLT
-	case opLessOrEqual:
+	case bytecode.OpLessOrEqual:
 		tm = tmLE
-	case opConcat:
+	case bytecode.OpConcat:
 		tm = tmConcat
 	default:
 		return

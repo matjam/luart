@@ -2,6 +2,8 @@
 
 package luart
 
+import "github.com/matjam/luart/internal/bytecode"
+
 // Numeric loop kernels.
 //
 // An innermost numeric for loop whose body only moves numbers, loads
@@ -28,12 +30,12 @@ type kernelPlan struct {
 func planKernel(p *prototype, latch, maxRegs int, constOK func(k int) bool) *kernelPlan {
 	code := p.code
 	fl := code[latch]
-	start := latch + 1 + fl.sbx()
+	start := latch + 1 + fl.SBx()
 	if start > latch {
 		return nil
 	}
 	k := &kernelPlan{start: start, latch: latch, regs: map[int]int{}}
-	base := fl.a()
+	base := fl.A()
 	use := func(r int) bool {
 		if _, ok := k.regs[r]; !ok {
 			if len(k.regs) == maxRegs {
@@ -66,8 +68,8 @@ func planKernel(p *prototype, latch, maxRegs int, constOK func(k int) bool) *ker
 	}
 	number := func(kk int) bool { return constOK(kk) && p.constants[kk].isNumber() }
 	read := func(field int) bool {
-		if isConstant(field) {
-			return number(constantIndex(field))
+		if bytecode.IsConstant(field) {
+			return number(bytecode.ConstantIndex(field))
 		}
 		if !use(field) {
 			return false
@@ -97,32 +99,32 @@ func planKernel(p *prototype, latch, maxRegs int, constOK func(k int) bool) *ker
 	}
 	for ip := start; ip < latch; ip++ {
 		i := code[ip]
-		switch i.opCode() {
-		case opMove:
-			if !read(i.b()) || !write(i.a(), ip) {
+		switch i.OpCode() {
+		case bytecode.OpMove:
+			if !read(i.B()) || !write(i.A(), ip) {
 				return nil
 			}
-		case opLoadConstant:
-			if !number(i.bx()) || !write(i.a(), ip) {
+		case bytecode.OpLoadConstant:
+			if !number(i.Bx()) || !write(i.A(), ip) {
 				return nil
 			}
-		case opAdd, opSub, opMul, opDiv, opMod:
-			if !read(i.b()) || !read(i.c()) || !write(i.a(), ip) {
+		case bytecode.OpAdd, bytecode.OpSub, bytecode.OpMul, bytecode.OpDiv, bytecode.OpMod:
+			if !read(i.B()) || !read(i.C()) || !write(i.A(), ip) {
 				return nil
 			}
-		case opUnaryMinus:
-			if !read(i.b()) || !write(i.a(), ip) {
+		case bytecode.OpUnaryMinus:
+			if !read(i.B()) || !write(i.A(), ip) {
 				return nil
 			}
-		case opEqual, opLessThan, opLessOrEqual:
-			if !read(i.b()) || !read(i.c()) {
+		case bytecode.OpEqual, bytecode.OpLessThan, bytecode.OpLessOrEqual:
+			if !read(i.B()) || !read(i.C()) {
 				return nil
 			}
 			if _, ok := kernelJump(code, ip, latch); !ok {
 				return nil
 			}
 			ip++ // the JMP
-		case opJump:
+		case bytecode.OpJump:
 			if _, ok := kernelJump(code, ip, latch); !ok {
 				return nil
 			}
@@ -136,20 +138,20 @@ func planKernel(p *prototype, latch, maxRegs int, constOK func(k int) bool) *ker
 // kernelJump returns where the jump at ip, or the JMP after the test at
 // ip, goes, and false unless it is forward, closes no upvalues, and stays
 // in the loop body or goes to its FORLOOP at latch.
-func kernelJump(code []instruction, ip, latch int) (int, bool) {
+func kernelJump(code []bytecode.Instruction, ip, latch int) (int, bool) {
 	i := code[ip]
-	switch i.opCode() {
-	case opEqual, opLessThan, opLessOrEqual:
+	switch i.OpCode() {
+	case bytecode.OpEqual, bytecode.OpLessThan, bytecode.OpLessOrEqual:
 		ip++
 		i = code[ip]
-	case opJump:
+	case bytecode.OpJump:
 	default:
 		return 0, false
 	}
-	if i.opCode() != opJump || i.a() != 0 {
+	if i.OpCode() != bytecode.OpJump || i.A() != 0 {
 		return 0, false
 	}
-	t := ip + 1 + i.sbx()
+	t := ip + 1 + i.SBx()
 	return t, t > ip && t <= latch
 }
 

@@ -16,8 +16,8 @@ import (
 
 const (
 	start    = "func (l *State) executeSwitch() {\n"
-	dispatch = "\t\tswitch i.opCode() {\n"
-	hook     = "\t\tif i.opCode() >= opJITCount { // patched in by the JIT; see jit.go\n" +
+	dispatch = "\t\tswitch i.OpCode() {\n"
+	hook     = "\t\tif i.OpCode() >= opJITCount { // patched in by the JIT; see jit.go\n" +
 		"\t\t\ti, ip = l.jitInstruction(i, ip)\n" +
 		"\t\t\tci = l.callInfo // compiled code may have called or returned\n" +
 		"\t\t\tframe, closure, constants = newFrame(l, ci)\n" +

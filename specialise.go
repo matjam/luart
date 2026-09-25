@@ -1,11 +1,13 @@
 package luart
 
+import "github.com/matjam/luart/internal/bytecode"
+
 // Opcodes that exist only in a prototype's exec code. They follow the Lua 5.2
 // opcodes and fit the 6-bit opcode field. Each is an arithmetic instruction
 // with its operand kinds fixed at load time: R reads a register and K a
 // constant, whose index has the RK bit cleared.
 const (
-	opAddRR opCode = opExtraArg + 1 + iota
+	opAddRR bytecode.OpCode = bytecode.OpExtraArg + 1 + iota
 	opAddRK
 	opAddKR
 	opSubRR
@@ -45,16 +47,16 @@ const (
 // ADDRR stays in place, so jumps to it and the unfused path still run it.
 // Fusing arithmetic pairs in general measured slower: decoding the second
 // instruction cost more than the dispatch it saved.
-func fuseMulAdd(exec []instruction) {
+func fuseMulAdd(exec []bytecode.Instruction) {
 	for pc := 0; pc+1 < len(exec); pc++ {
-		if i, next := exec[pc], exec[pc+1]; i.opCode() == opMulRK && next.opCode() == opAddRR && next.b() == i.a() {
-			exec[pc].setOpCode(opMulAddRKR)
+		if i, next := exec[pc], exec[pc+1]; i.OpCode() == opMulRK && next.OpCode() == opAddRR && next.B() == i.A() {
+			exec[pc].SetOpCode(opMulAddRKR)
 		}
 	}
 }
 
 func init() {
-	if opCount > 1<<sizeOp {
+	if opCount > 1<<bytecode.SizeOp {
 		panic("too many opcodes")
 	}
 }
@@ -70,7 +72,7 @@ func (l *State) arithInto(ci *callInfo, a int, b, c value, op tm) []value {
 // execCode returns the code the interpreter runs for p. It has the same
 // length and instruction positions as p.code, so savedPC, line info and
 // error naming keep using p.code.
-func (p *prototype) execCode() []instruction {
+func (p *prototype) execCode() []bytecode.Instruction {
 	if p.exec == nil {
 		p.buildExec()
 	}
@@ -86,31 +88,31 @@ func (p *prototype) buildExec() {
 	}
 }
 
-func specialise(code []instruction, constants []value) ([]instruction, []fieldCache) {
-	exec := make([]instruction, len(code))
+func specialise(code []bytecode.Instruction, constants []value) ([]bytecode.Instruction, []fieldCache) {
+	exec := make([]bytecode.Instruction, len(code))
 	var fields []fieldCache
 	stringKey := func(rk int) bool {
-		if !isConstant(rk) {
+		if !bytecode.IsConstant(rk) {
 			return false
 		}
-		_, ok := constants[constantIndex(rk)].str()
+		_, ok := constants[bytecode.ConstantIndex(rk)].str()
 		return ok
 	}
 	for pc, i := range code {
 		exec[pc] = i
-		var field opCode
-		switch i.opCode() {
-		case opGetTable:
+		var field bytecode.OpCode
+		switch i.OpCode() {
+		case bytecode.OpGetTable:
 			field = opGetField
-		case opGetTableUp:
+		case bytecode.OpGetTableUp:
 			field = opGetFieldUp
-		case opSelf:
+		case bytecode.OpSelf:
 			field = opSelfField
-		case opSetTable:
+		case bytecode.OpSetTable:
 			field = opSetField
-		case opSetTableUp:
+		case bytecode.OpSetTableUp:
 			field = opSetFieldUp
-		case opNewTable: // its fieldCache remembers the shape of its tables
+		case bytecode.OpNewTable: // its fieldCache remembers the shape of its tables
 			if fields == nil {
 				fields = make([]fieldCache, len(code))
 			}
@@ -119,46 +121,46 @@ func specialise(code []instruction, constants []value) ([]instruction, []fieldCa
 			s := i
 			switch field {
 			case opSetField, opSetFieldUp:
-				if !stringKey(i.b()) {
+				if !stringKey(i.B()) {
 					continue
 				}
-				s.setB(constantIndex(i.b()))
+				s.SetB(bytecode.ConstantIndex(i.B()))
 			default:
-				if !stringKey(i.c()) {
+				if !stringKey(i.C()) {
 					continue
 				}
-				s.setC(constantIndex(i.c()))
+				s.SetC(bytecode.ConstantIndex(i.C()))
 			}
-			s.setOpCode(field)
+			s.SetOpCode(field)
 			exec[pc] = s
 			if fields == nil {
 				fields = make([]fieldCache, len(code))
 			}
 			continue
 		}
-		var base opCode
-		switch i.opCode() {
-		case opAdd:
+		var base bytecode.OpCode
+		switch i.OpCode() {
+		case bytecode.OpAdd:
 			base = opAddRR
-		case opSub:
+		case bytecode.OpSub:
 			base = opSubRR
-		case opMul:
+		case bytecode.OpMul:
 			base = opMulRR
-		case opDiv:
+		case bytecode.OpDiv:
 			base = opDivRR
 		default:
 			continue
 		}
 		s := i
-		switch b, c := isConstant(i.b()), isConstant(i.c()); {
+		switch b, c := bytecode.IsConstant(i.B()), bytecode.IsConstant(i.C()); {
 		case !b && !c:
-			s.setOpCode(base)
+			s.SetOpCode(base)
 		case !b && c:
-			s.setOpCode(base + 1)
-			s.setC(constantIndex(i.c()))
+			s.SetOpCode(base + 1)
+			s.SetC(bytecode.ConstantIndex(i.C()))
 		case b && !c:
-			s.setOpCode(base + 2)
-			s.setB(constantIndex(i.b()))
+			s.SetOpCode(base + 2)
+			s.SetB(bytecode.ConstantIndex(i.B()))
 		default:
 			continue
 		}

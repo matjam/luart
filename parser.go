@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/matjam/luart/internal/bytecode"
 )
 
 type parser struct {
@@ -124,7 +126,7 @@ func (p *parser) functionArguments(f exprDesc, line int) exprDesc {
 		}
 		parameterCount = p.function.freeRegisterCount - (base + 1)
 	}
-	e := makeExpression(kindCall, p.function.EncodeABC(opCall, base, parameterCount+1, 2))
+	e := makeExpression(kindCall, p.function.EncodeABC(bytecode.OpCall, base, parameterCount+1, 2))
 	p.function.FixLine(line)
 	p.function.freeRegisterCount = base + 1 // call removed function and args & leaves (unless changed) one result
 	return e
@@ -181,7 +183,7 @@ func (p *parser) simpleExpression() (e exprDesc) {
 		e = makeExpression(kindFalse, 0)
 	case tkDots:
 		p.checkCondition(p.function.f.isVarArg, "cannot use '...' outside a vararg function")
-		e = makeExpression(kindVarArg, p.function.EncodeABC(opVarArg, 0, 1, 0))
+		e = makeExpression(kindVarArg, p.function.EncodeABC(bytecode.OpVarArg, 0, 1, 0))
 	case '{':
 		e = p.constructor()
 		return
@@ -588,7 +590,7 @@ func (p *parser) expressionStatement() {
 		p.assignment(&assignmentTarget{exprDesc: e}, 1)
 	} else {
 		p.checkCondition(e.kind == kindCall, "syntax error")
-		p.function.Instruction(e).setC(1) // call statement uses no results
+		p.function.Instruction(e).SetC(1) // call statement uses no results
 	}
 }
 
