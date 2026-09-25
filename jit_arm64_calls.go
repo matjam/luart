@@ -21,13 +21,20 @@ const (
 )
 
 // callLua compiles the CALL i at ip for a callee in rT that is a compiled,
-// fixed-parameter Lua closure; for anything else it exits.
-func (c *arm64Compiler) callLua(ip int, i instruction) {
+// fixed-parameter Lua closure. It branches to notLua when the callee is not
+// a Lua closure, and exits for any other Lua closure.
+func (c *arm64Compiler) callLua(ip int, i instruction, notLua Label) {
 	a := &c.a
 	ra, b, results := i.a(), i.b(), i.c()-1
 	fn := reg(ra)
 	exit := c.exit(ip)
-	c.objectOf(fn, vkLuaClosure, rT, ip)
+	a.Ldr(rTmp, fn.base, fn.off+offN)
+	a.MovImm(rTmp2, tagOf(vkLuaClosure))
+	a.Cmp(rTmp, rTmp2)
+	a.BCond(NE, notLua)
+	a.Ldr(rT, fn.base, fn.off+offP)
+	a.Cmp(rT, rNumber) // a number whose bits match the tag
+	a.BCond(EQ, exit)
 	a.Cbnz(rBarrier, exit)
 	a.Ldr(rT2, rT, offClProto)
 	a.Ldrb(rTmp, rT2, offPVarArg)

@@ -19,8 +19,12 @@ today, the rules it depends on, and where performance work should go next.
 - On an Apple silicon Mac, `GOARCH=amd64 go test ./...` runs the amd64 JIT
   under Rosetta. A `GOAMD64=v3` binary cannot run there; CI covers it on
   linux/amd64.
-- Tests that need `luac` 5.2 skip locally when it is missing. CI installs
-  it, so wait for CI before merging.
+- On linux/amd64 with qemu-user's binfmt handler installed,
+  `GOARCH=arm64 go test ./...` runs the arm64 JIT under emulation.
+- Tests that need `luac` 5.2 skip locally when it is missing, but fail
+  when `luac` is another version; skip them with `-skip
+  'TestParserExhaustively|TestUndump|TestDumpThenUndump'`. CI installs 5.2, so wait for CI
+  before merging. The Lua test suite is the `lua-tests` submodule.
 - Benchmarks: always pass `-ldflags=-funcalign=64`. Without it, unrelated
   changes move the interpreter loop's alignment and its timings by 5–10%.
   Compare back to back on an idle machine. Every performance PR includes a
@@ -64,10 +68,17 @@ no-op.
 - **Driver (`runJIT`, jit.go):**
   - It enters compiled code through `internal/jit/call` and handles exits
     in Go.
-  - Exits at CALL to a Go function, and at RETURN, are run by the driver,
-    as are CLOSURE, NEWTABLE, LEN, generic table access and
-    upvalue-closing JMPs (`jitStep`). Compiled code then carries on after
-    the instruction.
+  - Compiled code exits with `jitExitCallGo` at a CALL whose callee is a
+    Go function or Go closure that is not an inline intrinsic; the driver
+    makes the call (`jitCallGo`) and re-enters after it. The check sits
+    out of line, after the Lua closure check, so Lua-to-Lua calls neither
+    run it nor have it in their code path.
+  - Other exits at CALL and at RETURN are run by the driver, as are
+    CLOSURE, NEWTABLE, LEN, generic table access and upvalue-closing JMPs
+    (`jitStep`). Compiled code then carries on after the instruction.
+  - `runJIT` reloads the closure and prototype only when `l.callInfo`
+    changes. The chain of loads from a callInfo to its prototype is most
+    of a crossing's cost otherwise.
   - Anything else goes back to the interpreter. The interpreter reloads
     its frame from `l.callInfo` after every hand-over.
 - **Compilers:**
@@ -125,7 +136,21 @@ no-op.
 
 ## Performance today
 
-Apple M1 Pro, arm64, from bench/README.md:
+bench/README.md has full tables for Apple M1 Pro (arm64) and AMD Ryzen 9
+9900X3D (linux/amd64). JIT timings on amd64:
+
+| Workload | luart | luart + JIT | Native Go |
+|---|---|---|---|
+| numeric loop | 8.45 ms | 1.17 ms | 0.78 ms |
+| fib(25) | 5.61 ms | 1.57 ms | 0.22 ms |
+| array fill and sum | 2.73 ms | 1.17 ms | 0.44 ms |
+| plasma frame | 1.35 ms | 0.82 ms | 0.29 ms |
+| particles frame | 0.25 ms | 0.10 ms | 0.005 ms |
+| closures | 5.32 ms | 4.72 ms | 0.22 ms |
+| sort with comparator | 4.97 ms | 5.55 ms | 1.28 ms |
+| calls into Go | 1.72 ms | 1.47 ms | 0.22 ms |
+
+Apple M1 Pro, arm64, before the Go-call exit:
 
 | Workload | luart | luart + JIT | Native Go |
 |---|---|---|---|
@@ -138,28 +163,31 @@ Apple M1 Pro, arm64, from bench/README.md:
 | sort with comparator | 7.41 ms | 9.52 ms | 1.94 ms |
 | calls into Go | 2.76 ms | 3.21 ms | 0.35 ms |
 
-The JIT loses where a script crosses between compiled code and Go every
-few instructions. A bare `call.Call` round trip costs about 2 ns
-(`BenchmarkCallRet`). The rest of the 10–15 ns per crossing is the
-driver's bookkeeping (`enterJIT`, `jitCall`) and dependent loads in the
-compiled code around it.
+The JIT gains least where a script crosses between compiled code and Go
+every few instructions. A bare `call.Call` round trip costs about 2 ns
+(`BenchmarkCallRet`). On the 9900X3D a call into Go from compiled code
+now costs about 14.7 ns in all, against 17.2 ns interpreted: about 3.5
+ns in `callGo` (the API's Go frame), 3–4 ns in compiled code, and the rest
+in the driver.
+
+On amd64 most of plasma's JIT time (about 80%) is in compiled code, not
+in calls to `set`: every Lua register lives in memory, each store
+re-reads the barrier flag from the context, and an intrinsic call
+compares the callee against each intrinsic in turn (`sin` is fifth).
 
 ## Recommended next steps
 
 In order of expected payoff for real-time scripts such as visualisers:
 
 1. **Cheaper calls into Go.**
-   - *Why:* plasma spends most of its remaining time calling `set`, and
-     calls into Go are the JIT's slowest case.
-   - *Cost today:* re-entering after a Go call rewrites the whole
-     `jitContext` and goes through `jitCall`'s generic checks.
-   - *Fix:*
-     - Keep the context fields that did not change.
-     - Give number functions their own exit reason, so the driver calls
-       `number.unary` or `number.call` straight from the argument
-       registers.
-     - Resume at a per-call-site continuation address.
-   - *Measure:* the go-calls and plasma workloads.
+   - *Done:* the `jitExitCallGo` exit and reloading the prototype only
+     when the frame changes took calls into Go from 16.6 to 14.7 ns on
+     amd64.
+   - *Left:* `callGo` and `postCall` implement the API's general Go
+     frame. A path for fixed arguments and results, with no hooks, could
+     skip `checkStack`'s and `postCall`'s general cases. Number functions
+     could exit with their own reason and be called from the argument
+     registers. Measure with go-calls.
 2. **Go calling compiled Lua** (the `table.sort` comparator, callbacks
    from host code).
    - *Cost today:* each `l.Call` from Go enters the interpreter, reaches
@@ -193,7 +221,7 @@ In order of expected payoff for real-time scripts such as visualisers:
    - CONCAT of numbers and strings into a reusable buffer.
    - SETLIST.
    - Vararg calls and tail calls.
-7. **amd64 on real hardware.** Its timings so far come from Rosetta.
-   Benchmark on linux/amd64, and check whether keeping the budget and
-   barrier in memory costs enough to justify spilling another register
-   for them.
+7. **amd64 on real hardware.** bench/README.md now has linux/amd64
+   timings. Still to check: whether keeping the budget and barrier in
+   memory costs enough to justify spilling another register for them.
+   Plasma suggests it does, as every store re-reads the barrier.

@@ -283,6 +283,48 @@ func TestJITHookSetFromGo(t *testing.T) {
 	}
 }
 
+// Compiled code exits to runJIT for each call of a Go function, Go closure
+// or number function that is not an intrinsic, and goes on after it.
+func TestJITGoCallExits(t *testing.T) {
+	if !jitSupported {
+		t.Skip("no JIT on this platform")
+	}
+	src := `function run()
+		local exp, s = math.exp, 0
+		for i = 1, 50 do
+			s = s + gofn(i) + counter() + exp(i / 50) + gofn(i, s)
+			local ok = pcall(fail, i)
+			if ok then s = s + 1 end
+		end
+		return s, counter()
+	end`
+	jit, interp, _ := runBothWith(t, src, func(l *State) {
+		l.Register("gofn", func(l *State) int {
+			v, _ := l.ToNumber(1)
+			l.PushNumber(v * 2)
+			return 1
+		})
+		l.Register("fail", func(l *State) int {
+			if n, _ := l.ToNumber(1); int(n)%7 == 0 {
+				Errorf(l, "fail %d", int(n))
+			}
+			return 0
+		})
+		l.PushInteger(0)
+		l.PushGoClosure(func(l *State) int {
+			n, _ := l.ToInteger(UpValueIndex(1))
+			l.PushInteger(n + 1)
+			l.PushValue(-1)
+			l.Replace(UpValueIndex(1))
+			return 1
+		}, 1)
+		l.SetGlobal("counter")
+	})
+	if jit != interp {
+		t.Fatalf("JIT %q, interpreter %q", jit, interp)
+	}
+}
+
 // A Go function called from compiled code may grow the stack, moving every
 // frame.
 func TestJITStackGrowsInGoCall(t *testing.T) {
