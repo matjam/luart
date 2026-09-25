@@ -32,6 +32,12 @@ const (
 	offCMtSlot   = uint32(unsafe.Offsetof(fieldCache{}.mtSlot))
 	offCIndex    = uint32(unsafe.Offsetof(fieldCache{}.index))
 	offCIdxSlot  = uint32(unsafe.Offsetof(fieldCache{}.indexSlot))
+	offCChain    = uint32(unsafe.Offsetof(fieldCache{}.chain))
+	offChLevels  = uint32(unsafe.Offsetof(fieldChain{}.levels))
+	offChSlot    = uint32(unsafe.Offsetof(fieldChain{}.slot))
+	offLvMtShape = uint32(unsafe.Offsetof(chainLevel{}.mtShape))
+	offLvMtSlot  = uint32(unsafe.Offsetof(chainLevel{}.mtSlot))
+	offLvIndex   = uint32(unsafe.Offsetof(chainLevel{}.index))
 	offGFNumber  = uint32(unsafe.Offsetof(goFunction{}.number))
 	offNFUnary   = uint32(unsafe.Offsetof(numberFunction{}.unary))
 	offSliceLen  = 8
