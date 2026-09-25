@@ -214,8 +214,10 @@ func (l *State) SetMetaTable(index int) {
 	v := l.indexToValue(index)
 	if t := v.table(); t != nil {
 		t.metaTable = mt
+		l.noteMetaTable(v, mt)
 	} else if d := v.userData(); d != nil {
 		d.metaTable = mt
+		l.noteMetaTable(v, mt)
 	} else {
 		l.global.metaTables[l.TypeOf(index)] = mt
 	}

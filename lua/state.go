@@ -1,6 +1,8 @@
 package lua
 
-import "os"
+import (
+	"os"
+)
 
 type pc int
 type callStatus byte
@@ -53,6 +55,23 @@ type globalState struct {
 	lightBoxes         map[any]*lightUserData
 	jit                bool   // compile hot functions; see WithoutJIT
 	goName             string // what debug information calls Go functions
+
+	// Lua collections; see gc.go.
+	finalizable           []value // objects with __gc, in the order they were marked
+	toFinalize            []value // finalizers due, in the order they run
+	finalizerThread       *State  // runs finalizers; see callFinalizer
+	gcStopped             bool    // collectgarbage "stop"
+	gcWatch               bool    // a metatable with __mode or __gc was set
+	gcBusy                bool    // collecting or finalizing: no nested collection
+	gcPause               int     // collect when the live heap reaches this percentage of the last
+	gcStepMul, gcMajorInc int     // kept for collectgarbage; luart does not use them
+	gcCycles              uint64  // goGCCycles when checkGC last looked
+	gcHeapBase            uint64  // Go's live heap at the last Lua collection
+	gcAllocatedBase       uint64  // Go's allocated bytes at the last Lua collection
+	gcStepWork            uint64  // collectgarbage "step" work toward a cycle, in bytes
+	gcBackoff             uint    // automatic collections wait 2^gcBackoff times longer
+	gcCountBase           uint64  // for "count" while stopped: the heap when counting began
+	gcCountAllocatedBase  uint64  // and Go's allocated bytes then
 	// seed uint // randomized seed for hashes
 	// upValueHead upValue // head of double-linked list of all open upvalues
 }
@@ -94,7 +113,8 @@ func typeOf(v value) Type {
 // http://www.lua.org/manual/5.2/manual.html#lua_newstate
 func NewState(options ...Option) *State {
 	l := &State{allowHook: true, error: nil, nonYieldableCallCount: 1}
-	g := &globalState{mainThread: l, registry: newTable(), memoryErrorMessage: "not enough memory", rootShape: newRootShape()}
+	g := &globalState{mainThread: l, registry: newTable(), memoryErrorMessage: "not enough memory", rootShape: newRootShape(),
+		gcPause: 200, gcStepMul: 200, gcMajorInc: 100}
 	l.global = g
 	l.initializeStack()
 	g.registry.putAtInt(RegistryIndexMainThread, objectValue(l))

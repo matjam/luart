@@ -365,6 +365,7 @@ func isFalse(s value) bool {
 type userData struct {
 	metaTable, env *table
 	data           any
+	finalizable    bool // marked for finalization: see gc.go
 }
 
 type prototype struct {

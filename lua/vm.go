@@ -220,6 +220,9 @@ func (l *State) concat(total int) {
 		total -= n - 1 // created 1 new string from `n` strings
 		l.top -= n - 1 // popped `n` strings and pushed 1
 	}
+	if l.global.gcMayBeDue() { // as C Lua checks at CONCAT
+		l.checkGC()
+	}
 }
 
 func (l *State) traceExecution() {
@@ -391,7 +394,7 @@ func (l *State) executeSwitch() {
 		case bytecode.OpNewTable:
 			a := i.A()
 			b, c := bytecode.IntFromFloat8(i.B()), bytecode.IntFromFloat8(i.C())
-			frame[a] = objectValue(newTableAt(&closure.prototype.fields[ip-1], b, c))
+			frame[a] = objectValue(l.newTableAt(&closure.prototype.fields[ip-1], b, c))
 			clear(frame[a+1:])
 		case bytecode.OpSelf:
 			a, t := i.A(), frame[i.B()]

@@ -67,6 +67,7 @@ Work so far:
 - Coroutines, as C Lua 5.2 implements them: yields across `pcall`,
   metamethods and iterators, from compiled code too, without a goroutine
   per coroutine
+- Weak tables and `__gc` finalizers, checked by the test suite's gc.lua
 - The rest of the standard library go-lua lacked: `io.read` and
   `io.lines`, `io.popen`, `os.date`, `debug.getinfo`, `getlocal` and
   `setlocal`, `package.cpath`
@@ -75,11 +76,17 @@ Differences from C Lua 5.2:
 
 - There is only the C locale, and C modules cannot load: luart has no
   dynamic libraries.
-- Weak tables are not supported yet.
 - Debug information calls Go functions `Go`, not `C`, unless
   `LUART_GO_AS_C=1` is set.
-- `collectgarbage` cannot stop or tune Go's collector, which serves the
-  whole process; it runs a collection and reports the Go heap.
+- Go's collector frees memory. Weak tables and `__gc` finalizers come
+  from a Lua collection that marks the Lua heap, clears weak entries and
+  runs finalizers. It runs on `collectgarbage("collect")` or `"step"`,
+  and automatically, paced as C Lua paces its collector, in states that
+  use weak tables or finalizers. It is not incremental, and an object
+  that only Go memory refers to, outside the registry and the stacks,
+  counts as garbage. `collectgarbage` cannot stop or tune Go's
+  collector, which serves the whole process; `"count"` reports the Go
+  heap.
 
 ## Performance
 

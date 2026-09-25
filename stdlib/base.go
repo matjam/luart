@@ -3,7 +3,6 @@ package stdlib
 import (
 	"io"
 	"os"
-	"runtime"
 	"strconv"
 	"strings"
 
@@ -43,43 +42,27 @@ func pairs(method string, isZero bool) lua.Function {
 
 var gcOptions = []string{"stop", "restart", "collect", "count", "step", "setpause", "setstepmul", "setmajorinc", "isrunning", "generational", "incremental"}
 
-// collectGarbage returns a state's collectgarbage. Go's collector serves
-// the whole process, so the options that tune or stop it are remembered
-// for the state, and returned as C Lua returns them, but do not change it.
-// "count" is the Go heap in use; "collect" and "step" run a full Go
-// collection.
-func collectGarbage() lua.Function {
-	running := true
-	settings := map[string]int{"setpause": 200, "setstepmul": 200, "setmajorinc": 100}
-	return func(l *lua.State) int {
-		opt := gcOptions[l.CheckOption(1, "collect", gcOptions)]
-		arg := l.OptInteger(2, 0)
-		switch opt {
-		case "count":
-			var stats runtime.MemStats
-			runtime.ReadMemStats(&stats)
-			l.PushNumber(float64(stats.HeapAlloc) / 1024) // kilobytes, with the remainder
-			l.PushInteger(int(stats.HeapAlloc % 1024))
-			return 2
-		case "collect":
-			runtime.GC()
-		case "step":
-			runtime.GC()
-			l.PushBoolean(true) // a cycle finished
-			return 1
-		case "stop", "restart":
-			running = opt == "restart"
-		case "isrunning":
-			l.PushBoolean(running)
-			return 1
-		case "setpause", "setstepmul", "setmajorinc":
-			l.PushInteger(settings[opt]) // the previous value
-			settings[opt] = arg
-			return 1
-		}
-		l.PushInteger(0)
-		return 1
+// gcOptionValues are the GC options for gcOptions, in order.
+var gcOptionValues = []lua.GCOption{lua.GCStop, lua.GCRestart, lua.GCCollect, lua.GCCount, lua.GCStep,
+	lua.GCSetPause, lua.GCSetStepMul, lua.GCSetMajorInc, lua.GCIsRunning, lua.GCGenerational, lua.GCIncremental}
+
+// collectGarbage is collectgarbage, after lbaselib.c's luaB_collectgarbage.
+// See State.GC for what each option does in luart.
+func collectGarbage(l *lua.State) int {
+	o := gcOptionValues[l.CheckOption(1, "collect", gcOptions)]
+	res := l.GC(o, l.OptInteger(2, 0))
+	switch o {
+	case lua.GCCount:
+		b := l.GC(lua.GCCountBytes, 0)
+		l.PushNumber(float64(res) + float64(b)/1024) // kilobytes, with the remainder
+		l.PushInteger(b)
+		return 2
+	case lua.GCStep, lua.GCIsRunning:
+		l.PushBoolean(res != 0)
+	default:
+		l.PushInteger(res)
 	}
+	return 1
 }
 
 func intPairs(l *lua.State) int {
@@ -169,6 +152,7 @@ var baseLibrary = []lua.RegistryFunction{
 		}
 		return l.Top()
 	}},
+	{Name: "collectgarbage", Function: collectGarbage},
 	{Name: "dofile", Function: func(l *lua.State) int {
 		f := l.OptString(1, "")
 		if l.SetTop(1); l.LoadFile(f, "") != nil {
@@ -357,8 +341,6 @@ func OpenBase(l *lua.State) int {
 	l.PushGoFunction(intPairs)
 	l.PushGoClosure(pairs("__ipairs", true), 1)
 	l.SetField(-2, "ipairs")
-	l.PushGoFunction(collectGarbage())
-	l.SetField(-2, "collectgarbage")
 	l.PushString(lua.VersionString)
 	l.SetField(-2, "_VERSION")
 	return 1
