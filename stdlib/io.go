@@ -286,7 +286,12 @@ var fileHandleMethods = []lua.RegistryFunction{
 		return l.FileResult(nil, "")
 	}},
 	{Name: "write", Function: func(l *lua.State) int { l.PushValue(1); return write(l, toFile(l), 2) }},
-	//	{"__gc", },
+	{Name: "__gc", Function: func(l *lua.State) int { // close an open file, ignoring errors
+		if s := toStream(l); s.close != nil && s.f != nil {
+			closeHelper(l)
+		}
+		return 0
+	}},
 	{Name: "__tostring", Function: func(l *lua.State) int {
 		if s := toStream(l); s.close == nil {
 			l.PushString("file (closed)")

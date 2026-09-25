@@ -84,9 +84,9 @@ func operandRegister(i bytecode.Instruction, frame []value, v value) (int, bool)
 func (l *State) orderError(left, right value) {
 	leftType, rightType := l.valueToType(left).String(), l.valueToType(right).String()
 	if leftType == rightType {
-		l.runtimeError(fmt.Sprintf("attempt to compare two '%s' values", leftType))
+		l.runtimeError(fmt.Sprintf("attempt to compare two %s values", leftType))
 	}
-	l.runtimeError(fmt.Sprintf("attempt to compare '%s' with '%s'", leftType, rightType))
+	l.runtimeError(fmt.Sprintf("attempt to compare %s with %s", leftType, rightType))
 }
 
 func (l *State) arithError(v1, v2 value) {
