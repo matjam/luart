@@ -26,7 +26,11 @@ today, the rules it depends on, and where performance work should go next.
 - Tests that need `luac` 5.2 skip locally when it is missing, but fail
   when `luac` is another version; skip them with `-skip
   'TestParserExhaustively|TestUndump|TestDumpThenUndump'`. CI installs 5.2, so wait for CI
-  before merging. The Lua test suite is the `lua-tests` submodule.
+  before merging. The Lua 5.2 test suite is the `lua-tests` submodule;
+  the official Lua 5.5.1 suite, unmodified, is `lua-5.5-tests/`, run by
+  `TestLua55` (lua/lua55_test.go). Its pending list says what each file
+  still needs; `LUART_SUITE_PROGRESS=1` runs pending files and logs where
+  they stop. Take a file off the list once it passes.
 - Benchmarks: always pass `-ldflags=-funcalign=64`. Without it, unrelated
   changes move the interpreter loop's alignment and its timings by 5–10%.
   Compare back to back on an idle machine; on a CPU with more than one
