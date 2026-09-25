@@ -69,6 +69,15 @@ const golden = "" +
 	"57c066410f54ce66410f2ed5660f3a0bdc01f24c0f2cd1f24c0f2ac866490f6e" +
 	"d0664c0f7ed9"
 
+func TestSSEMemoryOperands(t *testing.T) {
+	var a Asm
+	a.AddSDMem(4, R11, 0x1000)   // addsd xmm4, qword ptr [r11 + 0x1000]
+	a.SubSDMem(9, AX, 0x1000)    // subsd xmm9, qword ptr [rax + 0x1000]
+	a.MulSDMem(2, SP, 0x1000)    // mulsd xmm2, qword ptr [rsp + 0x1000]
+	a.UcomisdMem(1, R12, 0x1000) // ucomisd xmm1, qword ptr [r12 + 0x1000]
+	check(t, &a, "f2410f58a300100000 f2440f5c8800100000 f20f59942400100000 66410f2e8c2400100000")
+}
+
 func TestShl(t *testing.T) {
 	var a Asm
 	a.Shl(R13, 4) // shl r13, 4

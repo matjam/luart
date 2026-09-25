@@ -130,7 +130,10 @@ no-op.
   copy the code Go 1.27 compiles for math/sin.go, including which
   multiply-adds it fuses on arm64. On amd64 that means no fusion below
   GOAMD64=v3; at v3 they are left to Go. `TestJITTrigMatchesGo` fails if a
-  Go release changes this.
+  Go release changes this. Their constants live in `trigTable`
+  (jit_trig.go), which compiled code reads as memory operands on amd64
+  and with one LDR each on arm64; where a constant comes from does not
+  change the rounding.
 
 ### Testing the JIT
 
@@ -150,7 +153,7 @@ bench/README.md has full tables for Apple M1 Pro (arm64) and AMD Ryzen 9
 | numeric loop | 8.66 ms | 1.00 ms | 0.77 ms |
 | fib(25) | 5.55 ms | 1.57 ms | 0.22 ms |
 | array fill and sum | 2.70 ms | 1.19 ms | 0.43 ms |
-| plasma frame | 1.35 ms | 0.82 ms | 0.29 ms |
+| plasma frame | 1.35 ms | 0.80 ms | 0.29 ms |
 | particles frame | 0.25 ms | 0.10 ms | 0.005 ms |
 | closures | 5.32 ms | 4.66 ms | 0.22 ms |
 | sort with comparator | 3.61 ms | 3.54 ms | 1.28 ms |
@@ -204,13 +207,12 @@ In order of expected payoff for real-time scripts such as visualisers:
      status bit on `callJIT`'s frame, cleared when the interpreter takes
      over. `call` and `preCall` also still run their general cases for
      every call.
-3. **Loop-invariant global and upvalue loads.**
-   - *Cost today:* GETTABUP of a global (`set`, `math`) re-walks upvalue →
-     table → shape → cache → slot every iteration.
-   - *Fix:* once per loop entry, guard the `_ENV` table's shape and the
-     cached slot, then keep the value in a register. Stores to that
-     table or calls invalidate the guard, so this suits loops whose calls
-     are all to intrinsics or number functions.
+3. **Loop-invariant global and upvalue loads.** Measured and not worth
+   it for now: plasma's inner loop runs at 41.5 ns per pixel with `set` a
+   global and 41.3 ns with it a local, so re-walking the field cache each
+   iteration costs almost nothing. Measure again before building it. On
+   amd64, per pixel, the call to `set` costs about 18 ns and each `sin`
+   about 6 ns (Go's `math.Sin` about 4).
 4. **Wider kernels.**
    - Allow intrinsic calls inside kernels. The callee value is guarded
      once at loop entry, as the upvalue or global it comes from cannot
