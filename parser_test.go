@@ -26,12 +26,12 @@ func TestParser(t *testing.T) {
 	if p == nil {
 		t.Fatal("prototype was nil")
 	}
-	validate("@fixtures/fib.lua", p.source, "as source file name", t)
-	if !p.isVarArg {
+	validate("@fixtures/fib.lua", p.Source, "as source file name", t)
+	if !p.IsVarArg {
 		t.Error("expected main function to be var arg, but wasn't")
 	}
-	if len(closure.upValues) != len(closure.prototype.upValues) {
-		t.Error("upvalue count doesn't match", len(closure.upValues), "!=", len(closure.prototype.upValues))
+	if len(closure.upValues) != len(closure.prototype.UpValues) {
+		t.Error("upvalue count doesn't match", len(closure.upValues), "!=", len(closure.prototype.UpValues))
 	}
 	compareClosures(t, bin, closure)
 	l.Call(0, 0)
@@ -108,40 +108,40 @@ func compareClosures(t *testing.T, a, b *luaClosure) {
 }
 
 func comparePrototypes(t *testing.T, a, b *prototype) {
-	expectEqual(t, a.isVarArg, b.isVarArg, "var arg")
-	expectEqual(t, a.lineDefined, b.lineDefined, "line defined")
-	expectEqual(t, a.lastLineDefined, b.lastLineDefined, "last line defined")
-	expectEqual(t, a.parameterCount, b.parameterCount, "parameter count")
-	expectEqual(t, a.maxStackSize, b.maxStackSize, "max stack size")
-	expectEqual(t, a.source, b.source, "source")
-	expectEqual(t, len(a.code), len(b.code), "code length")
-	if !expectDeepEqual(t, a.code, b.code, "code") {
-		for i := range a.code {
-			if a.code[i] != b.code[i] {
-				t.Errorf("%d: %v != %v\n", a.lineInfo[i], a.code[i], b.code[i])
+	expectEqual(t, a.IsVarArg, b.IsVarArg, "var arg")
+	expectEqual(t, a.LineDefined, b.LineDefined, "line defined")
+	expectEqual(t, a.LastLineDefined, b.LastLineDefined, "last line defined")
+	expectEqual(t, a.ParameterCount, b.ParameterCount, "parameter count")
+	expectEqual(t, a.MaxStackSize, b.MaxStackSize, "max stack size")
+	expectEqual(t, a.Source, b.Source, "source")
+	expectEqual(t, len(a.Code), len(b.Code), "code length")
+	if !expectDeepEqual(t, a.Code, b.Code, "code") {
+		for i := range a.Code {
+			if a.Code[i] != b.Code[i] {
+				t.Errorf("%d: %v != %v\n", a.LineInfo[i], a.Code[i], b.Code[i])
 			}
 		}
 		for _, i := range []int{3, 197, 198, 199, 200, 201} {
-			t.Errorf("%d: %#v, %#v\n", i, a.constants[i], b.constants[i])
+			t.Errorf("%d: %#v, %#v\n", i, a.Constants[i], b.Constants[i])
 		}
 		for _, i := range []int{202, 203, 204} {
-			t.Errorf("%d: %#v\n", i, b.constants[i])
+			t.Errorf("%d: %#v\n", i, b.Constants[i])
 		}
 	}
-	if len(a.constants) != len(b.constants) {
-		t.Errorf("constants doesn't match: %d constants, %d constants\n", len(a.constants), len(b.constants))
+	if len(a.Constants) != len(b.Constants) {
+		t.Errorf("constants doesn't match: %d constants, %d constants\n", len(a.Constants), len(b.Constants))
 	} else {
-		for i := range a.constants {
-			if !rawEqual(a.constants[i], b.constants[i]) {
-				t.Errorf("%d: %s != %s\n", i, debugValue(a.constants[i]), debugValue(b.constants[i]))
+		for i := range a.Constants {
+			if !rawEqual(a.Constants[i], b.Constants[i]) {
+				t.Errorf("%d: %s != %s\n", i, debugValue(a.Constants[i]), debugValue(b.Constants[i]))
 			}
 		}
 	}
-	expectDeepEqual(t, a.lineInfo, b.lineInfo, "line info")
-	expectDeepEqual(t, a.upValues, b.upValues, "upvalues")
-	expectDeepEqual(t, a.localVariables, b.localVariables, "local variables")
-	expectEqual(t, len(a.prototypes), len(b.prototypes), "prototypes length")
-	for i := range a.prototypes {
-		comparePrototypes(t, &a.prototypes[i], &b.prototypes[i])
+	expectDeepEqual(t, a.LineInfo, b.LineInfo, "line info")
+	expectDeepEqual(t, a.UpValues, b.UpValues, "upvalues")
+	expectDeepEqual(t, a.LocalVariables, b.LocalVariables, "local variables")
+	expectEqual(t, len(a.Prototypes), len(b.Prototypes), "prototypes length")
+	for i := range a.Prototypes {
+		comparePrototypes(t, &a.Prototypes[i], &b.Prototypes[i])
 	}
 }

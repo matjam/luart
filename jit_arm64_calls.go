@@ -133,7 +133,7 @@ func (c *arm64Compiler) spend(ip int) {
 func (c *arm64Compiler) returnLua(ip int, i bytecode.Instruction) {
 	a := &c.a
 	ra, b := i.A(), i.B()
-	if b == 0 || len(c.p.prototypes) > 0 { // results to l.top, or upvalues to close
+	if b == 0 || len(c.p.Prototypes) > 0 { // results to l.top, or upvalues to close
 		c.exitAlways(ip)
 		return
 	}

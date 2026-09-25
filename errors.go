@@ -10,7 +10,7 @@ import (
 func (l *State) runtimeError(message string) {
 	l.push(stringValue(message))
 	if ci := l.callInfo; ci.isLua() {
-		line, source := l.currentLine(ci), l.prototype(ci).source
+		line, source := l.currentLine(ci), l.prototype(ci).Source
 		if source == "" {
 			source = "?"
 		} else {
@@ -27,9 +27,9 @@ func (l *State) typeError(v value, operation string) {
 		p := l.prototype(ci)
 		pc := ci.savedPC - 1 // the failing instruction
 		var kind, name string
-		if up, ok := operandUpValue(p.code[pc]); ok {
+		if up, ok := operandUpValue(p.Code[pc]); ok {
 			kind, name = "upvalue", p.upValueName(up)
-		} else if reg, ok := operandRegister(p.code[pc], ci.frame, v); ok {
+		} else if reg, ok := operandRegister(p.Code[pc], ci.frame, v); ok {
 			name, kind = p.objectName(reg, pc)
 		}
 		if kind != "" {

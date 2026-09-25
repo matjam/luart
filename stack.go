@@ -165,9 +165,9 @@ func (l *State) pushLuaFrame(function, base, resultCount int, c *luaClosure) *ca
 	} else if ci.luaCallInfo == nil {
 		ci.luaCallInfo = &luaCallInfo{}
 	}
-	ci.savedPC, ci.code, ci.closure = 0, p.code, c
+	ci.savedPC, ci.code, ci.closure = 0, p.Code, c
 	ci.function = function
-	ci.top = base + p.maxStackSize
+	ci.top = base + p.MaxStackSize
 	// TODO l.assert(ci.top <= l.stackLast)
 	ci.resultCount = resultCount
 	ci.callStatus = callStatusLua
@@ -201,7 +201,7 @@ func (ci *luaCallInfo) step() bytecode.Instruction {
 
 func (l *State) newLuaClosure(p *prototype) *luaClosure {
 	c := &luaClosure{prototype: p}
-	if n := len(p.upValues); n <= len(c.inline) {
+	if n := len(p.UpValues); n <= len(c.inline) {
 		c.upValues = c.inline[:n]
 	} else {
 		c.upValues = make([]*upValue, n)
@@ -233,14 +233,14 @@ func (l *State) newClosure(p *prototype, upValues []*upValue, base int) value {
 	c := l.newLuaClosure(p)
 	p.cache = c
 	storage := &c.own
-	for i, uv := range p.upValues {
-		if uv.isLocal { // upValue refers to local variable
-			c.upValues[i] = l.findUpValue(base+uv.index, storage)
+	for i, uv := range p.UpValues {
+		if uv.IsLocal { // upValue refers to local variable
+			c.upValues[i] = l.findUpValue(base+uv.Index, storage)
 			if c.upValues[i] == storage {
 				storage = nil // used
 			}
 		} else { // get upValue from enclosing function
-			c.upValues[i] = upValues[uv.index]
+			c.upValues[i] = upValues[uv.Index]
 		}
 	}
 	return objectValue(c)
@@ -249,10 +249,10 @@ func (l *State) newClosure(p *prototype, upValues []*upValue, base int) value {
 func cached(p *prototype, upValues []*upValue, base int) *luaClosure {
 	c := p.cache
 	if c != nil {
-		for i, uv := range p.upValues {
-			if uv.isLocal && !c.upValues[i].isInStackAt(base+uv.index) {
+		for i, uv := range p.UpValues {
+			if uv.IsLocal && !c.upValues[i].isInStackAt(base+uv.Index) {
 				return nil
-			} else if !uv.isLocal && !c.upValues[i].sameHome(upValues[uv.index]) {
+			} else if !uv.IsLocal && !c.upValues[i].sameHome(upValues[uv.Index]) {
 				return nil
 			}
 		}
@@ -285,8 +285,8 @@ func (l *State) preCall(function int, resultCount int) bool {
 		case vkLuaClosure:
 			f := fv.luaClosure()
 			p := f.prototype
-			l.checkStack(p.maxStackSize)
-			argCount, parameterCount := l.top-function-1, p.parameterCount
+			l.checkStack(p.MaxStackSize)
+			argCount, parameterCount := l.top-function-1, p.ParameterCount
 			if argCount < parameterCount {
 				extra := parameterCount - argCount
 				args := l.stack[l.top : l.top+extra]
@@ -295,7 +295,7 @@ func (l *State) preCall(function int, resultCount int) bool {
 				argCount += extra
 			}
 			base := function + 1
-			if p.isVarArg {
+			if p.IsVarArg {
 				base = l.adjustVarArgs(p, argCount)
 			}
 			ci := l.pushLuaFrame(function, base, resultCount, f)
@@ -331,7 +331,7 @@ func (l *State) callHook(ci *callInfo) {
 }
 
 func (l *State) adjustVarArgs(p *prototype, argCount int) int {
-	fixedArgCount := p.parameterCount
+	fixedArgCount := p.ParameterCount
 	l.assert(argCount >= fixedArgCount)
 	// move fixed parameters to final position
 	fixed := l.top - argCount // first fixed argument

@@ -69,15 +69,15 @@ func TestUndump(t *testing.T) {
 	if p == nil {
 		t.Fatal("prototype was nil")
 	}
-	validate("@lua-tests/checktable.lua", p.source, "as source file name", t)
-	validate(23, len(p.code), "instructions", t)
-	validate(8, len(p.constants), "constants", t)
-	validate(4, len(p.prototypes), "prototypes", t)
-	validate(1, len(p.upValues), "upvalues", t)
-	validate(0, len(p.localVariables), "local variables", t)
-	validate(0, p.parameterCount, "parameters", t)
-	validate(4, p.maxStackSize, "stack slots", t)
-	if !p.isVarArg {
+	validate("@lua-tests/checktable.lua", p.Source, "as source file name", t)
+	validate(23, len(p.Code), "instructions", t)
+	validate(8, len(p.Constants), "constants", t)
+	validate(4, len(p.Prototypes), "prototypes", t)
+	validate(1, len(p.UpValues), "upvalues", t)
+	validate(0, len(p.LocalVariables), "local variables", t)
+	validate(0, p.ParameterCount, "parameters", t)
+	validate(4, p.MaxStackSize, "stack slots", t)
+	if !p.IsVarArg {
 		t.Error("expected main function to be var arg, but wasn't")
 	}
 }

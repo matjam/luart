@@ -28,8 +28,8 @@ func (d *dumpState) writePC(p pc) {
 }
 
 func (d *dumpState) writeCode(p *prototype) {
-	d.writeInt(len(p.code))
-	d.write(p.code)
+	d.writeInt(len(p.Code))
+	d.write(p.Code)
 }
 
 func (d *dumpState) writeByte(b byte) {
@@ -49,9 +49,9 @@ func (d *dumpState) writeNumber(f float64) {
 }
 
 func (d *dumpState) writeConstants(p *prototype) {
-	d.writeInt(len(p.constants))
+	d.writeInt(len(p.Constants))
 
-	for _, o := range p.constants {
+	for _, o := range p.Constants {
 		d.writeByte(byte(d.l.valueToType(o)))
 
 		switch o := o.toAny().(type) {
@@ -69,19 +69,19 @@ func (d *dumpState) writeConstants(p *prototype) {
 }
 
 func (d *dumpState) writePrototypes(p *prototype) {
-	d.writeInt(len(p.prototypes))
+	d.writeInt(len(p.Prototypes))
 
-	for _, o := range p.prototypes {
+	for _, o := range p.Prototypes {
 		d.dumpFunction(&o)
 	}
 }
 
 func (d *dumpState) writeUpvalues(p *prototype) {
-	d.writeInt(len(p.upValues))
+	d.writeInt(len(p.UpValues))
 
-	for _, u := range p.upValues {
-		d.writeBool(u.isLocal)
-		d.writeByte(byte(u.index))
+	for _, u := range p.UpValues {
+		d.writeBool(u.IsLocal)
+		d.writeByte(byte(u.Index))
 	}
 }
 
@@ -106,34 +106,34 @@ func (d *dumpState) writeString(s string) {
 }
 
 func (d *dumpState) writeLocalVariables(p *prototype) {
-	d.writeInt(len(p.localVariables))
+	d.writeInt(len(p.LocalVariables))
 
-	for _, lv := range p.localVariables {
-		d.writeString(lv.name)
-		d.writePC(lv.startPC)
-		d.writePC(lv.endPC)
+	for _, lv := range p.LocalVariables {
+		d.writeString(lv.Name)
+		d.writePC(lv.StartPC)
+		d.writePC(lv.EndPC)
 	}
 }
 
 func (d *dumpState) writeDebug(p *prototype) {
-	d.writeString(p.source)
-	d.writeInt(len(p.lineInfo))
-	d.write(p.lineInfo)
+	d.writeString(p.Source)
+	d.writeInt(len(p.LineInfo))
+	d.write(p.LineInfo)
 	d.writeLocalVariables(p)
 
-	d.writeInt(len(p.upValues))
+	d.writeInt(len(p.UpValues))
 
-	for _, uv := range p.upValues {
-		d.writeString(uv.name)
+	for _, uv := range p.UpValues {
+		d.writeString(uv.Name)
 	}
 }
 
 func (d *dumpState) dumpFunction(p *prototype) {
-	d.writeInt(p.lineDefined)
-	d.writeInt(p.lastLineDefined)
-	d.writeByte(byte(p.parameterCount))
-	d.writeBool(p.isVarArg)
-	d.writeByte(byte(p.maxStackSize))
+	d.writeInt(p.LineDefined)
+	d.writeInt(p.LastLineDefined)
+	d.writeByte(byte(p.ParameterCount))
+	d.writeBool(p.IsVarArg)
+	d.writeByte(byte(p.MaxStackSize))
 	d.writeCode(p)
 	d.writeConstants(p)
 	d.writePrototypes(p)

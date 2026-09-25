@@ -105,8 +105,8 @@ type jitCode struct {
 // markJIT marks p and the prototypes nested in it for compilation.
 func markJIT(p *prototype) {
 	p.jitOn = true
-	for i := range p.prototypes {
-		markJIT(&p.prototypes[i])
+	for i := range p.Prototypes {
+		markJIT(&p.Prototypes[i])
 	}
 }
 
@@ -115,7 +115,7 @@ func markJIT(p *prototype) {
 func (p *prototype) patchJITCounters() {
 	p.jitOrig = append([]bytecode.Instruction(nil), p.exec...)
 	for ip, i := range p.jitOrig {
-		if ip == 0 || p.code[ip].OpCode() == bytecode.OpForLoop && !isExtraArg(p.code, ip) {
+		if ip == 0 || p.Code[ip].OpCode() == bytecode.OpForLoop && !isExtraArg(p.Code, ip) {
 			p.exec[ip] = patched(i, opJITCount)
 		}
 	}
@@ -185,16 +185,16 @@ const jitMinRun = 4
 // there. It leaves out entries that would reach an instruction always
 // exits at, other than a call or return runJIT handles, too soon.
 func jitEntries(p *prototype, exits, always []bool) []int {
-	n := len(p.code)
+	n := len(p.Code)
 	entry := make([]bool, n)
 	mark := func(ip int) {
-		if 0 <= ip && ip < n && !isConsumed(p.code, ip) && worthEntering(p.code, always, ip) {
+		if 0 <= ip && ip < n && !isConsumed(p.Code, ip) && worthEntering(p.Code, always, ip) {
 			entry[ip] = true
 		}
 	}
 	mark(0)
-	for ip, i := range p.code {
-		if isExtraArg(p.code, ip) {
+	for ip, i := range p.Code {
+		if isExtraArg(p.Code, ip) {
 			continue
 		}
 		switch i.OpCode() {
@@ -206,7 +206,7 @@ func jitEntries(p *prototype, exits, always []bool) []int {
 		}
 		if exits[ip] {
 			next := ip + 1
-			if isExtraArg(p.code, next) {
+			if isExtraArg(p.Code, next) {
 				next++
 			}
 			mark(next)
@@ -382,7 +382,7 @@ func (l *State) jitReturnToGo(ci *callInfo, p *prototype, i bytecode.Instruction
 		return false
 	}
 	l.top = ci.stackIndex(a + b - 1)
-	if len(p.prototypes) > 0 {
+	if len(p.Prototypes) > 0 {
 		l.close(ci.base())
 	}
 	l.postCall(ci.stackIndex(a))
@@ -404,7 +404,7 @@ func jitSteps(op bytecode.OpCode) bool {
 // Each case is a copy of the interpreter's.
 func (l *State) jitStep(ci *callInfo, i bytecode.Instruction, ip pc) {
 	closure, frame := ci.closure, ci.frame
-	constants := closure.prototype.constants
+	constants := closure.prototype.Constants
 	switch i.OpCode() {
 	case bytecode.OpNewTable:
 		a := i.A()
@@ -412,7 +412,7 @@ func (l *State) jitStep(ci *callInfo, i bytecode.Instruction, ip pc) {
 		frame[a] = objectValue(newTableAt(&closure.prototype.fields[ip], intFromFloat8(b), intFromFloat8(c)))
 		clear(frame[a+1:])
 	case bytecode.OpClosure:
-		a, p := i.A(), &closure.prototype.prototypes[i.Bx()]
+		a, p := i.A(), &closure.prototype.Prototypes[i.Bx()]
 		if ncl := cached(p, closure.upValues, ci.base()); ncl == nil {
 			frame[a] = l.newClosure(p, closure.upValues, ci.base())
 		} else {
@@ -476,7 +476,7 @@ func (l *State) enterJIT(ci *callInfo, c *luaClosure, p *prototype, jc *jitCode,
 	// has them, so an empty slice's data pointer, whatever it is, does.
 	frame := ci.frame
 	ctx.frame = unsafe.Pointer(unsafe.SliceData(frame))
-	ctx.constants = unsafe.Pointer(unsafe.SliceData(p.constants))
+	ctx.constants = unsafe.Pointer(unsafe.SliceData(p.Constants))
 	ctx.upValues = unsafe.Pointer(unsafe.SliceData(c.upValues))
 	ctx.barrier = 0
 	if writeBarrier.enabled {
@@ -511,7 +511,7 @@ func (l *State) jitCall(ci *callInfo, i bytecode.Instruction, ip pc) (*callInfo,
 		return ci, true
 	case vkLuaClosure:
 		f := fv.luaClosure()
-		if f.prototype.isVarArg || f.prototype.jit == nil {
+		if f.prototype.IsVarArg || f.prototype.jit == nil {
 			return nil, false
 		}
 		ci.savedPC = ip + 1
@@ -609,7 +609,7 @@ func (l *State) jitReturn(ci *callInfo, i bytecode.Instruction) bool {
 	if b == 0 || wanted < 0 || !ci.isCallStatus(callStatusReentry) {
 		return false
 	}
-	if len(ci.closure.prototype.prototypes) > 0 {
+	if len(ci.closure.prototype.Prototypes) > 0 {
 		l.close(ci.base())
 	}
 	res, results := l.stack[ci.function:ci.function+wanted], ci.frame[a:a+b-1]

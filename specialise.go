@@ -82,7 +82,7 @@ func (p *prototype) execCode() []bytecode.Instruction {
 // buildExec is execCode's slow path, kept out of line so execCode inlines
 // into the interpreter's call and return paths.
 func (p *prototype) buildExec() {
-	p.exec, p.fields = specialise(p.code, p.constants)
+	p.exec, p.fields = specialise(p.Code, p.Constants)
 	if p.jitOn {
 		p.patchJITCounters()
 	}

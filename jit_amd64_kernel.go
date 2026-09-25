@@ -30,7 +30,7 @@ func (c *amd64Compiler) findKernel(latch int) *kernel {
 	}
 	if !c.sse41 {
 		for ip := plan.start; ip < latch; ip++ {
-			if c.p.code[ip].OpCode() == bytecode.OpMod {
+			if c.p.Code[ip].OpCode() == bytecode.OpMod {
 				return nil
 			}
 		}
@@ -46,7 +46,7 @@ func (c *amd64Compiler) findKernel(latch int) *kernel {
 // FORLOOP code at normal when the entry check fails.
 func (c *amd64Compiler) emitKernel(k *kernel, normal Label) {
 	a := &c.a
-	base := c.p.code[k.latch].A()
+	base := c.p.Code[k.latch].A()
 	idx, limit, step, ext := k.reg(base), k.reg(base+1), k.reg(base+2), k.reg(base+3)
 
 	a.CmpMem(rCtx, offBarrier, 0)
@@ -122,7 +122,7 @@ func (k *kernel) target(t int, latch Label) Label {
 
 func (c *amd64Compiler) kernelInstruction(k *kernel, ip int, latch Label) int {
 	a := &c.a
-	i := c.p.code[ip]
+	i := c.p.Code[ip]
 	switch op := i.OpCode(); op {
 	case bytecode.OpMove:
 		a.MovSD(k.reg(i.A()), k.reg(i.B()))
@@ -139,12 +139,12 @@ func (c *amd64Compiler) kernelInstruction(k *kernel, ip int, latch Label) int {
 		a.XorPD(4, 3)
 		a.MovSD(k.reg(i.A()), 4)
 	case bytecode.OpEqual, bytecode.OpLessThan, bytecode.OpLessOrEqual:
-		t, _ := kernelJump(c.p.code, ip, k.latch)
+		t, _ := kernelJump(c.p.Code, ip, k.latch)
 		b, cc := c.kernelOperand(k, i.B(), 0), c.kernelOperand(k, i.C(), 1)
 		c.compare(op, i.A() != 0, b, cc, k.target(t, latch), k.target(ip+2, latch))
 		return 1
 	case bytecode.OpJump:
-		t, _ := kernelJump(c.p.code, ip, k.latch)
+		t, _ := kernelJump(c.p.Code, ip, k.latch)
 		a.Jmp(k.target(t, latch))
 	}
 	return 0

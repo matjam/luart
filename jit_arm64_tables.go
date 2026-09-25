@@ -157,7 +157,7 @@ func (c *arm64Compiler) loadRK(field, ip int) bool {
 	src := reg(field)
 	if bytecode.IsConstant(field) {
 		k, ok := c.constant(bytecode.ConstantIndex(field))
-		if !ok || c.p.constants[bytecode.ConstantIndex(field)].isNil() {
+		if !ok || c.p.Constants[bytecode.ConstantIndex(field)].isNil() {
 			return false
 		}
 		src = k

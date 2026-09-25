@@ -33,7 +33,7 @@ func testStringHelper(t *testing.T, s string, trace bool) {
 			ci := state.callInfo
 			p := state.prototype(ci)
 			println(stack(state.stack[ci.base():state.top]))
-			println(ci.code[ci.savedPC-1].String(), p.source, p.lineInfo[ci.savedPC-1])
+			println(ci.code[ci.savedPC-1].String(), p.Source, p.LineInfo[ci.savedPC-1])
 		}, MaskCount, 1)
 	}
 	l.Call(0, 0)

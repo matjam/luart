@@ -44,7 +44,7 @@ func (c *arm64Compiler) findKernel(latch int) *kernel {
 // ordinary FORLOOP code, at normal, when the entry check fails.
 func (c *arm64Compiler) emitKernel(k *kernel, normal Label) {
 	a := &c.a
-	fl := c.p.code[k.latch]
+	fl := c.p.Code[k.latch]
 	base := fl.A()
 	idx, limit, step, ext := k.reg(base), k.reg(base+1), k.reg(base+2), k.reg(base+3)
 
@@ -144,7 +144,7 @@ func (k *kernel) target(t int, latch Label) Label {
 // how many extra code words it consumed.
 func (c *arm64Compiler) kernelInstruction(k *kernel, ip int, latch Label) int {
 	a := &c.a
-	i := c.p.code[ip]
+	i := c.p.Code[ip]
 	switch op := i.OpCode(); op {
 	case bytecode.OpMove:
 		a.Fmov(k.reg(i.A()), k.reg(i.B()))
@@ -171,7 +171,7 @@ func (c *arm64Compiler) kernelInstruction(k *kernel, ip int, latch Label) int {
 	case bytecode.OpUnaryMinus:
 		a.Fneg(k.reg(i.A()), k.reg(i.B()))
 	case bytecode.OpEqual, bytecode.OpLessThan, bytecode.OpLessOrEqual:
-		t, _ := kernelJump(c.p.code, ip, k.latch)
+		t, _ := kernelJump(c.p.Code, ip, k.latch)
 		b, cc := c.kernelOperand(k, i.B(), 0), c.kernelOperand(k, i.C(), 1)
 		a.Fcmp(b, cc)
 		var when Cond
@@ -190,7 +190,7 @@ func (c *arm64Compiler) kernelInstruction(k *kernel, ip int, latch Label) int {
 		a.B(k.target(ip+2, latch))
 		return 1
 	case bytecode.OpJump:
-		t, _ := kernelJump(c.p.code, ip, k.latch)
+		t, _ := kernelJump(c.p.Code, ip, k.latch)
 		a.B(k.target(t, latch))
 	}
 	return 0
