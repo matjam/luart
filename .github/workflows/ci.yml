@@ -44,6 +44,26 @@ jobs:
             GOOS=${target%/*} GOARCH=${target#*/} go build ./... || exit 1
           done
 
+  # The benchmarks compare with C Lua 5.4 and LuaJIT through cgo, one per
+  # build tag; check that both build and agree with luart.
+  c-lua:
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: install Lua 5.4 and LuaJIT
+        run: sudo apt-get update && sudo apt-get install -y liblua5.4-dev libluajit-5.1-dev pkg-config
+      - name: Lua 5.4
+        working-directory: bench
+        run: go vet -tags clua54 ./... && go test -tags clua54 -run Agrees -count 1 ./...
+      - name: LuaJIT
+        working-directory: bench
+        run: go vet -tags luajit ./... && go test -tags luajit -run Agrees -count 1 ./...
+
   # The JIT generates native code, so run the suite with every function
   # compiled on each architecture it supports.
   jit:
@@ -64,9 +84,9 @@ jobs:
           go-version-file: go.mod
       - name: test with the JIT
         run: go test -count 1 ./...
-      - name: suite with the JIT
+      - name: suites with the JIT
         working-directory: bench
-        run: go test -run TestSuiteAgrees -count 1 ./...
+        run: go test -run 'TestSuiteAgrees|TestStandardAgrees' -count 1 ./...
       - name: test with the JIT at GOAMD64=v3
         if: runner.arch == 'X64'
         env:

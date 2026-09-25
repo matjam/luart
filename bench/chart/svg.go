@@ -4,14 +4,17 @@ import (
 	"fmt"
 	"html"
 	"math"
+	"strconv"
 	"strings"
 )
 
 // The chart: for each workload, one bar per interpreter from 1× (as fast
-// as Go) to how many times slower than Go it runs, on a log scale. Colors
-// are the first three categorical slots of the reference palette, light
-// and dark, which pass its colorblind checks as a set; every bar is
-// labelled with its value, so no color is read alone.
+// as the base) to its time divided by the base's, on a log scale. Colors
+// are the reference palette's categorical slots 1 to 4 and 7 (violet, as
+// magenta is too close to aqua for deuteranopes in dark mode, adjacent
+// when Lua 5.4 is the base), light and dark, which pass its colorblind
+// checks in the bars' order in both charts; every bar is labelled with its
+// value, so no color is read alone.
 //
 // Colors are written out per class rather than as custom properties, which
 // some SVG renderers ignore; a renderer without media queries gets light.
@@ -21,18 +24,19 @@ text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 .title { fill: #0b0b0b; font-size: 16px; font-weight: 600; }
 .sub { fill: #52514e; font-size: 12px; }
 .label { fill: #0b0b0b; font-size: 12px; }
+.mean { font-weight: 600; }
 .value { fill: #52514e; font-size: 11px; font-variant-numeric: tabular-nums; }
 .tick { fill: #898781; font-size: 11px; font-variant-numeric: tabular-nums; }
 .grid { stroke: #e1e0d9; stroke-width: 1; }
 .base { stroke: #c3c2b7; stroke-width: 1; }
-.s0 { fill: #2a78d6; } .s1 { fill: #eb6834; } .s2 { fill: #1baf7a; }
+.s0 { fill: #2a78d6; } .s1 { fill: #eb6834; } .s2 { fill: #1baf7a; } .s3 { fill: #eda100; } .s4 { fill: #4a3aa7; }
 @media (prefers-color-scheme: dark) {
   .bg { fill: #1a1a19; }
   .title, .label { fill: #ffffff; }
   .sub, .value { fill: #c3c2b7; }
   .grid { stroke: #2c2c2a; }
   .base { stroke: #383835; }
-  .s0 { fill: #3987e5; } .s1 { fill: #d95926; } .s2 { fill: #199e70; }
+  .s0 { fill: #3987e5; } .s1 { fill: #d95926; } .s2 { fill: #199e70; } .s3 { fill: #c98500; } .s4 { fill: #9085e9; }
 }
 `
 
@@ -46,36 +50,45 @@ const (
 	groupGap  = 18.0
 )
 
-func chart(r *results) string {
+func chart(s suite, r *results) string {
 	type bar struct {
 		ratio float64
 		impl  int
 	}
-	groups := make([][]bar, len(workloads))
+	impls := r.impls(s)
+	// One group per workload, then the geometric mean.
+	labels := make([]string, 0, len(s.workloads)+1)
+	groups := make([][]bar, len(s.workloads)+1)
 	lo, hi := 1.0, 1.0
-	for i, wl := range workloads {
-		g := r.median(wl.name + "/go")
-		for j, im := range impls {
-			ratio := r.median(wl.name+"/"+im.name) / g
-			if math.IsNaN(ratio) || math.IsInf(ratio, 0) {
-				continue
-			}
-			groups[i] = append(groups[i], bar{ratio, j})
-			lo, hi = math.Min(lo, ratio), math.Max(hi, ratio)
+	add := func(g int, ratio float64, j int) {
+		if math.IsNaN(ratio) || math.IsInf(ratio, 0) {
+			return
 		}
+		groups[g] = append(groups[g], bar{ratio, j})
+		lo, hi = math.Min(lo, ratio), math.Max(hi, ratio)
+	}
+	for i, wl := range s.workloads {
+		labels = append(labels, wl.label)
+		for j, im := range impls {
+			add(i, r.ratio(s, wl, im), j)
+		}
+	}
+	labels = append(labels, "geometric mean")
+	for j, im := range impls {
+		add(len(s.workloads), r.geomean(s, im), j)
 	}
 	lo, hi = niceBelow(lo), niceAbove(hi)
 	x := func(v float64) float64 {
 		return plotLeft + (math.Log10(v)-math.Log10(lo))/(math.Log10(hi)-math.Log10(lo))*(plotRight-plotLeft)
 	}
 	groupH := float64(len(impls))*(barH+barGap) - barGap
-	plotBottom := plotTop + float64(len(workloads))*(groupH+groupGap) - groupGap
+	plotBottom := plotTop + float64(len(groups))*(groupH+groupGap) - groupGap
 	height := plotBottom + 44
 
 	var b strings.Builder
-	title := "How many times slower than native Go"
-	sub := fmt.Sprintf("%s, %s/%s. Median time of each workload divided by Go's; log scale, shorter is better.",
-		r.cpu, r.goos, r.goarch)
+	title := "Time relative to " + s.against
+	sub := fmt.Sprintf("%s, %s/%s. Median time of each workload divided by that of %s; log scale, left of 1× is faster.",
+		r.cpu, r.goos, r.goarch, s.against)
 	fmt.Fprintf(&b, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %g %g" width="%g" height="%g" role="img" aria-labelledby="t d">`+"\n",
 		width, height, width, height)
 	fmt.Fprintf(&b, "<title id=\"t\">%s</title>\n<desc id=\"d\">%s</desc>\n<style>%s</style>\n",
@@ -103,10 +116,25 @@ func chart(r *results) string {
 	}
 
 	// Bars: 2px apart, square at the 1× baseline and rounded at the value.
-	for i, wl := range workloads {
+	for i, label := range labels {
 		top := plotTop + float64(i)*(groupH+groupGap)
-		fmt.Fprintf(&b, `<text class="label" x="%g" y="%.1f" text-anchor="end" dominant-baseline="middle">%s</text>`+"\n",
-			plotLeft-12, top+groupH/2, html.EscapeString(wl.label))
+		cls := "label"
+		if i == len(s.workloads) {
+			cls = "label mean"
+			fmt.Fprintf(&b, `<line class="base" x1="24" x2="%g" y1="%.1f" y2="%.1f"/>`+"\n", width-24, top-groupGap/2, top-groupGap/2)
+		}
+		fmt.Fprintf(&b, `<text class="%s" x="%g" y="%.1f" text-anchor="end" dominant-baseline="middle">%s</text>`+"\n",
+			cls, plotLeft-12, top+groupH/2, html.EscapeString(label))
+		ran := make([]bool, len(impls))
+		for _, br := range groups[i] {
+			ran[br.impl] = true
+		}
+		for j, ok := range ran {
+			if !ok {
+				fmt.Fprintf(&b, `<text class="value" x="%.1f" y="%.1f" dominant-baseline="middle">%s: no result</text>`+"\n",
+					x(1)+5, top+float64(j)*(barH+barGap)+barH/2, html.EscapeString(impls[j].label))
+			}
+		}
 		for _, br := range groups[i] {
 			y := top + float64(br.impl)*(barH+barGap)
 			x0, x1 := x(1), x(br.ratio)
@@ -116,8 +144,8 @@ func chart(r *results) string {
 			if x1 < x0 {
 				anchor, lx = "end", x1-5
 			}
-			fmt.Fprintf(&b, `<text class="value" x="%.1f" y="%.1f" text-anchor="%s" dominant-baseline="middle">%s×</text>`+"\n",
-				lx, y+barH/2, anchor, short(math.Max(br.ratio, 1/br.ratio)))
+			fmt.Fprintf(&b, `<text class="value" x="%.1f" y="%.1f" text-anchor="%s" dominant-baseline="middle">%s</text>`+"\n",
+				lx, y+barH/2, anchor, ratio(br.ratio))
 		}
 	}
 	b.WriteString("</svg>\n")
@@ -172,5 +200,5 @@ func ticks(lo, hi float64) []float64 {
 }
 
 func tickLabel(t float64) string {
-	return strings.TrimSuffix(strings.TrimRight(fmt.Sprintf("%.1f", t), "0"), ".")
+	return strconv.FormatFloat(t, 'g', -1, 64)
 }
