@@ -17,14 +17,20 @@ JIT compiler. Quite far, it turns out.
 
 ## Goals
 
-- **Real-time performance.** Fix the interpreter's obvious performance
-  problems and avoid allocation wherever possible, so a script can run every
-  frame without putting pressure on the garbage collector.
-- **Modern Go.** Bring the code up to Go 1.27 idioms and use newer language
-  features, such as generic methods, where they improve the API.
-
-A newer Lua version may follow later. It comes second to performance and
-modernisation.
+- **A complete Lua in Go.** The whole language and standard library,
+  behaving as C Lua does, checked by the official test suite, with a
+  REPL and command-line interpreter.
+- **Speed through JIT compilation.** Hot functions compile to machine code
+  on arm64 and amd64, and numbers, booleans and calls never allocate, so a
+  script can run every frame without pressure on the garbage collector.
+- **Lua 5.5 compatibility.** Move on from Lua 5.2 to the current language:
+  integers, `utf8`, `<const>` and `<close>` variables, and 5.5's changes.
+- **Pure Go, easy to embed.** No cgo and no dependencies in the library,
+  an API that reads like Go (typed arguments, generic userdata, number
+  functions, `Interrupt`), and the interpreter everywhere the JIT does not
+  run.
+- **Correct before fast.** Every optimisation is checked against the
+  interpreter, and every benchmark against C Lua's results.
 
 ## Status
 
@@ -33,44 +39,16 @@ modernisation.
 | Lua version | 5.2, compatible with `luac` 5.2 binary chunks |
 | Go | 1.27.1 or later, `CGO_ENABLED=0` |
 | API | Methods on `*lua.State`, following Lua's C API and auxiliary library, in `github.com/matjam/luart/lua`; standard libraries in `github.com/matjam/luart/stdlib` |
+| JIT | linux and darwin on arm64 and amd64; elsewhere, Windows included, states interpret |
 
-Work so far:
-
-- Go 1.27 modernisation (`any`, range-over-int, builtin `min`/`max`/`clear`)
-- `switch` dispatch in place of go-lua's closure jump table
-- Generic accessors `(*State).UserData[T]` and `(*State).CheckUserData[T]`
-- Exact constant folding of `10^n` on current Go
-- Two-word values: a pointer and a float64, so numbers and booleans never
-  allocate and stacks and tables are a third smaller
-- Lua's floored `%` on the interpreter's fast path (go-lua truncated)
-- One allocation per small table, closure and captured upvalue; table
-  constructors start in the shape their previous table reached
-- Direct calls and returns between Lua functions, and direct calls into Go
-- Generic argument accessor `(*State).Arg[T]`
-- Number functions: `math.*` and `(*State).PushNumberFunction[F]` run
-  without a call frame
-- Table shapes: tables that gain the same string keys in the same order
-  share a key-to-slot layout, and each table holds only a slice of values
-- Inline caches: field reads, writes, method lookups through `__index`
-  tables, and globals with constant names cache their slot per instruction
-- Arithmetic specialised at load time for register and constant operands
-- `pairs` is linear, visits string keys in insertion order, and allows
-  clearing fields during traversal (go-lua was quadratic and raised
-  "invalid key to 'next'")
-- Error messages name the variable or function, as C Lua does (go-lua read
-  the wrong instruction)
-- Line and call hooks work (go-lua crashed)
-- Assigning nil to an existing field no longer calls `__newindex`
-- Lua patterns (`string.find`, `match`, `gmatch` and `gsub`), ported from
-  Lua 5.2's lstrlib.c and checked by the Lua test suite's pm.lua, and
-  `string.dump`
-- Coroutines, as C Lua 5.2 implements them: yields across `pcall`,
-  metamethods and iterators, from compiled code too, without a goroutine
-  per coroutine
-- Weak tables and `__gc` finalizers, checked by the test suite's gc.lua
-- The rest of the standard library go-lua lacked: `io.read` and
-  `io.lines`, `io.popen`, `os.date`, `debug.getinfo`, `getlocal` and
-  `setlocal`, `package.cpath`
+- The language and standard library of Lua 5.2 are complete, including
+  coroutines (yielding across `pcall`, metamethods and iterators), Lua
+  patterns, weak tables and `__gc` finalizers, `io`, `os` and `debug`.
+- It passes every file of the Lua 5.2 test suite except `api`,
+  `checktable` and `code`, which need C Lua's internal test library, and
+  `main`, which tests the standalone interpreter.
+- With the JIT it is faster than C Lua 5.4 on the standard benchmarks; see
+  [Performance](#performance).
 
 Differences from C Lua 5.2:
 
