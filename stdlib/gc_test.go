@@ -2,6 +2,26 @@ package stdlib_test
 
 import "testing"
 
+// While the collector is stopped, "count" grows by what the script
+// allocates, even a few small objects, and a collection lowers it.
+func TestCountWhileStopped(t *testing.T) {
+	run(t, `
+		collectgarbage("stop")
+		for round = 1, 20 do
+		  collectgarbage()
+		  local before = collectgarbage("count")
+		  local t = {}
+		  for i = 1, 100 do t[i] = {} end
+		  local after = collectgarbage("count")
+		  assert(after > before, round)
+		  t = nil
+		  repeat until collectgarbage("step", 0)
+		  assert(collectgarbage("count") < after, round)
+		end
+		collectgarbage("restart")
+	`)
+}
+
 // Weak tables lose the entries whose objects a collection does not reach:
 // weak values, weak keys, and ephemerons, whose values live while their
 // keys do. Strings and numbers are values, never removed.

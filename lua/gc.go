@@ -74,7 +74,7 @@ func (l *State) GC(what GCOption, data int) int {
 	switch what {
 	case GCStop:
 		g.gcStopped = true
-		g.gcCountBase, g.gcCountAllocatedBase = heapObjects(), allocatedNow()
+		g.gcCountBase, g.gcCountAllocatedBase = heapNow()
 	case GCRestart:
 		g.gcStopped = false
 	case GCCollect:
@@ -88,9 +88,9 @@ func (l *State) GC(what GCOption, data int) int {
 		l.fullCollect()
 		return 1 // a cycle finished
 	case GCCount, GCCountBytes:
-		n := heapObjects()
+		n, allocated := heapNow()
 		if g.gcStopped { // memory grows until the collector runs again
-			n = g.gcCountBase + allocatedNow() - g.gcCountAllocatedBase
+			n = g.gcCountBase + allocated - g.gcCountAllocatedBase
 		}
 		if what == GCCount {
 			return int(n >> 10)
@@ -125,7 +125,18 @@ func (l *State) fullCollect() {
 	g := l.global
 	l.collect()
 	runtime.GC()
-	g.gcCountBase, g.gcCountAllocatedBase = heapObjects(), allocatedNow()
+	g.gcCountBase, g.gcCountAllocatedBase = heapNow()
+}
+
+// heapNow returns the bytes of Go's heap in objects, garbage included, and
+// the bytes Go has ever allocated, for collectgarbage "count". It reads
+// them exactly, stopping the world briefly: runtime/metrics counts small
+// objects a span at a time, so hundreds of small allocations can show as
+// none, and a count taken after a collection could exceed the one before.
+func heapNow() (inUse, allocated uint64) {
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	return ms.HeapAlloc, ms.TotalAlloc
 }
 
 // readMetric returns a uint64 runtime metric, or 0.
