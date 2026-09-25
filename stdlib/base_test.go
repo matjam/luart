@@ -47,6 +47,33 @@ func TestOptionDefault(t *testing.T) {
 	`)
 }
 
+// Runtime errors word and name things as Lua 5.2's do, as errors.lua
+// checks.
+func TestErrorMessages(t *testing.T) {
+	run(t, `
+		local function fails(msg, f)
+			local ok, err = pcall(f)
+			assert(not ok and err:find(msg, 1, true), "want " .. msg .. ", got " .. tostring(err))
+		end
+		fails("attempt to compare two function values", function() return print < print end)
+		fails("attempt to compare table with number", function() return {} < 1 end)
+
+		-- A name loaded by LOADK, past the 256 constants an instruction can
+		-- name directly.
+		local prog = {}
+		for i = 1, 300 do prog[#prog + 1] = "a = x" .. i end
+		prog[#prog + 1] = "aaa = bbb + 1"
+		fails("global 'bbb'", load(table.concat(prog, "; ")))
+
+		-- Files have __gc, which closes them, and checks its argument.
+		fails("FILE* expected, got no value", function() getmetatable(io.stdin).__gc() end)
+		local f = io.tmpfile()
+		getmetatable(f).__gc(f)
+		assert(io.type(f) == "closed file")
+		getmetatable(f).__gc(f) -- already closed: nothing happens
+	`)
+}
+
 // error raises any value, not only strings.
 func TestErrorValues(t *testing.T) {
 	run(t, `

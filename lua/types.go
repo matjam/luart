@@ -472,7 +472,7 @@ func (p *prototype) constantName(k int, pc pc) string {
 		if s, ok := p.Constants[bytecode.ConstantIndex(k)].str(); ok {
 			return s
 		}
-	} else if name, kind := p.objectName(k, pc); kind == "c" {
+	} else if name, kind := p.objectName(k, pc); kind == "constant" {
 		return name
 	}
 	return "?"
