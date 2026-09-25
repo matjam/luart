@@ -1,6 +1,11 @@
-package luart
+package luart_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/matjam/luart"
+	"github.com/matjam/luart/stdlib"
+)
 
 func TestNumberFunction(t *testing.T) {
 	tests := []struct {
@@ -33,8 +38,8 @@ func TestNumberFunction(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := NewState()
-			openLibraries(l)
+			l := luart.NewState()
+			stdlib.Open(l)
 			l.RegisterNumberFunction("add", func(a, b float64) float64 { return a + b })
 			l.RegisterNumberFunction("sum4", func(a, b, c, d float64) float64 { return a + b + c + d })
 			l.RegisterNumberFunction("record", func(v float64) {
@@ -49,11 +54,11 @@ func TestNumberFunction(t *testing.T) {
 }
 
 func TestNumberFunctionDuringCallHook(t *testing.T) {
-	l := NewState()
-	openLibraries(l)
+	l := luart.NewState()
+	stdlib.Open(l)
 	calls := 0
 	l.RegisterNumberFunction("add", func(a, b float64) float64 { return a + b })
-	l.SetHook(func(l *State, ar Debug) { calls++ }, MaskCall, 0)
+	l.SetHook(func(l *luart.State, ar luart.Debug) { calls++ }, luart.MaskCall, 0)
 	if err := l.DoString(`assert(add(1, 2) == 3)`); err != nil {
 		t.Fatal(err)
 	}

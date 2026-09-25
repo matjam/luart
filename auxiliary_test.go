@@ -1,11 +1,15 @@
-package luart
+package luart_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/matjam/luart"
+)
 
 func TestLoadFileSyntaxError(t *testing.T) {
-	l := NewState()
+	l := luart.NewState()
 	err := l.LoadFile("fixtures/syntax_error.lua", "")
-	if err != ErrSyntax {
+	if err != luart.ErrSyntax {
 		t.Error("didn't return SyntaxError on file with syntax error")
 	}
 	if l.Top() != 1 {
@@ -21,9 +25,9 @@ func TestLoadFileSyntaxError(t *testing.T) {
 }
 
 func TestLoadStringSyntaxError(t *testing.T) {
-	l := NewState()
+	l := luart.NewState()
 	err := l.LoadString("this_is_a_syntax_error")
-	if err != ErrSyntax {
+	if err != luart.ErrSyntax {
 		t.Error("didn't return SyntaxError on string with syntax error")
 	}
 	if l.Top() != 1 {

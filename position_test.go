@@ -1,8 +1,11 @@
-package luart
+package luart_test
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/matjam/luart"
+	"github.com/matjam/luart/stdlib"
 )
 
 // Errors and hooks report source lines from the VM's saved program counter.
@@ -32,8 +35,8 @@ func TestErrorPositions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := NewState()
-			openLibraries(l)
+			l := luart.NewState()
+			stdlib.Open(l)
 			err := l.DoString(tt.src)
 			if err == nil {
 				t.Fatal("no error")
@@ -46,12 +49,12 @@ func TestErrorPositions(t *testing.T) {
 }
 
 func TestLineHook(t *testing.T) {
-	l := NewState()
-	openLibraries(l)
+	l := luart.NewState()
+	stdlib.Open(l)
 	var lines []int
-	l.SetHook(func(l *State, ar Debug) {
+	l.SetHook(func(l *luart.State, ar luart.Debug) {
 		lines = append(lines, ar.CurrentLine)
-	}, MaskLine, 0)
+	}, luart.MaskLine, 0)
 	src := "local x = 1\nfor i = 1, 2 do\n  x = x + math.abs(i)\nend\nreturn x"
 	if err := l.DoString(src); err != nil {
 		t.Fatal(err)
@@ -69,17 +72,17 @@ func TestLineHook(t *testing.T) {
 
 // The Lua call and return fast paths must step aside when hooks are set.
 func TestCallAndReturnHooksSeeLuaCalls(t *testing.T) {
-	l := NewState()
-	openLibraries(l)
+	l := luart.NewState()
+	stdlib.Open(l)
 	calls, returns := 0, 0
-	l.SetHook(func(l *State, ar Debug) {
+	l.SetHook(func(l *luart.State, ar luart.Debug) {
 		switch ar.Event {
-		case HookCall:
+		case luart.HookCall:
 			calls++
-		case HookReturn:
+		case luart.HookReturn:
 			returns++
 		}
-	}, MaskCall|MaskReturn, 0)
+	}, luart.MaskCall|luart.MaskReturn, 0)
 	src := "local function f(n) if n == 0 then return 0 end return f(n - 1) + 1 end\nlocal r = f(5)"
 	if err := l.DoString(src); err != nil {
 		t.Fatal(err)
@@ -91,8 +94,8 @@ func TestCallAndReturnHooksSeeLuaCalls(t *testing.T) {
 }
 
 func TestTraceback(t *testing.T) {
-	l := NewState()
-	openLibraries(l)
+	l := luart.NewState()
+	stdlib.Open(l)
 	src := "local function inner()\n  error('deep')\nend\nlocal function outer()\n  inner()\nend\nouter()"
 	l.Global("debug")
 	l.Field(-1, "traceback")

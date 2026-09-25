@@ -1,8 +1,12 @@
-package luart
+package luart_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/matjam/luart"
+	"github.com/matjam/luart/stdlib"
 )
 
 func TestArg(t *testing.T) {
@@ -23,13 +27,13 @@ func TestArg(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := NewState()
-			openLibraries(l)
+			l := luart.NewState()
+			stdlib.Open(l)
 			var got string
-			l.Register("f", func(l *State) int { got = numberToString(l.Arg[float64](1)); return 0 })
-			l.Register("i", func(l *State) int { got = numberToString(float64(l.Arg[int](1))); return 0 })
-			l.Register("s", func(l *State) int { got = l.Arg[string](1); return 0 })
-			l.Register("b", func(l *State) int {
+			l.Register("f", func(l *luart.State) int { got = fmt.Sprintf("%.14g", l.Arg[float64](1)); return 0 })
+			l.Register("i", func(l *luart.State) int { got = fmt.Sprint(l.Arg[int](1)); return 0 })
+			l.Register("s", func(l *luart.State) int { got = l.Arg[string](1); return 0 })
+			l.Register("b", func(l *luart.State) int {
 				if l.Arg[bool](1) {
 					got = "true"
 				} else {

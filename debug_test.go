@@ -1,12 +1,17 @@
-package luart
+package luart_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/matjam/luart"
+	"github.com/matjam/luart/stdlib"
+)
 
 // debug.sethook with a Lua function installs it as the hook, and
 // debug.gethook returns it with its mask and count.
 func TestDebugLuaHook(t *testing.T) {
-	l := NewState()
-	openLibraries(l)
+	l := luart.NewState()
+	stdlib.Open(l)
 	src := `
 		local calls = 0
 		local function hook(event) calls = calls + 1 end
@@ -22,7 +27,7 @@ func TestDebugLuaHook(t *testing.T) {
 		t.Fatal(err)
 	}
 	l.Global("run")
-	if err := l.ProtectedCall(0, MultipleReturns, 0); err != nil {
+	if err := l.ProtectedCall(0, luart.MultipleReturns, 0); err != nil {
 		t.Fatal(err)
 	}
 	same, _ := l.ToString(1)
