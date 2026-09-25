@@ -29,10 +29,10 @@ func (c *arm64Compiler) tableAccess(ip int, i instruction) {
 		c.setField(ip, i, false)
 	case opSetFieldUp:
 		c.setField(ip, i, true)
-	case opGetTable:
-		c.getIndex(ip, i)
-	case opSetTable:
-		c.setIndex(ip, i)
+	case opGetTable, opGetTableUp:
+		c.getIndex(ip, i, i.opCode() == opGetTableUp)
+	case opSetTable, opSetTableUp:
+		c.setIndex(ip, i, i.opCode() == opSetTableUp)
 	default:
 		c.exitAlways(ip)
 	}
@@ -218,8 +218,21 @@ func (c *arm64Compiler) arrayIndex(field, ip int) bool {
 }
 
 // getIndex compiles GETTABLE with a number key in the table's array part.
-func (c *arm64Compiler) getIndex(ip int, i instruction) {
-	c.tableOf(reg(i.b()), ip)
+// upTableOf puts the table in upvalue n in rT, exiting at ip unless it
+// holds one.
+func (c *arm64Compiler) upTableOf(n, ip int) {
+	c.upValueAddr(n)
+	c.tableOf(operand{rAddr, 0}, ip)
+}
+
+// getIndex compiles GETTABLE, or GETTABUP when up is set, for an array
+// element; other keys exit.
+func (c *arm64Compiler) getIndex(ip int, i instruction, up bool) {
+	if up {
+		c.upTableOf(i.b(), ip)
+	} else {
+		c.tableOf(reg(i.b()), ip)
+	}
 	if !c.arrayIndex(i.c(), ip) {
 		c.exitAlways(ip)
 		return
@@ -234,13 +247,19 @@ func (c *arm64Compiler) getIndex(ip int, i instruction) {
 
 // setIndex compiles SETTABLE storing a value to an element of the table's
 // array part, as tryPut, or put for a table without a metatable, does.
-func (c *arm64Compiler) setIndex(ip int, i instruction) {
+// setIndex compiles SETTABLE, or SETTABUP when up is set, for an array
+// element; other keys exit.
+func (c *arm64Compiler) setIndex(ip int, i instruction, up bool) {
 	a := &c.a
 	if !c.loadRK(i.c(), ip) {
 		c.exitAlways(ip)
 		return
 	}
-	c.tableOf(reg(i.a()), ip)
+	if up {
+		c.upTableOf(i.a(), ip)
+	} else {
+		c.tableOf(reg(i.a()), ip)
+	}
 	if !c.arrayIndex(i.b(), ip) {
 		c.exitAlways(ip)
 		return

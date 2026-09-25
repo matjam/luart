@@ -34,8 +34,9 @@ today, the rules it depends on, and where performance work should go next.
   Every performance PR includes a full run of `bench/suite_test.go`, saved
   as the results file for its machine (`bench/suite-results-amd64.txt`,
   or `bench/suite-results.txt` for Apple M1). `cd bench && go run ./chart
-  -table <file>` prints the README's table for it, and `-svg <out>`
-  redraws its chart; update both.
+  -svg suite-amd64.svg -readme README.md,../README.md -name amd64
+  suite-results-amd64.txt` redraws the chart and rewrites the READMEs'
+  tables from it (bench/README.md, Reproducing).
 
 ## Interpreter
 
@@ -109,7 +110,8 @@ nothing compiles.
     loops.
   - Upvalues.
   - Fields through the field caches, including `__index` tables, and
-    array elements, including appends within capacity.
+    array elements, including appends within capacity, of tables in
+    registers or upvalues.
   - Native calls and returns between compiled fixed-parameter Lua
     functions.
   - `math.floor`, `ceil`, `sqrt`, `abs`, `sin` and `cos` inline.
@@ -155,32 +157,15 @@ nothing compiles.
 
 ## Performance today
 
-bench/README.md has full tables for Apple M1 Pro (arm64) and AMD Ryzen 9
-9900X3D (linux/amd64). JIT timings on amd64:
+bench/README.md has the current tables and charts, generated from the raw
+results: AMD Ryzen 9 9900X3D (linux/amd64), and Apple M1 Pro (arm64) as
+of commit 664f09d.
 
-| Workload | luart | luart + JIT | Native Go |
-|---|---|---|---|
-| numeric loop | 8.66 ms | 1.00 ms | 0.77 ms |
-| fib(25) | 5.55 ms | 1.57 ms | 0.22 ms |
-| array fill and sum | 2.70 ms | 1.19 ms | 0.43 ms |
-| plasma frame | 1.35 ms | 0.74 ms | 0.29 ms |
-| particles frame | 0.25 ms | 0.10 ms | 0.005 ms |
-| closures | 5.32 ms | 4.66 ms | 0.22 ms |
-| sort with comparator | 3.61 ms | 3.54 ms | 1.28 ms |
-| calls into Go | 1.73 ms | 1.25 ms | 0.22 ms |
-
-Apple M1 Pro, arm64, before the Go-call exit:
-
-| Workload | luart | luart + JIT | Native Go |
-|---|---|---|---|
-| numeric loop | 14.0 ms | 1.83 ms | 1.20 ms |
-| fib(25) | 7.94 ms | 2.68 ms | 0.25 ms |
-| array fill and sum | 4.03 ms | 1.63 ms | 0.45 ms |
-| plasma frame | 2.19 ms | 1.66 ms | 0.31 ms |
-| particles frame | 0.36 ms | 0.22 ms | 0.006 ms |
-| closures | 7.80 ms | 9.55 ms | 0.35 ms |
-| sort with comparator | 7.41 ms | 9.52 ms | 1.94 ms |
-| calls into Go | 2.76 ms | 3.21 ms | 0.35 ms |
+To find where a workload leaves compiled code, count exits: log
+`p.jitOrig[ip]` and `l.jitCtx.reason` after each `enterJIT` in `runJIT`
+for one call of the workload. An exit every iteration costs 10 ns or more;
+that is how `GETTABUP` with an array index was found to exit on each of
+particles' 2,000 iterations.
 
 The JIT gains least where a script crosses between compiled code and Go
 every few instructions. A bare `call.Call` round trip costs about 2 ns
