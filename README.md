@@ -24,7 +24,7 @@ modernisation.
 |---|---|
 | Lua version | 5.2, compatible with `luac` 5.2 binary chunks |
 | Go | 1.27.1 or later, `CGO_ENABLED=0` |
-| API | go-lua's API, under the module path `github.com/matjam/luart` |
+| API | Methods on `*luart.State`, following Lua's C API and auxiliary library; package `luart` at `github.com/matjam/luart` |
 
 Work so far:
 
@@ -107,7 +107,6 @@ also has Apple M1 results.
 `luart.NewState()` compiles hot Lua functions to machine code.
 `luart.NewState(luart.WithoutJIT())` makes a state that only interprets, and
 the environment variable `LUART_JIT=off` does that for every state.
-`WithJIT()` remains for code written when the JIT was opt-in.
 
 - Platforms: linux and darwin on arm64 and amd64. Elsewhere, Windows
   included, states interpret.
@@ -143,7 +142,7 @@ import "github.com/matjam/luart"
 func main() {
 	l := luart.NewState()
 	luart.OpenLibraries(l)
-	if err := luart.DoFile(l, "hello.lua"); err != nil {
+	if err := l.DoFile("hello.lua"); err != nil {
 		panic(err)
 	}
 }

@@ -18,8 +18,8 @@ func xmove(from, to *State, n int) {
 
 func upValueHelper(f func(*State, int, int) (string, bool), returnValueCount int) Function {
 	return func(l *State) int {
-		CheckType(l, 1, TypeFunction)
-		name, ok := f(l, 1, CheckInteger(l, 2))
+		l.CheckType(1, TypeFunction)
+		name, ok := f(l, 1, l.CheckInteger(2))
 		if !ok {
 			return 0
 		}
@@ -30,11 +30,11 @@ func upValueHelper(f func(*State, int, int) (string, bool), returnValueCount int
 }
 
 func (l *State) checkUpValue(f, upValueCount int) int {
-	n := CheckInteger(l, upValueCount)
-	CheckType(l, f, TypeFunction)
+	n := l.CheckInteger(upValueCount)
+	l.CheckType(f, TypeFunction)
 	l.PushValue(f)
-	debug, _ := Info(l, ">u", nil)
-	ArgumentCheck(l, 1 <= n && n <= debug.UpValueCount, upValueCount, "invalue upvalue index")
+	debug, _ := l.Info(">u", Frame{})
+	l.ArgumentCheck(1 <= n && n <= debug.UpValueCount, upValueCount, "invalue upvalue index")
 	return n
 }
 
@@ -45,7 +45,7 @@ func threadArg(l *State) (int, *State) {
 	return 0, l
 }
 
-func hookTable(l *State) bool { return SubTable(l, RegistryIndex, "_HKEY") }
+func hookTable(l *State) bool { return l.SubTable(RegistryIndex, "_HKEY") }
 
 func internalHook(l *State, d Debug) {
 	hookNames := []string{"call", "return", "line", "count", "tail call"}
@@ -59,7 +59,7 @@ func internalHook(l *State, d Debug) {
 		} else {
 			l.PushNil()
 		}
-		_, ok := Info(l, "lS", d.callInfo)
+		_, ok := l.Info("lS", Frame{d.callInfo})
 		l.assert(ok)
 		l.Call(2, 0)
 	}
@@ -102,7 +102,7 @@ var debugLibrary = []RegistryFunction{
 	}},
 	{"gethook", func(l *State) int {
 		_, l1 := threadArg(l)
-		hooker, mask := DebugHook(l1), DebugHookMask(l1)
+		hooker, mask := l1.Hook(), l1.HookMask()
 		if hooker != nil && !l.internalHook {
 			l.PushString("external hook")
 		} else {
@@ -113,36 +113,36 @@ var debugLibrary = []RegistryFunction{
 			l.Remove(-2)
 		}
 		l.PushString(maskToString(mask))
-		l.PushInteger(DebugHookCount(l1))
+		l.PushInteger(l1.HookCount())
 		return 3
 	}},
 	// {"getinfo", db_getinfo},
 	// {"getlocal", db_getlocal},
 	{"getregistry", func(l *State) int { l.PushValue(RegistryIndex); return 1 }},
 	{"getmetatable", func(l *State) int {
-		CheckAny(l, 1)
+		l.CheckAny(1)
 		if !l.MetaTable(1) {
 			l.PushNil()
 		}
 		return 1
 	}},
-	{"getupvalue", upValueHelper(UpValue, 2)},
+	{"getupvalue", upValueHelper((*State).UpValue, 2)},
 	{"upvaluejoin", func(l *State) int {
 		n1 := l.checkUpValue(1, 2)
 		n2 := l.checkUpValue(3, 4)
-		ArgumentCheck(l, !l.IsGoFunction(1), 1, "Lua function expected")
-		ArgumentCheck(l, !l.IsGoFunction(3), 3, "Lua function expected")
-		UpValueJoin(l, 1, n1, 3, n2)
+		l.ArgumentCheck(!l.IsGoFunction(1), 1, "Lua function expected")
+		l.ArgumentCheck(!l.IsGoFunction(3), 3, "Lua function expected")
+		l.UpValueJoin(1, n1, 3, n2)
 		return 0
 	}},
-	{"upvalueid", func(l *State) int { l.PushLightUserData(UpValueId(l, 1, l.checkUpValue(1, 2))); return 1 }},
+	{"upvalueid", func(l *State) int { l.PushLightUserData(l.UpValueID(1, l.checkUpValue(1, 2))); return 1 }},
 	{"setuservalue", func(l *State) int {
 		if l.TypeOf(1) == TypeLightUserData {
-			ArgumentError(l, 1, "full userdata expected, got light userdata")
+			l.ArgumentError(1, "full userdata expected, got light userdata")
 		}
-		CheckType(l, 1, TypeUserData)
+		l.CheckType(1, TypeUserData)
 		if !l.IsNoneOrNil(2) {
-			CheckType(l, 2, TypeTable)
+			l.CheckType(2, TypeTable)
 		}
 		l.SetTop(2)
 		l.SetUserValue(1)
@@ -156,9 +156,9 @@ var debugLibrary = []RegistryFunction{
 		if l.IsNoneOrNil(i + 1) {
 			l.SetTop(i + 1)
 		} else {
-			s := CheckString(l, i+2)
-			CheckType(l, i+1, TypeFunction)
-			count = OptInteger(l, i+3, 0)
+			s := l.CheckString(i + 2)
+			l.CheckType(i+1, TypeFunction)
+			count = l.OptInteger(i+3, 0)
 			hook, mask = internalHook, stringToMask(s, count > 0)
 		}
 		if !hookTable(l) {
@@ -171,27 +171,27 @@ var debugLibrary = []RegistryFunction{
 		xmove(l1, l, 1)
 		l.PushValue(i + 1)
 		l.RawSet(-3)
-		SetDebugHook(l1, hook, mask, count)
+		l1.SetHook(hook, mask, count)
 		l1.internalHook = true
 		return 0
 	}},
 	// {"setlocal", db_setlocal},
 	{"setmetatable", func(l *State) int {
 		t := l.TypeOf(2)
-		ArgumentCheck(l, t == TypeNil || t == TypeTable, 2, "nil or table expected")
+		l.ArgumentCheck(t == TypeNil || t == TypeTable, 2, "nil or table expected")
 		l.SetTop(2)
 		l.SetMetaTable(1)
 		return 1
 	}},
-	{"setupvalue", upValueHelper(SetUpValue, 1)},
+	{"setupvalue", upValueHelper((*State).SetUpValue, 1)},
 	{"traceback", func(l *State) int {
 		i, l1 := threadArg(l)
 		if s, ok := l.ToString(i + 1); !ok && !l.IsNoneOrNil(i+1) {
 			l.PushValue(i + 1)
 		} else if l == l1 {
-			Traceback(l, l, s, OptInteger(l, i+2, 1))
+			l.Traceback(l, s, l.OptInteger(i+2, 1))
 		} else {
-			Traceback(l, l1, s, OptInteger(l, i+2, 0))
+			l.Traceback(l1, s, l.OptInteger(i+2, 0))
 		}
 		return 1
 	}},
@@ -199,6 +199,6 @@ var debugLibrary = []RegistryFunction{
 
 // DebugOpen opens the debug library. Usually passed to Require.
 func DebugOpen(l *State) int {
-	NewLibrary(l, debugLibrary)
+	l.NewLibrary(debugLibrary)
 	return 1
 }

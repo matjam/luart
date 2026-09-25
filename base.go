@@ -9,7 +9,7 @@ import (
 )
 
 func next(l *State) int {
-	CheckType(l, 1, TypeTable)
+	l.CheckType(1, TypeTable)
 	l.SetTop(2)
 	if l.Next(1) {
 		return 2
@@ -20,11 +20,11 @@ func next(l *State) int {
 
 func pairs(method string, isZero bool, iter Function) Function {
 	return func(l *State) int {
-		if hasMetamethod := MetaField(l, 1, method); !hasMetamethod {
-			CheckType(l, 1, TypeTable) // argument must be a table
-			l.PushGoFunction(iter)     // will return generator,
-			l.PushValue(1)             // state,
-			if isZero {                // and initial value
+		if hasMetamethod := l.MetaField(1, method); !hasMetamethod {
+			l.CheckType(1, TypeTable) // argument must be a table
+			l.PushGoFunction(iter)    // will return generator,
+			l.PushValue(1)            // state,
+			if isZero {               // and initial value
 				l.PushInteger(0)
 			} else {
 				l.PushNil()
@@ -38,8 +38,8 @@ func pairs(method string, isZero bool, iter Function) Function {
 }
 
 func intPairs(l *State) int {
-	i := CheckInteger(l, 2)
-	CheckType(l, 1, TypeTable)
+	i := l.CheckInteger(2)
+	l.CheckType(1, TypeTable)
 	i++ // next value
 	l.PushInteger(i)
 	l.RawGetInt(1, i)
@@ -70,7 +70,7 @@ func loadHelper(l *State, s error, e int) int {
 	if s == nil {
 		if e != 0 {
 			l.PushValue(e)
-			if _, ok := SetUpValue(l, -2, 1); !ok {
+			if _, ok := l.SetUpValue(-2, 1); !ok {
 				l.Pop(1)
 			}
 		}
@@ -92,13 +92,13 @@ func (r *genericReader) Read(b []byte) (n int, err error) {
 		return 0, r.e
 	}
 	if l := r.l; r.r == nil {
-		CheckStackWithMessage(l, 2, "too many nested functions")
+		l.CheckStackWithMessage(2, "too many nested functions")
 		l.PushValue(1)
 		if l.Call(0, 1); l.IsNil(-1) {
 			l.Pop(1)
 			return 0, io.EOF
 		} else if !l.IsString(-1) {
-			Errorf(l, "reader function must return a string")
+			l.Errorf("reader function must return a string")
 		}
 		if s, ok := l.ToString(-1); ok {
 			r.r = strings.NewReader(s)
@@ -117,13 +117,13 @@ func (r *genericReader) Read(b []byte) (n int, err error) {
 var baseLibrary = []RegistryFunction{
 	{"assert", func(l *State) int {
 		if !l.ToBoolean(1) {
-			Errorf(l, "%s", OptString(l, 2, "assertion failed!"))
+			l.Errorf("%s", l.OptString(2, "assertion failed!"))
 			panic("unreachable")
 		}
 		return l.Top()
 	}},
 	{"collectgarbage", func(l *State) int {
-		switch opt, _ := OptString(l, 1, "collect"), OptInteger(l, 2, 0); opt {
+		switch opt, _ := l.OptString(1, "collect"), l.OptInteger(2, 0); opt {
 		case "collect":
 			runtime.GC()
 			l.PushInteger(0)
@@ -142,8 +142,8 @@ var baseLibrary = []RegistryFunction{
 		return 1
 	}},
 	{"dofile", func(l *State) int {
-		f := OptString(l, 1, "")
-		if l.SetTop(1); LoadFile(l, f, "") != nil {
+		f := l.OptString(1, "")
+		if l.SetTop(1); l.LoadFile(f, "") != nil {
 			l.Error()
 			panic("unreachable")
 		}
@@ -152,10 +152,10 @@ var baseLibrary = []RegistryFunction{
 		return continuation(l)
 	}},
 	{"error", func(l *State) int {
-		level := OptInteger(l, 2, 1)
+		level := l.OptInteger(2, 1)
 		l.SetTop(1)
 		if l.IsString(1) && level > 0 {
-			Where(l, level)
+			l.Where(level)
 			l.PushValue(1)
 			l.Concat(2)
 		}
@@ -163,33 +163,33 @@ var baseLibrary = []RegistryFunction{
 		panic("unreachable")
 	}},
 	{"getmetatable", func(l *State) int {
-		CheckAny(l, 1)
+		l.CheckAny(1)
 		if !l.MetaTable(1) {
 			l.PushNil()
 			return 1
 		}
-		MetaField(l, 1, "__metatable")
+		l.MetaField(1, "__metatable")
 		return 1
 	}},
 	{"ipairs", pairs("__ipairs", true, intPairs)},
 	{"loadfile", func(l *State) int {
-		f, m, e := OptString(l, 1, ""), OptString(l, 2, ""), 3
+		f, m, e := l.OptString(1, ""), l.OptString(2, ""), 3
 		if l.IsNone(e) {
 			e = 0
 		}
-		return loadHelper(l, LoadFile(l, f, m), e)
+		return loadHelper(l, l.LoadFile(f, m), e)
 	}},
 	{"load", func(l *State) int {
-		m, e := OptString(l, 3, "bt"), 4
+		m, e := l.OptString(3, "bt"), 4
 		if l.IsNone(e) {
 			e = 0
 		}
 		var err error
 		if s, ok := l.ToString(1); ok {
-			err = LoadBuffer(l, s, OptString(l, 2, s), m)
+			err = l.LoadBuffer(s, l.OptString(2, s), m)
 		} else {
-			chunkName := OptString(l, 2, "=(load)")
-			CheckType(l, 1, TypeFunction)
+			chunkName := l.OptString(2, "=(load)")
+			l.CheckType(1, TypeFunction)
 			err = l.Load(&genericReader{l: l}, chunkName, m)
 		}
 		return loadHelper(l, err, e)
@@ -197,7 +197,7 @@ var baseLibrary = []RegistryFunction{
 	{"next", next},
 	{"pairs", pairs("__pairs", false, next)},
 	{"pcall", func(l *State) int {
-		CheckAny(l, 1)
+		l.CheckAny(1)
 		l.PushNil()
 		l.Insert(1) // create space for status result
 		return finishProtectedCall(l, nil == l.ProtectedCallWithContinuation(l.Top()-2, MultipleReturns, 0, 0, protectedCallContinuation))
@@ -211,7 +211,7 @@ var baseLibrary = []RegistryFunction{
 			l.Call(1, 1)
 			s, ok := l.ToString(-1)
 			if !ok {
-				Errorf(l, "'tostring' must return a string to 'print'")
+				l.Errorf("'tostring' must return a string to 'print'")
 				panic("unreachable")
 			}
 			if i > 1 {
@@ -225,28 +225,28 @@ var baseLibrary = []RegistryFunction{
 		return 0
 	}},
 	{"rawequal", func(l *State) int {
-		CheckAny(l, 1)
-		CheckAny(l, 2)
+		l.CheckAny(1)
+		l.CheckAny(2)
 		l.PushBoolean(l.RawEqual(1, 2))
 		return 1
 	}},
 	{"rawlen", func(l *State) int {
 		t := l.TypeOf(1)
-		ArgumentCheck(l, t == TypeTable || t == TypeString, 1, "table or string expected")
+		l.ArgumentCheck(t == TypeTable || t == TypeString, 1, "table or string expected")
 		l.PushInteger(l.RawLength(1))
 		return 1
 	}},
 	{"rawget", func(l *State) int {
-		CheckType(l, 1, TypeTable)
-		CheckAny(l, 2)
+		l.CheckType(1, TypeTable)
+		l.CheckAny(2)
 		l.SetTop(2)
 		l.RawGet(1)
 		return 1
 	}},
 	{"rawset", func(l *State) int {
-		CheckType(l, 1, TypeTable)
-		CheckAny(l, 2)
-		CheckAny(l, 3)
+		l.CheckType(1, TypeTable)
+		l.CheckAny(2)
+		l.CheckAny(3)
 		l.SetTop(3)
 		l.RawSet(1)
 		return 1
@@ -259,21 +259,21 @@ var baseLibrary = []RegistryFunction{
 				return 1
 			}
 		}
-		i := CheckInteger(l, 1)
+		i := l.CheckInteger(1)
 		if i < 0 {
 			i = n + i
 		} else if i > n {
 			i = n
 		}
-		ArgumentCheck(l, 1 <= i, 1, "index out of range")
+		l.ArgumentCheck(1 <= i, 1, "index out of range")
 		return n - i
 	}},
 	{"setmetatable", func(l *State) int {
 		t := l.TypeOf(2)
-		CheckType(l, 1, TypeTable)
-		ArgumentCheck(l, t == TypeNil || t == TypeTable, 2, "nil or table expected")
-		if MetaField(l, 1, "__metatable") {
-			Errorf(l, "cannot change a protected metatable")
+		l.CheckType(1, TypeTable)
+		l.ArgumentCheck(t == TypeNil || t == TypeTable, 2, "nil or table expected")
+		if l.MetaField(1, "__metatable") {
+			l.Errorf("cannot change a protected metatable")
 		}
 		l.SetTop(2)
 		l.SetMetaTable(1)
@@ -285,11 +285,11 @@ var baseLibrary = []RegistryFunction{
 				l.PushNumber(n)
 				return 1
 			}
-			CheckAny(l, 1)
+			l.CheckAny(1)
 		} else {
-			s := CheckString(l, 1)
-			base := CheckInteger(l, 2)
-			ArgumentCheck(l, 2 <= base && base <= 36, 2, "base out of range")
+			s := l.CheckString(1)
+			base := l.CheckInteger(2)
+			l.ArgumentCheck(2 <= base && base <= 36, 2, "base out of range")
 			if i, err := strconv.ParseInt(strings.TrimSpace(s), base, 64); err == nil {
 				l.PushNumber(float64(i))
 				return 1
@@ -299,18 +299,18 @@ var baseLibrary = []RegistryFunction{
 		return 1
 	}},
 	{"tostring", func(l *State) int {
-		CheckAny(l, 1)
-		ToStringMeta(l, 1)
+		l.CheckAny(1)
+		l.ToStringMeta(1)
 		return 1
 	}},
 	{"type", func(l *State) int {
-		CheckAny(l, 1)
-		l.PushString(TypeNameOf(l, 1))
+		l.CheckAny(1)
+		l.PushString(l.TypeName(1))
 		return 1
 	}},
 	{"xpcall", func(l *State) int {
 		n := l.Top()
-		ArgumentCheck(l, n >= 2, 2, "value expected")
+		l.ArgumentCheck(n >= 2, 2, "value expected")
 		l.PushValue(1) // exchange function and error handler
 		l.Copy(2, 1)
 		l.Replace(2)
@@ -323,7 +323,7 @@ func BaseOpen(l *State) int {
 	l.PushGlobalTable()
 	l.PushGlobalTable()
 	l.SetField(-2, "_G")
-	SetFunctions(l, baseLibrary, 0)
+	l.SetFunctions(baseLibrary, 0)
 	l.PushString(VersionString)
 	l.SetField(-2, "_VERSION")
 	return 1

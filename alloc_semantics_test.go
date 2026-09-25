@@ -84,7 +84,7 @@ func TestAllocationSemantics(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			l := NewState()
 			OpenLibraries(l)
-			if err := DoString(l, tt.src); err != nil {
+			if err := l.DoString(tt.src); err != nil {
 				t.Fatal(err)
 			}
 		})

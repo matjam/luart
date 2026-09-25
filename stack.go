@@ -369,7 +369,7 @@ func (l *State) call(function int, resultCount int, allowYield bool) {
 	if l.nestedGoCallCount++; l.nestedGoCallCount == maxCallCount {
 		l.runtimeError("Go stack overflow")
 	} else if l.nestedGoCallCount >= maxCallCount+maxCallCount>>3 {
-		l.throw(ErrorError) // error while handling stack error
+		l.throw(ErrErrorHandler) // error while handling stack error
 	}
 	if !allowYield {
 		l.nonYieldableCallCount++
@@ -470,7 +470,7 @@ func (l *State) reallocStack(newSize int) {
 
 func (l *State) growStack(n int) {
 	if len(l.stack) > maxStack { // error after extra size?
-		l.throw(ErrorError)
+		l.throw(ErrErrorHandler)
 	} else {
 		needed := l.top + n + extraStack
 		newSize := 2 * len(l.stack)

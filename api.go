@@ -18,10 +18,10 @@ const (
 
 // Errors introduced by the Lua VM.
 var (
-	SyntaxError = errors.New("syntax error")
-	MemoryError = errors.New("memory error")
-	ErrorError  = errors.New("error within the error handler")
-	FileError   = errors.New("file error")
+	ErrSyntax       = errors.New("syntax error")
+	ErrMemory       = errors.New("memory error")
+	ErrErrorHandler = errors.New("error within the error handler")
+	ErrFile         = errors.New("file error")
 )
 
 // A RuntimeError is an error raised internally by the Lua VM or through Error.
@@ -44,9 +44,11 @@ const (
 	TypeUserData
 	TypeThread
 
-	TypeCount
 	TypeNone = TypeNil - 1
 )
+
+// typeCount is the number of Types other than TypeNone.
+const typeCount = TypeThread + 1
 
 // An Operator is an op argument for Arith.
 type Operator int

@@ -74,7 +74,7 @@ func (f *numberFunction) tryCall(args []value) (float64, bool) {
 func (f *numberFunction) function(l *State) int {
 	var a [maxNumberArgs]float64
 	for i := range f.arity {
-		a[i] = CheckNumber(l, i+1)
+		a[i] = l.CheckNumber(i + 1)
 	}
 	r := f.call(a[0], a[1], a[2], a[3])
 	if f.results == 1 {

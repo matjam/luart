@@ -15,7 +15,7 @@ func functionName(l *State, d Debug) string {
 	case d.What == "main":
 		return "main chunk"
 	case d.What == "Go":
-		if pushGlobalFunctionName(l, d.callInfo) {
+		if pushGlobalFunctionName(l, Frame{d.callInfo}) {
 			s, _ := l.ToString(-1)
 			l.Pop(1)
 			return fmt.Sprintf("function '%s'", s)
@@ -27,13 +27,13 @@ func functionName(l *State, d Debug) string {
 
 func countLevels(l *State) int {
 	li, le := 1, 1
-	for _, ok := Stack(l, le); ok; _, ok = Stack(l, le) {
+	for _, ok := l.Frame(le); ok; _, ok = l.Frame(le) {
 		li = le
 		le *= 2
 	}
 	for li < le {
 		m := (li + le) / 2
-		if _, ok := Stack(l, m); ok {
+		if _, ok := l.Frame(m); ok {
 			li = m + 1
 		} else {
 			le = m
@@ -45,7 +45,7 @@ func countLevels(l *State) int {
 // Traceback creates and pushes a traceback of the stack l1. If message is not
 // nil it is appended at the beginning of the traceback. The level parameter
 // tells at which level to start the traceback.
-func Traceback(l, l1 *State, message string, level int) {
+func (l *State) Traceback(l1 *State, message string, level int) {
 	const levels1, levels2 = 12, 10
 	levels := countLevels(l1)
 	mark := 0
@@ -57,12 +57,12 @@ func Traceback(l, l1 *State, message string, level int) {
 		buf += "\n"
 	}
 	buf += "stack traceback:"
-	for f, ok := Stack(l1, level); ok; f, ok = Stack(l1, level) {
+	for f, ok := l1.Frame(level); ok; f, ok = l1.Frame(level) {
 		if level++; level == mark {
 			buf += "\n\t..."
 			level = levels - levels2
 		} else {
-			d, _ := Info(l1, "Slnt", f)
+			d, _ := l1.Info("Slnt", f)
 			buf += "\n\t" + d.ShortSource + ":"
 			if d.CurrentLine > 0 {
 				buf += fmt.Sprintf("%d:", d.CurrentLine)
@@ -79,7 +79,7 @@ func Traceback(l, l1 *State, message string, level int) {
 // MetaField pushes onto the stack the field event from the metatable of the
 // object at index. If the object does not have a metatable, or if the
 // metatable does not have this field, returns false and pushes nothing.
-func MetaField(l *State, index int, event string) bool {
+func (l *State) MetaField(index int, event string) bool {
 	if !l.MetaTable(index) {
 		return false
 	}
@@ -100,9 +100,9 @@ func MetaField(l *State, index int, event string) bool {
 // this case this function returns true and pushes onto the stack the value
 // returned by the call. If there is no metatable or no metamethod, this
 // function returns false (without pushing any value on the stack).
-func CallMeta(l *State, index int, event string) bool {
+func (l *State) CallMeta(index int, event string) bool {
 	index = l.AbsIndex(index)
-	if !MetaField(l, index, event) {
+	if !l.MetaField(index, event) {
 		return false
 	}
 	l.PushValue(index)
@@ -114,19 +114,19 @@ func CallMeta(l *State, index int, event string) bool {
 //
 // This function never returns. It is an idiom to use it in Go functions as
 //
-//	lua.ArgumentError(l, args, "message")
+//	l.ArgumentError(args, "message")
 //	panic("unreachable")
-func ArgumentError(l *State, argCount int, extraMessage string) {
-	f, ok := Stack(l, 0)
+func (l *State) ArgumentError(argCount int, extraMessage string) {
+	f, ok := l.Frame(0)
 	if !ok { // no stack frame?
-		Errorf(l, "bad argument #%d (%s)", argCount, extraMessage)
+		l.Errorf("bad argument #%d (%s)", argCount, extraMessage)
 		return
 	}
-	d, _ := Info(l, "n", f)
+	d, _ := l.Info("n", f)
 	if d.NameKind == "method" {
 		argCount--         // do not count 'self'
 		if argCount == 0 { // error is in the self argument itself?
-			Errorf(l, "calling '%s' on bad self (%s)", d.Name, extraMessage)
+			l.Errorf("calling '%s' on bad self (%s)", d.Name, extraMessage)
 			return
 		}
 	}
@@ -137,7 +137,7 @@ func ArgumentError(l *State, argCount int, extraMessage string) {
 			d.Name = "?"
 		}
 	}
-	Errorf(l, "bad argument #%d to '%s' (%s)", argCount, d.Name, extraMessage)
+	l.Errorf("bad argument #%d to '%s' (%s)", argCount, d.Name, extraMessage)
 }
 
 func findField(l *State, objectIndex, level int) bool {
@@ -163,7 +163,7 @@ func findField(l *State, objectIndex, level int) bool {
 
 func pushGlobalFunctionName(l *State, f Frame) bool {
 	top := l.Top()
-	Info(l, "f", f) // push function
+	l.Info("f", f) // push function
 	l.PushGlobalTable()
 	if findField(l, top+1, 2) {
 		l.Copy(-1, top+1) // move name to proper place
@@ -175,7 +175,7 @@ func pushGlobalFunctionName(l *State, f Frame) bool {
 }
 
 func typeError(l *State, argCount int, typeName string) {
-	ArgumentError(l, argCount, l.PushString(typeName+" expected, got "+TypeNameOf(l, argCount)))
+	l.ArgumentError(argCount, l.PushString(typeName+" expected, got "+l.TypeName(argCount)))
 }
 
 func tagError(l *State, argCount int, tag Type) { typeError(l, argCount, tag.String()) }
@@ -190,10 +190,10 @@ func tagError(l *State, argCount int, tag Type) { typeError(l, argCount, tag.Str
 // running function, etc.
 //
 // This function is used to build a prefix for error messages.
-func Where(l *State, level int) {
-	if f, ok := Stack(l, level); ok { // check function at level
-		ar, _ := Info(l, "Sl", f) // get info about it
-		if ar.CurrentLine > 0 {   // is there info?
+func (l *State) Where(level int) {
+	if f, ok := l.Frame(level); ok { // check function at level
+		ar, _ := l.Info("Sl", f) // get info about it
+		if ar.CurrentLine > 0 {  // is there info?
 			l.PushString(fmt.Sprintf("%s:%d: ", ar.ShortSource, ar.CurrentLine))
 			return
 		}
@@ -208,10 +208,10 @@ func Where(l *State, level int) {
 //
 // This function never returns. It is an idiom to use it in Go functions as:
 //
-//	lua.Errorf(l, args)
+//	l.Errorf(format, args...)
 //	panic("unreachable")
-func Errorf(l *State, format string, a ...any) {
-	Where(l, 1)
+func (l *State) Errorf(format string, a ...any) {
+	l.Where(1)
 	l.PushFString(format, a...)
 	l.Concat(2)
 	l.Error()
@@ -224,8 +224,8 @@ func Errorf(l *State, format string, a ...any) {
 // If the value has a metatable with a "__tostring" field, then ToStringMeta
 // calls the corresponding metamethod with the value as argument, and uses
 // the result of the call as its result.
-func ToStringMeta(l *State, index int) (string, bool) {
-	if !CallMeta(l, index, "__tostring") {
+func (l *State) ToStringMeta(index int) (string, bool) {
+	if !l.CallMeta(index, "__tostring") {
 		switch l.TypeOf(index) {
 		case TypeNumber, TypeString:
 			l.PushValue(index)
@@ -238,7 +238,7 @@ func ToStringMeta(l *State, index int) (string, bool) {
 		case TypeNil:
 			l.PushString("nil")
 		default:
-			l.PushFString("%s: %p", TypeNameOf(l, index), l.ToValue(index))
+			l.PushFString("%s: %p", l.TypeName(index), l.ToValue(index))
 		}
 	}
 	return l.ToString(-1)
@@ -250,8 +250,8 @@ func ToStringMeta(l *State, index int) (string, bool) {
 //
 // In both cases it pushes onto the stack the final value associated with name in
 // the registry.
-func NewMetaTable(l *State, name string) bool {
-	if MetaTableNamed(l, name); !l.IsNil(-1) {
+func (l *State) NewMetaTable(name string) bool {
+	if l.MetaTableNamed(name); !l.IsNil(-1) {
 		return false
 	}
 	l.Pop(1)
@@ -261,19 +261,19 @@ func NewMetaTable(l *State, name string) bool {
 	return true
 }
 
-func MetaTableNamed(l *State, name string) {
+func (l *State) MetaTableNamed(name string) {
 	l.Field(RegistryIndex, name)
 }
 
-func SetMetaTableNamed(l *State, name string) {
-	MetaTableNamed(l, name)
+func (l *State) SetMetaTableNamed(name string) {
+	l.MetaTableNamed(name)
 	l.SetMetaTable(-2)
 }
 
-func TestUserData(l *State, index int, name string) any {
+func (l *State) TestUserData(index int, name string) any {
 	if d := l.ToUserData(index); d != nil {
 		if l.MetaTable(index) {
-			if MetaTableNamed(l, name); !l.RawEqual(-1, -2) {
+			if l.MetaTableNamed(name); !l.RawEqual(-1, -2) {
 				d = nil
 			}
 			l.Pop(2)
@@ -284,21 +284,10 @@ func TestUserData(l *State, index int, name string) any {
 }
 
 // CheckUserData checks whether the function argument at index is a userdata
-// of the type name (see NewMetaTable) and returns the userdata (see
-// ToUserData).
-func CheckUserData(l *State, index int, name string) any {
-	if d := TestUserData(l, index, name); d != nil {
-		return d
-	}
-	typeError(l, index, name)
-	panic("unreachable")
-}
-
-// CheckUserData checks whether the function argument at index is a userdata
 // of the type name (see NewMetaTable) holding a T, and returns it. It raises
 // a Lua error otherwise.
 func (l *State) CheckUserData[T any](index int, name string) T {
-	if d, ok := TestUserData(l, index, name).(T); ok {
+	if d, ok := l.TestUserData(index, name).(T); ok {
 		return d
 	}
 	typeError(l, index, name)
@@ -306,30 +295,30 @@ func (l *State) CheckUserData[T any](index int, name string) T {
 }
 
 // CheckType checks whether the function argument at index has type t. See Type for the encoding of types for t.
-func CheckType(l *State, index int, t Type) {
+func (l *State) CheckType(index int, t Type) {
 	if l.TypeOf(index) != t {
 		tagError(l, index, t)
 	}
 }
 
 // CheckAny checks whether the function has an argument of any type (including nil) at position index.
-func CheckAny(l *State, index int) {
+func (l *State) CheckAny(index int) {
 	if l.TypeOf(index) == TypeNone {
-		ArgumentError(l, index, "value expected")
+		l.ArgumentError(index, "value expected")
 	}
 }
 
 // ArgumentCheck checks whether cond is true. If not, raises an error with a standard message.
-func ArgumentCheck(l *State, cond bool, index int, extraMessage string) {
+func (l *State) ArgumentCheck(cond bool, index int, extraMessage string) {
 	if !cond {
-		ArgumentError(l, index, extraMessage)
+		l.ArgumentError(index, extraMessage)
 	}
 }
 
 // CheckString checks whether the function argument at index is a string and returns this string.
 //
 // This function uses ToString to get its result, so all conversions and caveats of that function apply here.
-func CheckString(l *State, index int) string {
+func (l *State) CheckString(index int) string {
 	if s, ok := l.ToString(index); ok {
 		return s
 	}
@@ -339,14 +328,14 @@ func CheckString(l *State, index int) string {
 
 // OptString returns the string at index if it is a string. If this argument is
 // absent or is nil, returns def. Otherwise, raises an error.
-func OptString(l *State, index int, def string) string {
+func (l *State) OptString(index int, def string) string {
 	if l.IsNoneOrNil(index) {
 		return def
 	}
-	return CheckString(l, index)
+	return l.CheckString(index)
 }
 
-func CheckNumber(l *State, index int) float64 {
+func (l *State) CheckNumber(index int) float64 {
 	n, ok := l.ToNumber(index)
 	if !ok {
 		tagError(l, index, TypeNumber)
@@ -354,14 +343,14 @@ func CheckNumber(l *State, index int) float64 {
 	return n
 }
 
-func OptNumber(l *State, index int, def float64) float64 {
+func (l *State) OptNumber(index int, def float64) float64 {
 	if l.IsNoneOrNil(index) {
 		return def
 	}
-	return CheckNumber(l, index)
+	return l.CheckNumber(index)
 }
 
-func CheckInteger(l *State, index int) int {
+func (l *State) CheckInteger(index int) int {
 	i, ok := l.ToInteger(index)
 	if !ok {
 		tagError(l, index, TypeNumber)
@@ -369,14 +358,14 @@ func CheckInteger(l *State, index int) int {
 	return i
 }
 
-func OptInteger(l *State, index, def int) int {
+func (l *State) OptInteger(index, def int) int {
 	if l.IsNoneOrNil(index) {
 		return def
 	}
-	return CheckInteger(l, index)
+	return l.CheckInteger(index)
 }
 
-func CheckUnsigned(l *State, index int) uint {
+func (l *State) CheckUnsigned(index int) uint {
 	i, ok := l.ToUnsigned(index)
 	if !ok {
 		tagError(l, index, TypeNumber)
@@ -384,18 +373,18 @@ func CheckUnsigned(l *State, index int) uint {
 	return i
 }
 
-func OptUnsigned(l *State, index int, def uint) uint {
+func (l *State) OptUnsigned(index int, def uint) uint {
 	if l.IsNoneOrNil(index) {
 		return def
 	}
-	return CheckUnsigned(l, index)
+	return l.CheckUnsigned(index)
 }
 
-func TypeNameOf(l *State, index int) string { return l.TypeOf(index).String() }
+func (l *State) TypeName(index int) string { return l.TypeOf(index).String() }
 
-func SetFunctions(l *State, functions []RegistryFunction, upValueCount uint8) {
+func (l *State) SetFunctions(functions []RegistryFunction, upValueCount uint8) {
 	uvCount := int(upValueCount)
-	CheckStackWithMessage(l, uvCount, "too many upvalues")
+	l.CheckStackWithMessage(uvCount, "too many upvalues")
 	for _, r := range functions { // fill the table with given functions
 		for range uvCount { // copy upvalues to the top
 			l.PushValue(-uvCount)
@@ -406,34 +395,34 @@ func SetFunctions(l *State, functions []RegistryFunction, upValueCount uint8) {
 	l.Pop(uvCount) // remove upvalues
 }
 
-func CheckStackWithMessage(l *State, space int, message string) {
+func (l *State) CheckStackWithMessage(space int, message string) {
 	// keep some extra space to run error routines, if needed
 	if !l.CheckStack(space + MinStack) {
 		if message != "" {
-			Errorf(l, "stack overflow (%s)", message)
+			l.Errorf("stack overflow (%s)", message)
 		} else {
-			Errorf(l, "stack overflow")
+			l.Errorf("stack overflow")
 		}
 	}
 }
 
-func CheckOption(l *State, index int, def string, list []string) int {
+func (l *State) CheckOption(index int, def string, list []string) int {
 	var name string
 	if def == "" {
-		name = OptString(l, index, def)
+		name = l.OptString(index, def)
 	} else {
-		name = CheckString(l, index)
+		name = l.CheckString(index)
 	}
 	for i, s := range list {
 		if name == s {
 			return i
 		}
 	}
-	ArgumentError(l, index, l.PushFString("invalid option '%s'", name))
+	l.ArgumentError(index, l.PushFString("invalid option '%s'", name))
 	panic("unreachable")
 }
 
-func SubTable(l *State, index int, name string) bool {
+func (l *State) SubTable(index int, name string) bool {
 	l.Field(index, name)
 	if l.IsTable(-1) {
 		return true // table already there
@@ -453,11 +442,11 @@ func SubTable(l *State, index int, name string) bool {
 // If global is true, also stores the result into global name.
 //
 // Leaves a copy of that result on the stack.
-func Require(l *State, name string, f Function, global bool) {
+func (l *State) Require(name string, f Function, global bool) {
 	l.PushGoFunction(f)
 	l.PushString(name) // argument to f
 	l.Call(1, 1)       // open module
-	SubTable(l, RegistryIndex, "_LOADED")
+	l.SubTable(RegistryIndex, "_LOADED")
 	l.PushValue(-2)      // make copy of module (call result)
 	l.SetField(-2, name) // _LOADED[name] = module
 	l.Pop(1)             // remove _LOADED table
@@ -467,11 +456,11 @@ func Require(l *State, name string, f Function, global bool) {
 	}
 }
 
-func NewLibraryTable(l *State, functions []RegistryFunction) { l.CreateTable(0, len(functions)) }
+func (l *State) NewLibraryTable(functions []RegistryFunction) { l.CreateTable(0, len(functions)) }
 
-func NewLibrary(l *State, functions []RegistryFunction) {
-	NewLibraryTable(l, functions)
-	SetFunctions(l, functions, 0)
+func (l *State) NewLibrary(functions []RegistryFunction) {
+	l.NewLibraryTable(functions)
+	l.SetFunctions(functions, 0)
 }
 
 func skipComment(r *bufio.Reader) (bool, error) {
@@ -496,14 +485,14 @@ func skipComment(r *bufio.Reader) (bool, error) {
 	return false, r.UnreadRune()
 }
 
-func LoadFile(l *State, fileName, mode string) error {
+func (l *State) LoadFile(fileName, mode string) error {
 	var f *os.File
 	fileNameIndex := l.Top() + 1
 	fileError := func(what string) error {
 		fileName, _ := l.ToString(fileNameIndex)
 		l.PushFString("cannot %s %s", what, fileName[1:])
 		l.Remove(fileNameIndex)
-		return FileError
+		return ErrFile
 	}
 	if fileName == "" {
 		l.PushString("=stdin")
@@ -528,7 +517,7 @@ func LoadFile(l *State, fileName, mode string) error {
 		_ = f.Close()
 	}
 	switch err {
-	case nil, SyntaxError, MemoryError: // do nothing
+	case nil, ErrSyntax, ErrMemory: // do nothing
 	default:
 		l.SetTop(fileNameIndex)
 		return fileError("read")
@@ -537,42 +526,25 @@ func LoadFile(l *State, fileName, mode string) error {
 	return err
 }
 
-func LoadString(l *State, s string) error { return LoadBuffer(l, s, s, "") }
+func (l *State) LoadString(s string) error { return l.LoadBuffer(s, s, "") }
 
-func LoadBuffer(l *State, b, name, mode string) error {
+func (l *State) LoadBuffer(b, name, mode string) error {
 	return l.Load(strings.NewReader(b), name, mode)
 }
 
-// NewStateEx creates a new Lua state. It calls NewState and then sets a panic
-// function that prints an error message to the standard error output in case
-// of fatal errors.
-//
-// Returns the new state.
-func NewStateEx() *State {
-	l := NewState()
-	if l != nil {
-		_ = AtPanic(l, func(l *State) int {
-			s, _ := l.ToString(-1)
-			fmt.Fprintf(os.Stderr, "PANIC: unprotected error in call to Lua API (%s)\n", s)
-			return 0
-		})
-	}
-	return l
-}
-
-func LengthEx(l *State, index int) int {
+func (l *State) Len(index int) int {
 	l.Length(index)
 	if length, ok := l.ToInteger(-1); ok {
 		l.Pop(1)
 		return length
 	}
-	Errorf(l, "object length is not a number")
+	l.Errorf("object length is not a number")
 	panic("unreachable")
 }
 
 // FileResult produces the return values for file-related functions in the standard
 // library (io.open, os.rename, file:seek, etc.).
-func FileResult(l *State, err error, filename string) int {
+func (l *State) FileResult(err error, filename string) int {
 	if err == nil {
 		l.PushBoolean(true)
 		return 1
@@ -588,16 +560,16 @@ func FileResult(l *State, err error, filename string) int {
 }
 
 // DoFile loads and runs the given file.
-func DoFile(l *State, fileName string) error {
-	if err := LoadFile(l, fileName, ""); err != nil {
+func (l *State) DoFile(fileName string) error {
+	if err := l.LoadFile(fileName, ""); err != nil {
 		return err
 	}
 	return l.ProtectedCall(0, MultipleReturns, 0)
 }
 
 // DoString loads and runs the given string.
-func DoString(l *State, s string) error {
-	if err := LoadString(l, s); err != nil {
+func (l *State) DoString(s string) error {
+	if err := l.LoadString(s); err != nil {
 		return err
 	}
 	return l.ProtectedCall(0, MultipleReturns, 0)

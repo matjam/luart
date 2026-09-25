@@ -103,9 +103,9 @@ func (l *State) Call(argCount, resultCount int) {
 //
 // The possible errors are the following:
 //
-//	RuntimeError  a runtime error
-//	MemoryError   allocating memory, the error handler is not called
-//	ErrorError    running the error handler
+//	RuntimeError     a runtime error
+//	ErrMemory        allocating memory, the error handler is not called
+//	ErrErrorHandler  running the error handler
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_pcall
 func (l *State) ProtectedCall(argCount, resultCount, errorFunction int) error {
@@ -195,9 +195,9 @@ func (l *State) Error() {
 
 func (l *State) setErrorObject(err error, oldTop int) {
 	switch err {
-	case MemoryError:
+	case ErrMemory:
 		l.stack[oldTop] = stringValue(l.global.memoryErrorMessage)
-	case ErrorError:
+	case ErrErrorHandler:
 		l.stack[oldTop] = stringValue("error in error handling")
 	default:
 		l.stack[oldTop] = l.stack[l.top-1]

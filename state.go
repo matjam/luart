@@ -44,10 +44,9 @@ type State struct {
 type globalState struct {
 	mainThread         *State
 	tagMethodNames     [tmCount]string
-	metaTables         [TypeCount]*table // metatables for basic types
+	metaTables         [typeCount]*table // metatables for basic types
 	registry           *table
 	panicFunction      Function // to be called in unprotected errors
-	version            *float64 // pointer to version number
 	memoryErrorMessage string
 	rootShape          *shape // shape tree for this state's tables
 	lightBoxes         map[any]*lightUserData
@@ -92,9 +91,8 @@ func typeOf(v value) Type {
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_newstate
 func NewState(options ...Option) *State {
-	v := float64(VersionNumber)
 	l := &State{allowHook: true, error: nil, nonYieldableCallCount: 1}
-	g := &globalState{mainThread: l, registry: newTable(), version: &v, memoryErrorMessage: "not enough memory", rootShape: newRootShape()}
+	g := &globalState{mainThread: l, registry: newTable(), memoryErrorMessage: "not enough memory", rootShape: newRootShape()}
 	l.global = g
 	l.initializeStack()
 	g.registry.putAtInt(RegistryIndexMainThread, objectValue(l))
@@ -108,14 +106,9 @@ func NewState(options ...Option) *State {
 }
 
 // AtPanic sets a new panic function and returns the old one.
-func AtPanic(l *State, panicFunction Function) Function {
+func (l *State) AtPanic(panicFunction Function) Function {
 	panicFunction, l.global.panicFunction = l.global.panicFunction, panicFunction
 	return panicFunction
 }
-
-// Version returns the address of the version number stored in the Lua core.
-//
-// http://www.lua.org/manual/5.2/manual.html#lua_version
-func Version(l *State) *float64 { return l.global.version }
 
 func (l *State) valueToType(v value) Type { return typeOf(v) }

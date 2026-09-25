@@ -18,7 +18,7 @@ func TestDebugLuaHook(t *testing.T) {
 		local after = calls
 		g()
 		return f == hook, mask, count, after > 0, calls == after, debug.gethook() == nil`
-	if err := DoString(l, "function run() "+src+" end"); err != nil {
+	if err := l.DoString("function run() " + src + " end"); err != nil {
 		t.Fatal(err)
 	}
 	l.Global("run")

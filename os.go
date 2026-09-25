@@ -12,7 +12,7 @@ func field(l *State, key string, def int) int {
 	r, ok := l.ToInteger(-1)
 	if !ok {
 		if def < 0 {
-			Errorf(l, "field '%s' missing in date table", key)
+			l.Errorf("field '%s' missing in date table", key)
 		}
 		r = def
 	}
@@ -24,7 +24,7 @@ var osLibrary = []RegistryFunction{
 	{"clock", clock},
 	// {"date", os_date},
 	{"difftime", func(l *State) int {
-		l.PushNumber(time.Unix(int64(CheckNumber(l, 1)), 0).Sub(time.Unix(int64(OptNumber(l, 2, 0)), 0)).Seconds())
+		l.PushNumber(time.Unix(int64(l.CheckNumber(1)), 0).Sub(time.Unix(int64(l.OptNumber(2, 0)), 0)).Seconds())
 		return 1
 	}},
 
@@ -32,7 +32,7 @@ var osLibrary = []RegistryFunction{
 	// "This function is equivalent to the ISO C function system"
 	// https://www.lua.org/manual/5.2/manual.html#pdf-os.execute
 	{"execute", func(l *State) int {
-		c := OptString(l, 1, "")
+		c := l.OptString(1, "")
 
 		if c == "" {
 			// Check whether "sh" is available on the system.
@@ -95,7 +95,7 @@ var osLibrary = []RegistryFunction{
 				status = 1
 			}
 		} else {
-			status = OptInteger(l, 1, status)
+			status = l.OptInteger(1, status)
 		}
 		// if l.ToBoolean(2) {
 		// 	Close(l)
@@ -103,9 +103,9 @@ var osLibrary = []RegistryFunction{
 		os.Exit(status)
 		panic("unreachable")
 	}},
-	{"getenv", func(l *State) int { l.PushString(os.Getenv(CheckString(l, 1))); return 1 }},
-	{"remove", func(l *State) int { name := CheckString(l, 1); return FileResult(l, os.Remove(name), name) }},
-	{"rename", func(l *State) int { return FileResult(l, os.Rename(CheckString(l, 1), CheckString(l, 2)), "") }},
+	{"getenv", func(l *State) int { l.PushString(os.Getenv(l.CheckString(1))); return 1 }},
+	{"remove", func(l *State) int { name := l.CheckString(1); return l.FileResult(os.Remove(name), name) }},
+	{"rename", func(l *State) int { return l.FileResult(os.Rename(l.CheckString(1), l.CheckString(2)), "") }},
 	// {"setlocale", func(l *State) int {
 	// 	op := CheckOption(l, 2, "all", []string{"all", "collate", "ctype", "monetary", "numeric", "time"})
 	// 	l.PushString(setlocale([]int{LC_ALL, LC_COLLATE, LC_CTYPE, LC_MONETARY, LC_NUMERIC, LC_TIME}, OptString(l, 1, "")))
@@ -115,7 +115,7 @@ var osLibrary = []RegistryFunction{
 		if l.IsNoneOrNil(1) {
 			l.PushNumber(float64(time.Now().Unix()))
 		} else {
-			CheckType(l, 1, TypeTable)
+			l.CheckType(1, TypeTable)
 			l.SetTop(1)
 			year := field(l, "year", -1) - 1900
 			month := field(l, "month", -1) - 1
@@ -131,7 +131,7 @@ var osLibrary = []RegistryFunction{
 	{"tmpname", func(l *State) int {
 		f, err := os.CreateTemp("", "lua_")
 		if err != nil {
-			Errorf(l, "unable to generate a unique filename")
+			l.Errorf("unable to generate a unique filename")
 		}
 		defer f.Close()
 		l.PushString(f.Name())
@@ -141,6 +141,6 @@ var osLibrary = []RegistryFunction{
 
 // OSOpen opens the os library. Usually passed to Require.
 func OSOpen(l *State) int {
-	NewLibrary(l, osLibrary)
+	l.NewLibrary(osLibrary)
 	return 1
 }
