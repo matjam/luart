@@ -13,7 +13,7 @@ func (l *State) prototype(ci *callInfo) *prototype {
 }
 
 func (l *State) currentLine(ci *callInfo) int {
-	return int(l.prototype(ci).lineInfo[ci.savedPC-1])
+	return int(l.prototype(ci).LineInfo[ci.savedPC-1])
 }
 
 // SetHook sets the debugging hook function.
@@ -91,11 +91,11 @@ func functionInfo(p Debug, f closure) (d Debug) {
 		d.What = "Go"
 	} else {
 		p := l.prototype
-		d.Source = p.source
+		d.Source = p.Source
 		if d.Source == "" {
 			d.Source = "=?"
 		}
-		d.LineDefined, d.LastLineDefined = p.lineDefined, p.lastLineDefined
+		d.LineDefined, d.LastLineDefined = p.LineDefined, p.LastLineDefined
 		d.What = "Lua"
 		if d.LineDefined == 0 {
 			d.What = "main"
@@ -112,7 +112,7 @@ func (l *State) functionName(ci *callInfo) (name, kind string) {
 	var tm tm
 	p := l.prototype(ci)
 	pc := ci.savedPC - 1 // the calling instruction
-	switch i := p.code[pc]; i.OpCode() {
+	switch i := p.Code[pc]; i.OpCode() {
 	case bytecode.OpCall, bytecode.OpTailCall:
 		return p.objectName(i.A(), pc)
 	case bytecode.OpTForCall:
@@ -157,7 +157,7 @@ func (l *State) collectValidLines(f closure) {
 	} else {
 		t := newTable()
 		l.apiPush(objectValue(t))
-		for _, i := range lc.prototype.lineInfo {
+		for _, i := range lc.prototype.LineInfo {
 			t.putAtInt(int(i), trueValue)
 		}
 	}
@@ -233,8 +233,8 @@ func (l *State) Info(what string, frame Frame) (d Debug, ok bool) {
 				d.IsVarArg = true
 				d.ParameterCount = 0
 			} else {
-				d.IsVarArg = lf.prototype.isVarArg
-				d.ParameterCount = lf.prototype.parameterCount
+				d.IsVarArg = lf.prototype.IsVarArg
+				d.ParameterCount = lf.prototype.ParameterCount
 			}
 		case 't':
 			d.IsTailCall = where != nil && ci.isCallStatus(callStatusTail)

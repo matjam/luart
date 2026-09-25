@@ -32,7 +32,7 @@ func (p *parser) checkName() string {
 func (p *parser) checkLimit(val, limit int, what string) {
 	if val > limit {
 		where := "main function"
-		if line := p.function.f.lineDefined; line != 0 {
+		if line := p.function.f.LineDefined; line != 0 {
 			where = fmt.Sprintf("function at line %d", line)
 		}
 		p.syntaxError(fmt.Sprintf("too many %s (limit is %d) in %s", what, limit, where))
@@ -182,7 +182,7 @@ func (p *parser) simpleExpression() (e exprDesc) {
 	case tkFalse:
 		e = makeExpression(kindFalse, 0)
 	case tkDots:
-		p.checkCondition(p.function.f.isVarArg, "cannot use '...' outside a vararg function")
+		p.checkCondition(p.function.f.IsVarArg, "cannot use '...' outside a vararg function")
 		e = makeExpression(kindVarArg, p.function.EncodeABC(bytecode.OpVarArg, 0, 1, 0))
 	case '{':
 		e = p.constructor()
@@ -526,9 +526,9 @@ func (p *parser) parameterList() {
 		}
 	}
 	// TODO the following lines belong in a *function method
-	p.function.f.isVarArg = isVarArg
+	p.function.f.IsVarArg = isVarArg
 	p.function.AdjustLocalVariables(n)
-	p.function.f.parameterCount = p.function.activeVariableCount
+	p.function.f.ParameterCount = p.function.activeVariableCount
 	p.function.ReserveRegisters(p.function.activeVariableCount)
 }
 
@@ -542,7 +542,7 @@ func (p *parser) body(isMethod bool, line int) exprDesc {
 	p.parameterList()
 	p.checkNext(')')
 	p.statementList()
-	p.function.f.lastLineDefined = p.lineNumber
+	p.function.f.LastLineDefined = p.lineNumber
 	p.checkMatch(tkEnd, tkFunction, line)
 	return p.function.CloseFunction()
 }
@@ -566,7 +566,7 @@ func (p *parser) functionStatement(line int) {
 func (p *parser) localFunction() {
 	p.function.MakeLocalVariable(p.checkName())
 	p.function.AdjustLocalVariables(1)
-	p.function.LocalVariable(p.body(false, p.lineNumber).info).startPC = pc(len(p.function.f.code))
+	p.function.LocalVariable(p.body(false, p.lineNumber).info).StartPC = pc(len(p.function.f.Code))
 }
 
 func (p *parser) localStatement() {
@@ -641,7 +641,7 @@ func (p *parser) statement() {
 	default:
 		p.expressionStatement()
 	}
-	p.assert(p.function.f.maxStackSize >= p.function.freeRegisterCount && p.function.freeRegisterCount >= p.function.activeVariableCount)
+	p.assert(p.function.f.MaxStackSize >= p.function.freeRegisterCount && p.function.freeRegisterCount >= p.function.activeVariableCount)
 	p.function.freeRegisterCount = p.function.activeVariableCount
 	p.leaveLevel()
 }
@@ -656,7 +656,7 @@ func (p *parser) mainFunction() {
 
 func (l *State) parse(r io.ByteReader, name string) *luaClosure {
 	p := &parser{r: r, lineNumber: 1, lastLine: 1, lookAheadToken: token{t: tkEOS}, l: l, source: name}
-	f := &function{f: &prototype{source: name, maxStackSize: 2, isVarArg: true}, constantLookup: make(map[any]int), p: p, jumpPC: noJump}
+	f := &function{f: &prototype{Source: name, MaxStackSize: 2, IsVarArg: true}, constantLookup: make(map[any]int), p: p, jumpPC: noJump}
 	p.function = f
 	p.mainFunction()
 	// TODO assertions about parser state
@@ -689,7 +689,7 @@ func protectedParser(l *State, r io.Reader, name, chunkMode string) error {
 			b.UnreadByte()
 			closure = l.parse(b, name)
 		}
-		l.assert(closure.upValueCount() == len(closure.prototype.upValues))
+		l.assert(closure.upValueCount() == len(closure.prototype.UpValues))
 		for i := range closure.upValues {
 			closure.upValues[i] = l.newUpValue()
 		}

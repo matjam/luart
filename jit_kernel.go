@@ -28,7 +28,7 @@ type kernelPlan struct {
 // most maxRegs registers, or nil when its loop does not qualify. constOK
 // reports whether generated code can reach constant k.
 func planKernel(p *prototype, latch, maxRegs int, constOK func(k int) bool) *kernelPlan {
-	code := p.code
+	code := p.Code
 	fl := code[latch]
 	start := latch + 1 + fl.SBx()
 	if start > latch {
@@ -66,7 +66,7 @@ func planKernel(p *prototype, latch, maxRegs int, constOK func(k int) bool) *ker
 		}
 		return false
 	}
-	number := func(kk int) bool { return constOK(kk) && p.constants[kk].isNumber() }
+	number := func(kk int) bool { return constOK(kk) && p.Constants[kk].isNumber() }
 	read := func(field int) bool {
 		if bytecode.IsConstant(field) {
 			return number(bytecode.ConstantIndex(field))

@@ -129,7 +129,7 @@ func (c *amd64Compiler) callLua(ip int, i bytecode.Instruction, notLua Label) {
 func (c *amd64Compiler) returnLua(ip int, i bytecode.Instruction) {
 	a := &c.a
 	ra, b := i.A(), i.B()
-	if b == 0 || len(c.p.prototypes) > 0 {
+	if b == 0 || len(c.p.Prototypes) > 0 {
 		c.exitAlways(ip)
 		return
 	}

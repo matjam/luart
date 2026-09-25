@@ -342,9 +342,9 @@ func (l *State) executeSwitchJIT() {
 			if b != 0 && l.hookMask&MaskCall == 0 {
 				switch fv := frame[a]; fv.kind() {
 				case vkLuaClosure:
-					if f := fv.luaClosure(); !f.prototype.isVarArg {
+					if f := fv.luaClosure(); !f.prototype.IsVarArg {
 						ci = l.callLua(ci, f, a, b-1, c-1)
-						frame, closure, constants = ci.frame, f, f.prototype.constants
+						frame, closure, constants = ci.frame, f, f.prototype.Constants
 						code, ip = f.prototype.execCode(), 0
 						continue
 					}
@@ -386,8 +386,8 @@ func (l *State) executeSwitchJIT() {
 				oci := nci.previous                    // caller frame
 				nfn, ofn := nci.function, oci.function // called & caller function
 				// last stack slot filled by 'precall'
-				lim := nci.base() + l.stack[nfn].luaClosure().prototype.parameterCount
-				if len(closure.prototype.prototypes) > 0 { // close all upvalues from previous call
+				lim := nci.base() + l.stack[nfn].luaClosure().prototype.ParameterCount
+				if len(closure.prototype.Prototypes) > 0 { // close all upvalues from previous call
 					l.close(oci.base())
 				}
 				// move new frame into old one
@@ -409,7 +409,7 @@ func (l *State) executeSwitchJIT() {
 			a := i.A()
 			if b, wanted := i.B(), ci.resultCount; b != 0 && wanted >= 0 && l.hookMask&(MaskReturn|MaskLine) == 0 && ci.isCallStatus(callStatusReentry) {
 				// Fixed results into a Lua caller that wants a fixed count.
-				if len(closure.prototype.prototypes) > 0 {
+				if len(closure.prototype.Prototypes) > 0 {
 					l.close(ci.base())
 				}
 				res, results := l.stack[ci.function:ci.function+wanted], frame[a:a+b-1]
@@ -424,7 +424,7 @@ func (l *State) executeSwitchJIT() {
 			if b := i.B(); b != 0 {
 				l.top = ci.stackIndex(a + b - 1)
 			}
-			if len(closure.prototype.prototypes) > 0 {
+			if len(closure.prototype.Prototypes) > 0 {
 				l.close(ci.base())
 			}
 			n := l.postCall(ci.stackIndex(a))
@@ -493,7 +493,7 @@ func (l *State) executeSwitchJIT() {
 			copy(h.array[start:last], frame[a+1:a+1+n])
 			l.top = ci.top
 		case bytecode.OpClosure:
-			a, p := i.A(), &closure.prototype.prototypes[i.Bx()]
+			a, p := i.A(), &closure.prototype.Prototypes[i.Bx()]
 			if ncl := cached(p, closure.upValues, ci.base()); ncl == nil { // no match?
 				frame[a] = l.newClosure(p, closure.upValues, ci.base()) // create a new one
 			} else {
@@ -502,7 +502,7 @@ func (l *State) executeSwitchJIT() {
 			clear(frame[a+1:])
 		case bytecode.OpVarArg:
 			a, b := i.A(), i.B()-1
-			n := ci.base() - ci.function - closure.prototype.parameterCount - 1
+			n := ci.base() - ci.function - closure.prototype.ParameterCount - 1
 			if b < 0 {
 				b = n // get all var arguments
 				l.checkStack(n)

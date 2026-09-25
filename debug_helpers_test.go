@@ -34,7 +34,7 @@ func debugValue(v value) string {
 	case float64:
 		return fmt.Sprintf("%f", v)
 	case *luaClosure:
-		return fmt.Sprintf("closure %s:%d %v", v.prototype.source, v.prototype.lineDefined, v)
+		return fmt.Sprintf("closure %s:%d %v", v.prototype.Source, v.prototype.LineDefined, v)
 	case *goClosure:
 		return fmt.Sprintf("go closure %#v", v)
 	case *goFunction:

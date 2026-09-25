@@ -365,8 +365,8 @@ func isFalse(s value) bool {
 }
 
 type localVariable struct {
-	name           string
-	startPC, endPC pc
+	Name           string
+	StartPC, EndPC pc
 }
 
 type userData struct {
@@ -375,25 +375,25 @@ type userData struct {
 }
 
 type upValueDesc struct {
-	name    string
-	isLocal bool
-	index   int
+	Name    string
+	IsLocal bool
+	Index   int
 }
 
 type prototype struct {
-	constants                    []value
-	code                         []bytecode.Instruction
+	Constants                    []value
+	Code                         []bytecode.Instruction
 	exec                         []bytecode.Instruction // see execCode
 	fields                       []fieldCache           // by pc, for exec's field instructions
-	prototypes                   []prototype
-	lineInfo                     []int32
-	localVariables               []localVariable
-	upValues                     []upValueDesc
+	Prototypes                   []prototype
+	LineInfo                     []int32
+	LocalVariables               []localVariable
+	UpValues                     []upValueDesc
 	cache                        *luaClosure
-	source                       string
-	lineDefined, lastLineDefined int
-	parameterCount, maxStackSize int
-	isVarArg                     bool
+	Source                       string
+	LineDefined, LastLineDefined int
+	ParameterCount, MaxStackSize int
+	IsVarArg                     bool
 
 	// JIT state, last so the interpreter's hot fields stay together.
 	jitOn   bool                   // loaded by a state that compiles
@@ -403,7 +403,7 @@ type prototype struct {
 }
 
 func (p *prototype) upValueName(index int) string {
-	if s := p.upValues[index].name; s != "" {
+	if s := p.UpValues[index].Name; s != "" {
 		return s
 	}
 	return "?"
@@ -412,7 +412,7 @@ func (p *prototype) upValueName(index int) string {
 func (p *prototype) lastLoad(reg int, lastPC pc) (loadPC pc, found bool) {
 	var ip, jumpTarget pc
 	for ; ip < lastPC; ip++ {
-		i, maybe := p.code[ip], false
+		i, maybe := p.Code[ip], false
 		switch i.OpCode() {
 		case bytecode.OpLoadNil:
 			maybe = i.A() <= reg && reg <= i.A()+i.B()
@@ -445,7 +445,7 @@ func (p *prototype) objectName(reg int, lastPC pc) (name, kind string) {
 		return name, "local"
 	}
 	if pc, found := p.lastLoad(reg, lastPC); found {
-		i := p.code[pc]
+		i := p.Code[pc]
 		switch op := i.OpCode(); op {
 		case bytecode.OpMove:
 			if b := i.B(); b < i.A() {
@@ -466,11 +466,11 @@ func (p *prototype) objectName(reg int, lastPC pc) (name, kind string) {
 		case bytecode.OpGetUpValue:
 			return p.upValueName(i.B()), "upvalue"
 		case bytecode.OpLoadConstant:
-			if s, ok := p.constants[i.Bx()].str(); ok {
+			if s, ok := p.Constants[i.Bx()].str(); ok {
 				return s, "constant"
 			}
 		case bytecode.OpLoadConstantEx:
-			if s, ok := p.constants[p.code[pc+1].Ax()].str(); ok {
+			if s, ok := p.Constants[p.Code[pc+1].Ax()].str(); ok {
 				return s, "constant"
 			}
 		case bytecode.OpSelf:
@@ -482,7 +482,7 @@ func (p *prototype) objectName(reg int, lastPC pc) (name, kind string) {
 
 func (p *prototype) constantName(k int, pc pc) string {
 	if bytecode.IsConstant(k) {
-		if s, ok := p.constants[bytecode.ConstantIndex(k)].str(); ok {
+		if s, ok := p.Constants[bytecode.ConstantIndex(k)].str(); ok {
 			return s
 		}
 	} else if name, kind := p.objectName(k, pc); kind == "c" {
@@ -492,10 +492,10 @@ func (p *prototype) constantName(k int, pc pc) string {
 }
 
 func (p *prototype) localName(index int, pc pc) (string, bool) {
-	for i := 0; i < len(p.localVariables) && p.localVariables[i].startPC <= pc; i++ {
-		if pc < p.localVariables[i].endPC {
+	for i := 0; i < len(p.LocalVariables) && p.LocalVariables[i].StartPC <= pc; i++ {
+		if pc < p.LocalVariables[i].EndPC {
 			if index--; index == 0 {
-				return p.localVariables[i].name, true
+				return p.LocalVariables[i].Name, true
 			}
 		}
 	}

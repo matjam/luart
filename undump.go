@@ -108,7 +108,7 @@ func (state *loadState) readUpValues() (u []upValueDesc, err error) {
 	}
 	u = make([]upValueDesc, n)
 	for i := range v {
-		u[i].isLocal, u[i].index = v[i].IsLocal != 0, int(v[i].Index)
+		u[i].IsLocal, u[i].Index = v[i].IsLocal != 0, int(v[i].Index)
 	}
 	return
 }
@@ -120,13 +120,13 @@ func (state *loadState) readLocalVariables() (localVariables []localVariable, er
 	}
 	localVariables = make([]localVariable, n)
 	for i := range localVariables {
-		if localVariables[i].name, err = state.readString(); err != nil {
+		if localVariables[i].Name, err = state.readString(); err != nil {
 			return
 		}
-		if localVariables[i].startPC, err = state.readPC(); err != nil {
+		if localVariables[i].StartPC, err = state.readPC(); err != nil {
 			return
 		}
-		if localVariables[i].endPC, err = state.readPC(); err != nil {
+		if localVariables[i].EndPC, err = state.readPC(); err != nil {
 			return
 		}
 	}
@@ -221,42 +221,42 @@ func (state *loadState) readFunction() (p prototype, err error) {
 	if n, err = state.readInt(); err != nil {
 		return
 	}
-	p.lineDefined = int(n)
+	p.LineDefined = int(n)
 	if n, err = state.readInt(); err != nil {
 		return
 	}
-	p.lastLineDefined = int(n)
+	p.LastLineDefined = int(n)
 	var b byte
 	if b, err = state.readByte(); err != nil {
 		return
 	}
-	p.parameterCount = int(b)
+	p.ParameterCount = int(b)
 	if b, err = state.readByte(); err != nil {
 		return
 	}
-	p.isVarArg = b != 0
+	p.IsVarArg = b != 0
 	if b, err = state.readByte(); err != nil {
 		return
 	}
-	p.maxStackSize = int(b)
-	if p.code, err = state.readCode(); err != nil {
+	p.MaxStackSize = int(b)
+	if p.Code, err = state.readCode(); err != nil {
 		return
 	}
-	if p.constants, p.prototypes, err = state.readConstants(); err != nil {
+	if p.Constants, p.Prototypes, err = state.readConstants(); err != nil {
 		return
 	}
-	if p.prototypes, err = state.readPrototypes(); err != nil {
+	if p.Prototypes, err = state.readPrototypes(); err != nil {
 		return
 	}
-	if p.upValues, err = state.readUpValues(); err != nil {
+	if p.UpValues, err = state.readUpValues(); err != nil {
 		return
 	}
 	var names []string
-	if p.source, p.lineInfo, p.localVariables, names, err = state.readDebug(&p); err != nil {
+	if p.Source, p.LineInfo, p.LocalVariables, names, err = state.readDebug(&p); err != nil {
 		return
 	}
 	for i, name := range names {
-		p.upValues[i].name = name
+		p.UpValues[i].Name = name
 	}
 	return
 }

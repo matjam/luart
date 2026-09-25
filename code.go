@@ -114,13 +114,13 @@ type function struct {
 }
 
 func (f *function) OpenFunction(line int) {
-	f.f.prototypes = append(f.f.prototypes, prototype{source: f.p.source, maxStackSize: 2, lineDefined: line})
-	f.p.function = &function{f: &f.f.prototypes[len(f.f.prototypes)-1], constantLookup: make(map[any]int), previous: f, p: f.p, jumpPC: noJump, firstLocal: len(f.p.activeVariables)}
+	f.f.Prototypes = append(f.f.Prototypes, prototype{Source: f.p.source, MaxStackSize: 2, LineDefined: line})
+	f.p.function = &function{f: &f.f.Prototypes[len(f.f.Prototypes)-1], constantLookup: make(map[any]int), previous: f, p: f.p, jumpPC: noJump, firstLocal: len(f.p.activeVariables)}
 	f.p.function.EnterBlock(false)
 }
 
 func (f *function) CloseFunction() exprDesc {
-	e := f.previous.ExpressionToNextRegister(makeExpression(kindRelocatable, f.previous.encodeABx(bytecode.OpClosure, 0, len(f.previous.f.prototypes)-1)))
+	e := f.previous.ExpressionToNextRegister(makeExpression(kindRelocatable, f.previous.encodeABx(bytecode.OpClosure, 0, len(f.previous.f.Prototypes)-1)))
 	f.ReturnNone()
 	f.LeaveBlock()
 	f.assert(f.block == nil)
@@ -144,26 +144,26 @@ func (f *function) undefinedGotoError(g label) {
 
 func (f *function) LocalVariable(i int) *localVariable {
 	index := f.p.activeVariables[f.firstLocal+i]
-	return &f.f.localVariables[index]
+	return &f.f.LocalVariables[index]
 }
 
 func (f *function) AdjustLocalVariables(n int) {
 	for f.activeVariableCount += n; n != 0; n-- {
-		f.LocalVariable(f.activeVariableCount - n).startPC = pc(len(f.f.code))
+		f.LocalVariable(f.activeVariableCount - n).StartPC = pc(len(f.f.Code))
 	}
 }
 
 func (f *function) removeLocalVariables(level int) {
 	for i := level; i < f.activeVariableCount; i++ {
-		f.LocalVariable(i).endPC = pc(len(f.f.code))
+		f.LocalVariable(i).EndPC = pc(len(f.f.Code))
 	}
 	f.p.activeVariables = f.p.activeVariables[:len(f.p.activeVariables)-(f.activeVariableCount-level)]
 	f.activeVariableCount = level
 }
 
 func (f *function) MakeLocalVariable(name string) {
-	r := len(f.f.localVariables)
-	f.f.localVariables = append(f.f.localVariables, localVariable{name: name})
+	r := len(f.f.LocalVariables)
+	f.f.LocalVariables = append(f.f.LocalVariables, localVariable{Name: name})
 	f.p.checkLimit(len(f.p.activeVariables)+1-f.firstLocal, maxLocalVariables, "local variables")
 	f.p.activeVariables = append(f.p.activeVariables, r)
 }
@@ -174,14 +174,14 @@ func (f *function) MakeGoto(name string, line, pc int) {
 }
 
 func (f *function) MakeLabel(name string, line int) int {
-	f.p.activeLabels = append(f.p.activeLabels, label{name: name, line: line, pc: len(f.f.code), activeVariableCount: f.activeVariableCount})
+	f.p.activeLabels = append(f.p.activeLabels, label{name: name, line: line, pc: len(f.f.Code), activeVariableCount: f.activeVariableCount})
 	return len(f.p.activeLabels) - 1
 }
 
 func (f *function) closeGoto(i int, l label) {
 	g := f.p.pendingGotos[i]
 	if f.assert(g.name == l.name); g.activeVariableCount < l.activeVariableCount {
-		f.semanticError(fmt.Sprintf("<goto %s> at line %d jumps into the scope of local '%s'", g.name, g.line, f.LocalVariable(g.activeVariableCount).name))
+		f.semanticError(fmt.Sprintf("<goto %s> at line %d jumps into the scope of local '%s'", g.name, g.line, f.LocalVariable(g.activeVariableCount).Name))
 	}
 	f.PatchList(g.pc, l.pc)
 	copy(f.p.pendingGotos[i:], f.p.pendingGotos[i+1:])
@@ -279,7 +279,7 @@ func (f *function) semanticError(message string) {
 func (f *function) breakLabel()                                  { f.FindGotos(f.MakeLabel("break", 0)) }
 func (f *function) unreachable()                                 { f.assert(false) }
 func (f *function) assert(cond bool)                             { f.p.l.assert(cond) }
-func (f *function) Instruction(e exprDesc) *bytecode.Instruction { return &f.f.code[e.info] }
+func (f *function) Instruction(e exprDesc) *bytecode.Instruction { return &f.f.Code[e.info] }
 func (e exprDesc) hasJumps() bool                                { return e.t != e.f }
 func (e exprDesc) isNumeral() bool                               { return e.kind == kindNumber && e.t == noJump && e.f == noJump }
 func (e exprDesc) isVariable() bool                              { return kindLocal <= e.kind && e.kind <= kindIndexed }
@@ -292,17 +292,17 @@ func (f *function) assertEqual(a, b any) {
 }
 
 func (f *function) encode(i bytecode.Instruction) int {
-	f.assert(len(f.f.code) == len(f.f.lineInfo))
+	f.assert(len(f.f.Code) == len(f.f.LineInfo))
 	f.dischargeJumpPC()
-	f.f.code = append(f.f.code, i)
-	f.f.lineInfo = append(f.f.lineInfo, int32(f.p.lastLine))
-	return len(f.f.code) - 1
+	f.f.Code = append(f.f.Code, i)
+	f.f.LineInfo = append(f.f.LineInfo, int32(f.p.lastLine))
+	return len(f.f.Code) - 1
 }
 
 func (f *function) dropLastInstruction() {
-	f.assert(len(f.f.code) == len(f.f.lineInfo))
-	f.f.code = f.f.code[:len(f.f.code)-1]
-	f.f.lineInfo = f.f.lineInfo[:len(f.f.lineInfo)-1]
+	f.assert(len(f.f.Code) == len(f.f.LineInfo))
+	f.f.Code = f.f.Code[:len(f.f.Code)-1]
+	f.f.LineInfo = f.f.LineInfo[:len(f.f.LineInfo)-1]
 }
 
 func (f *function) EncodeABC(op bytecode.OpCode, a, b, c int) int {
@@ -343,8 +343,8 @@ func (f *function) EncodeString(s string) exprDesc {
 }
 
 func (f *function) loadNil(from, n int) {
-	if len(f.f.code) > f.lastTarget { // no jumps to current position
-		if previous := &f.f.code[len(f.f.code)-1]; previous.OpCode() == bytecode.OpLoadNil {
+	if len(f.f.Code) > f.lastTarget { // no jumps to current position
+		if previous := &f.f.Code[len(f.f.Code)-1]; previous.OpCode() == bytecode.OpLoadNil {
 			if pf, pl, l := previous.A(), previous.A()+previous.B(), from+n-1; pf <= from && from <= pl+1 || from <= pf && pf <= l+1 { // can connect both
 				from, l = min(from, pf), max(l, pl)
 				previous.SetA(from)
@@ -395,17 +395,17 @@ func (f *function) fixJump(pc, dest int) {
 	if abs(offset) > bytecode.MaxArgSBx {
 		f.p.syntaxError("control structure too long")
 	}
-	f.f.code[pc].SetSBx(offset)
+	f.f.Code[pc].SetSBx(offset)
 }
 
 func (f *function) Label() int {
-	f.lastTarget = len(f.f.code)
+	f.lastTarget = len(f.f.Code)
 	return f.lastTarget
 }
 
 func (f *function) jump(pc int) int {
 	f.assert(f.isJumpListWalkable(pc))
-	if offset := f.f.code[pc].SBx(); offset != noJump {
+	if offset := f.f.Code[pc].SBx(); offset != noJump {
 		return pc + 1 + offset
 	}
 	return noJump
@@ -415,18 +415,18 @@ func (f *function) isJumpListWalkable(list int) bool {
 	if list == noJump {
 		return true
 	}
-	if list < 0 || list >= len(f.f.code) {
+	if list < 0 || list >= len(f.f.Code) {
 		return false
 	}
-	offset := f.f.code[list].SBx()
+	offset := f.f.Code[list].SBx()
 	return offset == noJump || f.isJumpListWalkable(list+1+offset)
 }
 
 func (f *function) jumpControl(pc int) *bytecode.Instruction {
-	if pc >= 1 && bytecode.TestTMode(f.f.code[pc-1].OpCode()) {
-		return &f.f.code[pc-1]
+	if pc >= 1 && bytecode.TestTMode(f.f.Code[pc-1].OpCode()) {
+		return &f.f.Code[pc-1]
 	}
-	return &f.f.code[pc]
+	return &f.f.Code[pc]
 }
 
 func (f *function) needValue(list int) bool {
@@ -472,15 +472,15 @@ func (f *function) patchListHelper(list, target, register, defaultTarget int) {
 
 func (f *function) dischargeJumpPC() {
 	f.assert(f.isJumpListWalkable(f.jumpPC))
-	f.patchListHelper(f.jumpPC, len(f.f.code), noRegister, len(f.f.code))
+	f.patchListHelper(f.jumpPC, len(f.f.Code), noRegister, len(f.f.Code))
 	f.jumpPC = noJump
 }
 
 func (f *function) PatchList(list, target int) {
-	if target == len(f.f.code) {
+	if target == len(f.f.Code) {
 		f.PatchToHere(list)
 	} else {
-		f.assert(target < len(f.f.code))
+		f.assert(target < len(f.f.Code))
 		f.patchListHelper(list, target, noRegister, target)
 	}
 }
@@ -489,8 +489,8 @@ func (f *function) PatchClose(list, level int) {
 	f.assert(f.isJumpListWalkable(list))
 	for level, next := level+1, 0; list != noJump; list = next {
 		next = f.jump(list)
-		f.assert(f.f.code[list].OpCode() == bytecode.OpJump && f.f.code[list].A() == 0 || f.f.code[list].A() >= level)
-		f.f.code[list].SetA(level)
+		f.assert(f.f.Code[list].OpCode() == bytecode.OpJump && f.f.Code[list].A() == 0 || f.f.Code[list].A() >= level)
+		f.f.Code[list].SetA(level)
 	}
 }
 
@@ -524,9 +524,9 @@ func (f *function) addConstant(k any, v value) int {
 	if index, ok := f.constantLookup[k]; ok {
 		return index
 	}
-	index := len(f.f.constants)
+	index := len(f.f.Constants)
 	f.constantLookup[k] = index
-	f.f.constants = append(f.f.constants, v)
+	f.f.Constants = append(f.f.Constants, v)
 	return index
 }
 
@@ -540,8 +540,8 @@ func (f *function) NumberConstant(n float64) int {
 func (f *function) CheckStack(n int) {
 	if n += f.freeRegisterCount; n >= maxStack {
 		f.p.syntaxError("function or expression too complex")
-	} else if n > f.f.maxStackSize {
-		f.f.maxStackSize = n
+	} else if n > f.f.MaxStackSize {
+		f.f.MaxStackSize = n
 	}
 }
 
@@ -703,12 +703,12 @@ func (f *function) ExpressionToValue(e exprDesc) exprDesc {
 func (f *function) expressionToRegisterOrConstant(e exprDesc) (exprDesc, int) {
 	switch e = f.ExpressionToValue(e); e.kind {
 	case kindTrue, kindFalse:
-		if len(f.f.constants) <= bytecode.MaxIndexRK {
+		if len(f.f.Constants) <= bytecode.MaxIndexRK {
 			e.info, e.kind = f.booleanConstant(e.kind == kindTrue), kindConstant
 			return e, bytecode.AsConstant(e.info)
 		}
 	case kindNil:
-		if len(f.f.constants) <= bytecode.MaxIndexRK {
+		if len(f.f.Constants) <= bytecode.MaxIndexRK {
 			e.info, e.kind = f.nilConstant(), kindConstant
 			return e, bytecode.AsConstant(e.info)
 		}
@@ -949,7 +949,7 @@ func (f *function) Postfix(op int, e1, e2 exprDesc, line int) exprDesc {
 	panic("unreachable")
 }
 
-func (f *function) FixLine(line int) { f.f.lineInfo[len(f.f.code)-1] = int32(line) }
+func (f *function) FixLine(line int) { f.f.LineInfo[len(f.f.Code)-1] = int32(line) }
 
 func (f *function) setList(base, elementCount, storeCount int) {
 	if f.assert(storeCount != 0); storeCount == MultipleReturns {
@@ -1011,9 +1011,9 @@ func (f *function) AdjustAssignment(variableCount, expressionCount int, e exprDe
 }
 
 func (f *function) makeUpValue(name string, e exprDesc) int {
-	f.p.checkLimit(len(f.f.upValues)+1, maxUpValue, "upvalues")
-	f.f.upValues = append(f.f.upValues, upValueDesc{name: name, isLocal: e.kind == kindLocal, index: e.info})
-	return len(f.f.upValues) - 1
+	f.p.checkLimit(len(f.f.UpValues)+1, maxUpValue, "upvalues")
+	f.f.UpValues = append(f.f.UpValues, upValueDesc{Name: name, IsLocal: e.kind == kindLocal, Index: e.info})
+	return len(f.f.UpValues) - 1
 }
 
 func singleVariableHelper(f *function, name string, base bool) (e exprDesc, found bool) {
@@ -1025,15 +1025,15 @@ func singleVariableHelper(f *function, name string, base bool) (e exprDesc, foun
 	}
 	find := func() (int, bool) {
 		for i := f.activeVariableCount - 1; i >= 0; i-- {
-			if name == f.LocalVariable(i).name {
+			if name == f.LocalVariable(i).Name {
 				return i, true
 			}
 		}
 		return 0, false
 	}
 	findUpValue := func() (int, bool) {
-		for i, u := range f.f.upValues {
-			if u.name == name {
+		for i, u := range f.f.UpValues {
+			if u.Name == name {
 				return i, true
 			}
 		}
@@ -1103,8 +1103,8 @@ func (f *function) CloseConstructor(pc, tableRegister, pending, arrayCount, hash
 			f.setList(tableRegister, arrayCount, pending)
 		}
 	}
-	f.f.code[pc].SetB(int(float8FromInt(arrayCount)))
-	f.f.code[pc].SetC(int(float8FromInt(hashCount)))
+	f.f.Code[pc].SetB(int(float8FromInt(arrayCount)))
+	f.f.Code[pc].SetC(int(float8FromInt(hashCount)))
 }
 
 func (f *function) OpenForBody(base, n int, isNumeric bool) (prep int) {

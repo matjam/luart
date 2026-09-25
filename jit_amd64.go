@@ -53,7 +53,7 @@ type amd64Compiler struct {
 }
 
 func compileJIT(p *prototype) (code []byte, offsets []int32, entries []int, kernels int) {
-	if len(p.code) > 1<<16 {
+	if len(p.Code) > 1<<16 {
 		return nil, nil, nil, 0
 	}
 	c := &amd64Compiler{p: p, code: p.jitOrig, sse41: HasSSE41()}
@@ -70,8 +70,8 @@ func compileJIT(p *prototype) (code []byte, offsets []int32, entries []int, kern
 	}
 	c.prologue()
 	loops := map[int]*kernel{}
-	for ip, i := range c.p.code {
-		if i.OpCode() == bytecode.OpForLoop && !isExtraArg(c.p.code, ip) {
+	for ip, i := range c.p.Code {
+		if i.OpCode() == bytecode.OpForLoop && !isExtraArg(c.p.Code, ip) {
 			if k := c.findKernel(ip); k != nil {
 				loops[ip] = k
 			}
@@ -94,7 +94,7 @@ func compileJIT(p *prototype) (code []byte, offsets []int32, entries []int, kern
 	offsets = make([]int32, len(c.code))
 	for i, l := range c.pcs {
 		offsets[i] = int32(c.a.Offset(l))
-		if isExtraArg(c.p.code, i) {
+		if isExtraArg(c.p.Code, i) {
 			offsets[i] = -1
 		}
 	}
@@ -215,7 +215,7 @@ func (c *amd64Compiler) rkNumber(field int) (operand, bool) {
 		return reg(field), true
 	}
 	k := bytecode.ConstantIndex(field)
-	if !c.p.constants[k].isNumber() {
+	if !c.p.Constants[k].isNumber() {
 		return operand{}, false
 	}
 	return c.constant(k)
@@ -416,7 +416,7 @@ func (c *amd64Compiler) arith(op bytecode.OpCode, d, x, y XReg) bool {
 // code words it consumed.
 func (c *amd64Compiler) instruction(ip int) int {
 	a := &c.a
-	orig := c.p.code[ip]
+	orig := c.p.Code[ip]
 	switch op := orig.OpCode(); op {
 	case bytecode.OpMove:
 		c.copyValue(reg(orig.A()), reg(orig.B()), ip)
