@@ -309,17 +309,24 @@ func (c *amd64Compiler) call(ip int, i instruction) {
 func (c *amd64Compiler) goCallee(ip int, i instruction) {
 	a := &c.a
 	fn := reg(i.a())
-	notGo, goKind := a.NewLabel(), a.NewLabel()
+	notGo, closure := a.NewLabel(), a.NewLabel()
 	a.Load(rTmp, fn.base, fn.off+offN)
-	a.MovImm(rTmp2, tagOf(vkGoFunction))
-	a.Cmp(rTmp, rTmp2)
-	a.J(E, goKind)
 	a.MovImm(rTmp2, tagOf(vkGoClosure))
 	a.Cmp(rTmp, rTmp2)
+	a.J(E, closure)
+	a.MovImm(rTmp2, tagOf(vkGoFunction))
+	a.Cmp(rTmp, rTmp2)
 	a.J(NE, notGo)
-	a.Bind(goKind)
 	a.Load(rT, fn.base, fn.off+offP)
 	a.Cmp(rT, rNumber) // a number whose bits match the tag
+	a.J(E, notGo)
+	a.Load(rTmp, rT, offGFNumber) // number functions take the general exit,
+	a.Test(rTmp, rTmp)            // where runJIT may call them frameless
+	a.J(NE, notGo)
+	a.Jmp(c.goCallExit(ip))
+	a.Bind(closure)
+	a.Load(rT, fn.base, fn.off+offP)
+	a.Cmp(rT, rNumber)
 	a.J(NE, c.goCallExit(ip))
 	a.Bind(notGo)
 }
@@ -353,7 +360,7 @@ func (c *amd64Compiler) intrinsic(ip int, i instruction, notGo Label) {
 		a.Jmp(done)
 		a.Bind(next)
 	}
-	a.Jmp(c.goCallExit(ip))
+	a.Jmp(c.exit(ip)) // a number function runJIT may call frameless
 	a.Bind(done)
 	c.guardStore(fn, noReg, ip)
 	c.storeNumber(fn, 0)

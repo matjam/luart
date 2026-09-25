@@ -147,6 +147,9 @@ func (c *arm64Compiler) stubs() {
 	for ip, l := range c.goCall {
 		if l >= 0 {
 			a.Bind(l)
+			fn := reg(c.code[ip].a())
+			a.Ldr(rTmp, fn.base, fn.off+offP)
+			a.Str(rTmp, rCtx, offCallee)
 			a.MovImm(rExitPC, uint64(ip))
 			a.B(goCall)
 		}
@@ -160,6 +163,7 @@ func (c *arm64Compiler) stubs() {
 	a.MovImm(0, jitExitBudget)
 	a.Ret()
 	a.Bind(goCall)
+	a.Str(rFrame, rCtx, offFrame) // compiled calls may have moved it
 	a.Str(rExitPC, rCtx, offExitPC)
 	a.MovImm(0, jitExitCallGo)
 	a.Ret()
