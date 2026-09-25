@@ -96,10 +96,7 @@ func (l *State) functionInfo(p Debug, f closure) (d Debug) {
 		d.What = l.global.goName
 	} else {
 		p := lc.prototype
-		d.Source = p.Source
-		if d.Source == "" {
-			d.Source = "=?"
-		}
+		d.Source = p.Source // "=?" for a stripped binary chunk; see internal/chunk
 		d.LineDefined, d.LastLineDefined = p.LineDefined, p.LastLineDefined
 		d.What = "Lua"
 		if d.LineDefined == 0 {

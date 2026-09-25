@@ -158,10 +158,6 @@ func (l *State) ProtectedCallWithContinuation(argCount, resultCount, errorFuncti
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_load
 func (l *State) Load(r io.Reader, chunkName string, mode string) error {
-	if chunkName == "" {
-		chunkName = "?"
-	}
-
 	if err := protectedParser(l, r, chunkName, mode); err != nil {
 		return err
 	}

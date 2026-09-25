@@ -92,11 +92,10 @@ func (d *dumpState) writeUpvalues(p *bytecode.Proto) {
 	}
 }
 
+// writeString writes s with its size, counting the 0 byte after it, as C
+// Lua does; "" too, as size 0 means no string at all.
 func (d *dumpState) writeString(s string) {
-	size := len(s)
-	if size > 0 {
-		size++ // accounts for the 0 byte at the end
-	}
+	size := len(s) + 1
 	switch header.PointerSize {
 	case 8:
 		d.write(uint64(size))
@@ -105,10 +104,8 @@ func (d *dumpState) writeString(s string) {
 	default:
 		panic(fmt.Sprintf("unsupported pointer size (%d)", header.PointerSize))
 	}
-	if size > 0 {
-		d.write([]byte(s))
-		d.writeByte(0)
-	}
+	d.write([]byte(s))
+	d.writeByte(0)
 }
 
 func (d *dumpState) writeLocalVariables(p *bytecode.Proto) {

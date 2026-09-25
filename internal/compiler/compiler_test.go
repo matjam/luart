@@ -34,12 +34,20 @@ func TestParseNumber(t *testing.T) {
 }
 
 func TestChunkID(t *testing.T) {
+	// As lobject.c's luaO_chunkid, with LUA_IDSIZE 60.
 	for _, tt := range []struct{ source, want string }{
 		{"=stdin", "stdin"},
+		{"=" + strings.Repeat("x", 100), strings.Repeat("x", 59)},
 		{"@file.lua", "file.lua"},
-		{"return 1\nreturn 2", `[string "return 1"]`},
+		{"@a" + strings.Repeat("x", 99), "..." + strings.Repeat("x", 56)}, // the end of a long name
 		{"", `[string ""]`},
-		{"@" + strings.Repeat("x", 100), "..." + strings.Repeat("x", IDSize-4)},
+		{"?", `[string "?"]`},
+		{"return 1", `[string "return 1"]`},
+		{"return 1\nreturn 2", `[string "return 1..."]`},
+		{"\nreturn 1", `[string "..."]`},
+		{strings.Repeat("y", 44), `[string "` + strings.Repeat("y", 44) + `"]`},
+		{strings.Repeat("y", 45), `[string "` + strings.Repeat("y", 45) + `..."]`},
+		{strings.Repeat("y", 100), `[string "` + strings.Repeat("y", 45) + `..."]`},
 	} {
 		if got := ChunkID(tt.source); got != tt.want {
 			t.Errorf("ChunkID(%q) = %q, want %q", tt.source, got, tt.want)

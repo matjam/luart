@@ -60,8 +60,9 @@ func displayName(name string) string {
 }
 
 type loadState struct {
-	in    io.Reader
-	order binary.ByteOrder
+	in     io.Reader
+	order  binary.ByteOrder
+	absent bool // the last string read was absent, not empty
 }
 
 func (state *loadState) read(data any) error {
@@ -113,7 +114,7 @@ func (state *loadState) readString() (string, error) {
 	default:
 		panic(fmt.Sprintf("unsupported pointer size (%d)", header.PointerSize))
 	}
-	if size == 0 {
+	if state.absent = size == 0; state.absent { // no string: C's NULL
 		return "", nil
 	}
 	if size > 1<<62 {
@@ -185,6 +186,8 @@ func (state *loadState) readLocalVariables() (localVariables []bytecode.LocalVar
 func (state *loadState) readDebug(p *bytecode.Proto) (err error) {
 	if p.Source, err = state.readString(); err != nil {
 		return
+	} else if p.Source == "" && state.absent {
+		p.Source = "=?" // stripped, as lua_getinfo names a NULL source
 	}
 	if p.LineInfo, err = readList[int32](state); err != nil {
 		return

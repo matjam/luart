@@ -62,6 +62,11 @@ func TestDebugGetinfo(t *testing.T) {
 		local function h() return g() end
 		assert(h().istailcall == true)
 
+		-- Chunk names, as db.lua checks them.
+		assert(debug.getinfo(load("return 1", "")).short_src == '[string ""]')
+		assert(debug.getinfo(load("return 1", "\nx")).short_src == '[string "..."]')
+		assert(debug.getinfo(load("return 1", "@xuxu")).short_src == "xuxu")
+
 		-- Errors.
 		local ok, err = pcall(debug.getinfo, 1, "x")
 		assert(not ok and err:find("invalid option", 1, true), err)
