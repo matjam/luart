@@ -85,7 +85,12 @@ func (l *State) IsNone(index int) bool { return l.TypeOf(index) == TypeNone }
 // IsNoneOrNil verifies that the value at index is either nil or invalid.
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_isnonornil.
-func (l *State) IsNoneOrNil(index int) bool { return l.TypeOf(index) <= TypeNil }
+func (l *State) IsNoneOrNil(index int) bool {
+	if index > 0 { // an argument: arg returns nil for none
+		return l.arg(index).isNil()
+	}
+	return l.TypeOf(index) <= TypeNil
+}
 
 // ToInteger converts the Lua value at index into a signed integer. The Lua
 // value must be a number, or a string convertible to a number.
@@ -127,7 +132,14 @@ func (l *State) ToUnsigned(index int) (uint, bool) {
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_tolstring
 func (l *State) ToString(index int) (s string, ok bool) {
-	if s, ok = toString(l.indexToValue(index)); ok { // Bug compatibility: replace a number with its string representation.
+	if s, ok = l.arg(index).str(); ok { // a string argument, the usual case
+		return s, true
+	}
+	v := l.indexToValue(index)
+	if s, ok = v.str(); ok {
+		return s, true
+	}
+	if s, ok = toString(v); ok { // Bug compatibility: replace a number with its string representation.
 		l.setIndexToValue(index, stringValue(s))
 	}
 	return
