@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	shopify "github.com/Shopify/go-lua"
-	"github.com/matjam/luart"
+	"github.com/matjam/luart/lua"
 	"github.com/matjam/luart/stdlib"
 )
 
@@ -178,11 +178,11 @@ func identity(x float64) float64 { return x }
 //go:noinline
 func nativeCall(f func(float64) float64, x float64) float64 { return f(x) }
 
-func newSuiteLuart(tb testing.TB, src string, options ...luart.Option) *luart.State {
-	l := luart.NewState(options...)
+func newSuiteLuart(tb testing.TB, src string, options ...lua.Option) *lua.State {
+	l := lua.NewState(options...)
 	stdlib.Open(l)
-	l.Register("gofn", func(l *luart.State) int { v, _ := l.ToNumber(1); l.PushNumber(v); return 1 })
-	l.Register("set", func(l *luart.State) int {
+	l.Register("gofn", func(l *lua.State) int { v, _ := l.ToNumber(1); l.PushNumber(v); return 1 })
+	l.Register("set", func(l *lua.State) int {
 		x, _ := l.ToNumber(1)
 		y, _ := l.ToNumber(2)
 		v, _ := l.ToNumber(3)
@@ -212,7 +212,7 @@ func newSuiteShopify(tb testing.TB, src string) *shopify.State {
 	return l
 }
 
-func runLuart(l *luart.State) float64 {
+func runLuart(l *lua.State) float64 {
 	l.Global("run")
 	l.Call(0, 1)
 	v, _ := l.ToNumber(-1)
@@ -232,7 +232,7 @@ func runShopify(l *shopify.State) float64 {
 func TestSuiteAgrees(t *testing.T) {
 	for _, w := range workloads {
 		t.Run(w.name, func(t *testing.T) {
-			lr, sh := runLuart(newSuiteLuart(t, w.lua, luart.WithoutJIT())), runShopify(newSuiteShopify(t, w.lua))
+			lr, sh := runLuart(newSuiteLuart(t, w.lua, lua.WithoutJIT())), runShopify(newSuiteShopify(t, w.lua))
 			if lr != sh {
 				t.Errorf("luart %v, shopify %v", lr, sh)
 			}
@@ -261,7 +261,7 @@ func BenchmarkSuite(b *testing.B) {
 			})
 		}
 		b.Run(w.name+"/luart", func(b *testing.B) {
-			l := newSuiteLuart(b, w.lua, luart.WithoutJIT())
+			l := newSuiteLuart(b, w.lua, lua.WithoutJIT())
 			for b.Loop() {
 				sink = runLuart(l)
 			}

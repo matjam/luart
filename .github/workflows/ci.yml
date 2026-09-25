@@ -73,7 +73,7 @@ jobs:
           GOAMD64: v3
         run: |
           if grep -qw avx2 /proc/cpuinfo && grep -qw fma /proc/cpuinfo; then
-            go test -count 1 -run JIT .
+            go test -count 1 -run JIT ./lua
           else
             echo "no v3 CPU on this runner"
           fi

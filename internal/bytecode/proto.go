@@ -31,5 +31,5 @@ type UpValueDesc struct {
 }
 
 // MultipleReturns is a CALL or RETURN count of "up to the top of the
-// stack", as luart.MultipleReturns.
+// stack", as lua.MultipleReturns.
 const MultipleReturns = -1

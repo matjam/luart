@@ -4,7 +4,7 @@ import (
 	"math"
 	"math/rand"
 
-	"github.com/matjam/luart"
+	"github.com/matjam/luart/lua"
 )
 
 const radiansPerDegree = math.Pi / 180.0
@@ -40,8 +40,8 @@ var mathBinaryFunctions = []struct {
 	{"pow", math.Pow},
 }
 
-func reduce(f func(float64, float64) float64) luart.Function {
-	return func(l *luart.State) int {
+func reduce(f func(float64, float64) float64) lua.Function {
+	return func(l *lua.State) int {
 		n := l.Top() // number of arguments
 		v := l.CheckNumber(1)
 		for i := 2; i <= n; i++ {
@@ -52,19 +52,19 @@ func reduce(f func(float64, float64) float64) luart.Function {
 	}
 }
 
-var mathLibrary = []luart.RegistryFunction{
-	{Name: "frexp", Function: func(l *luart.State) int {
+var mathLibrary = []lua.RegistryFunction{
+	{Name: "frexp", Function: func(l *lua.State) int {
 		f, e := math.Frexp(l.CheckNumber(1))
 		l.PushNumber(f)
 		l.PushInteger(e)
 		return 2
 	}},
-	{Name: "ldexp", Function: func(l *luart.State) int {
+	{Name: "ldexp", Function: func(l *lua.State) int {
 		x, e := l.CheckNumber(1), l.CheckInteger(2)
 		l.PushNumber(math.Ldexp(x, e))
 		return 1
 	}},
-	{Name: "log", Function: func(l *luart.State) int {
+	{Name: "log", Function: func(l *lua.State) int {
 		x := l.CheckNumber(1)
 		if l.IsNoneOrNil(2) {
 			l.PushNumber(math.Log(x))
@@ -77,13 +77,13 @@ var mathLibrary = []luart.RegistryFunction{
 	}},
 	{Name: "max", Function: reduce(math.Max)},
 	{Name: "min", Function: reduce(math.Min)},
-	{Name: "modf", Function: func(l *luart.State) int {
+	{Name: "modf", Function: func(l *lua.State) int {
 		i, f := math.Modf(l.CheckNumber(1))
 		l.PushNumber(i)
 		l.PushNumber(f)
 		return 2
 	}},
-	{Name: "random", Function: func(l *luart.State) int {
+	{Name: "random", Function: func(l *lua.State) int {
 		r := rand.Float64()
 		switch l.Top() {
 		case 0: // no arguments
@@ -101,7 +101,7 @@ var mathLibrary = []luart.RegistryFunction{
 		}
 		return 1
 	}},
-	{Name: "randomseed", Function: func(l *luart.State) int {
+	{Name: "randomseed", Function: func(l *lua.State) int {
 		rand.Seed(int64(l.CheckUnsigned(1)))
 		rand.Float64() // discard first value to avoid undesirable correlations
 		return 0
@@ -109,7 +109,7 @@ var mathLibrary = []luart.RegistryFunction{
 }
 
 // OpenMath opens the math library. Usually passed to Require.
-func OpenMath(l *luart.State) int {
+func OpenMath(l *lua.State) int {
 	l.CreateTable(0, len(mathLibrary)+len(mathUnaryFunctions)+len(mathBinaryFunctions)+2)
 	l.SetFunctions(mathLibrary, 0)
 	for _, f := range mathUnaryFunctions {

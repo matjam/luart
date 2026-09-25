@@ -6,7 +6,7 @@ import (
 
 	"os"
 
-	"github.com/matjam/luart"
+	"github.com/matjam/luart/lua"
 )
 
 const fileHandle = "FILE*"
@@ -15,12 +15,12 @@ const output = "_IO_output"
 
 type stream struct {
 	f     *os.File
-	close luart.Function
+	close lua.Function
 }
 
-func toStream(l *luart.State) *stream { return l.CheckUserData[*stream](1, fileHandle) }
+func toStream(l *lua.State) *stream { return l.CheckUserData[*stream](1, fileHandle) }
 
-func toFile(l *luart.State) *os.File {
+func toFile(l *lua.State) *os.File {
 	s := toStream(l)
 	if s.close == nil {
 		l.Errorf("attempt to use a closed file")
@@ -31,19 +31,19 @@ func toFile(l *luart.State) *os.File {
 	return s.f
 }
 
-func newStream(l *luart.State, f *os.File, close luart.Function) *stream {
+func newStream(l *lua.State, f *os.File, close lua.Function) *stream {
 	s := &stream{f: f, close: close}
 	l.PushUserData(s)
 	l.SetMetaTableNamed(fileHandle)
 	return s
 }
 
-func newFile(l *luart.State) *stream {
-	return newStream(l, nil, func(l *luart.State) int { return l.FileResult(toStream(l).f.Close(), "") })
+func newFile(l *lua.State) *stream {
+	return newStream(l, nil, func(l *lua.State) int { return l.FileResult(toStream(l).f.Close(), "") })
 }
 
-func ioFile(l *luart.State, name string) *os.File {
-	l.Field(luart.RegistryIndex, name)
+func ioFile(l *lua.State, name string) *os.File {
+	l.Field(lua.RegistryIndex, name)
 	s := l.ToUserData(-1).(*stream)
 	if s.close == nil {
 		l.Errorf(fmt.Sprintf("standard %s file is closed", name[len("_IO_"):]))
@@ -51,7 +51,7 @@ func ioFile(l *luart.State, name string) *os.File {
 	return s.f
 }
 
-func forceOpen(l *luart.State, name, mode string) {
+func forceOpen(l *lua.State, name, mode string) {
 	s := newFile(l)
 	flags, err := flags(mode)
 	if err == nil {
@@ -62,8 +62,8 @@ func forceOpen(l *luart.State, name, mode string) {
 	}
 }
 
-func ioFileHelper(name, mode string) luart.Function {
-	return func(l *luart.State) int {
+func ioFileHelper(name, mode string) lua.Function {
+	return func(l *lua.State) int {
 		if !l.IsNoneOrNil(1) {
 			if name, ok := l.ToString(1); ok {
 				forceOpen(l, name, mode)
@@ -71,32 +71,32 @@ func ioFileHelper(name, mode string) luart.Function {
 				toFile(l)
 				l.PushValue(1)
 			}
-			l.SetField(luart.RegistryIndex, name)
+			l.SetField(lua.RegistryIndex, name)
 		}
-		l.Field(luart.RegistryIndex, name)
+		l.Field(lua.RegistryIndex, name)
 		return 1
 	}
 }
 
-func closeHelper(l *luart.State) int {
+func closeHelper(l *lua.State) int {
 	s := toStream(l)
 	close := s.close
 	s.close = nil
 	return close(l)
 }
 
-func ioClose(l *luart.State) int {
+func ioClose(l *lua.State) int {
 	if l.IsNone(1) {
-		l.Field(luart.RegistryIndex, output)
+		l.Field(lua.RegistryIndex, output)
 	}
 	toFile(l)
 	return closeHelper(l)
 }
 
-func write(l *luart.State, f *os.File, argIndex int) int {
+func write(l *lua.State, f *os.File, argIndex int) int {
 	var err error
 	for argCount := l.Top(); argIndex < argCount && err == nil; argIndex++ {
-		if l.TypeOf(argIndex) == luart.TypeNumber { // not numeric strings, as C Lua
+		if l.TypeOf(argIndex) == lua.TypeNumber { // not numeric strings, as C Lua
 			s, _ := l.ToString(argIndex) // formats as Lua does
 			_, err = f.WriteString(s)
 		} else {
@@ -109,7 +109,7 @@ func write(l *luart.State, f *os.File, argIndex int) int {
 	return l.FileResult(err, "")
 }
 
-func readNumber(l *luart.State, f *os.File) (err error) {
+func readNumber(l *lua.State, f *os.File) (err error) {
 	var n float64
 	if _, err = fmt.Fscanf(f, "%f", &n); err == nil {
 		l.PushNumber(n)
@@ -119,7 +119,7 @@ func readNumber(l *luart.State, f *os.File) (err error) {
 	return
 }
 
-func read(l *luart.State, f *os.File, argIndex int) int {
+func read(l *lua.State, f *os.File, argIndex int) int {
 	resultCount := 0
 	var err error
 	if argCount := l.Top() - 1; argCount == 0 {
@@ -138,15 +138,15 @@ func read(l *luart.State, f *os.File, argIndex int) int {
 	return resultCount - argIndex
 }
 
-func readLine(l *luart.State) int {
-	s := l.ToUserData(luart.UpValueIndex(1)).(*stream)
-	argCount, _ := l.ToInteger(luart.UpValueIndex(2))
+func readLine(l *lua.State) int {
+	s := l.ToUserData(lua.UpValueIndex(1)).(*stream)
+	argCount, _ := l.ToInteger(lua.UpValueIndex(2))
 	if s.close == nil {
 		l.Errorf("file is already closed")
 	}
 	l.SetTop(1)
 	for i := 1; i <= argCount; i++ {
-		l.PushValue(luart.UpValueIndex(3 + i))
+		l.PushValue(lua.UpValueIndex(3 + i))
 	}
 	resultCount := read(l, s.f, 2)
 	if resultCount <= 0 {
@@ -159,17 +159,17 @@ func readLine(l *luart.State) int {
 		m, _ := l.ToString(-resultCount + 1)
 		l.Errorf(m)
 	}
-	if l.ToBoolean(luart.UpValueIndex(3)) {
+	if l.ToBoolean(lua.UpValueIndex(3)) {
 		l.SetTop(0)
-		l.PushValue(luart.UpValueIndex(1))
+		l.PushValue(lua.UpValueIndex(1))
 		closeHelper(l)
 	}
 	return 0
 }
 
-func lines(l *luart.State, shouldClose bool) {
+func lines(l *lua.State, shouldClose bool) {
 	argCount := l.Top() - 1
-	l.ArgumentCheck(argCount <= luart.MinStack-3, luart.MinStack-3, "too many options")
+	l.ArgumentCheck(argCount <= lua.MinStack-3, lua.MinStack-3, "too many options")
 	l.PushValue(1)
 	l.PushInteger(argCount)
 	l.PushBoolean(shouldClose)
@@ -202,16 +202,16 @@ func flags(m string) (f int, err error) {
 	return
 }
 
-var ioLibrary = []luart.RegistryFunction{
+var ioLibrary = []lua.RegistryFunction{
 	{Name: "close", Function: ioClose},
-	{Name: "flush", Function: func(l *luart.State) int { return l.FileResult(ioFile(l, output).Sync(), "") }},
+	{Name: "flush", Function: func(l *lua.State) int { return l.FileResult(ioFile(l, output).Sync(), "") }},
 	{Name: "input", Function: ioFileHelper(input, "r")},
-	{Name: "lines", Function: func(l *luart.State) int {
+	{Name: "lines", Function: func(l *lua.State) int {
 		if l.IsNone(1) {
 			l.PushNil()
 		}
 		if l.IsNil(1) { // No file name.
-			l.Field(luart.RegistryIndex, input)
+			l.Field(lua.RegistryIndex, input)
 			l.Replace(1)
 			toFile(l)
 			lines(l, false)
@@ -222,7 +222,7 @@ var ioLibrary = []luart.RegistryFunction{
 		}
 		return 1
 	}},
-	{Name: "open", Function: func(l *luart.State) int {
+	{Name: "open", Function: func(l *lua.State) int {
 		name := l.CheckString(1)
 		flags, err := flags(l.OptString(2, "r"))
 		s := newFile(l)
@@ -234,9 +234,9 @@ var ioLibrary = []luart.RegistryFunction{
 		return l.FileResult(err, name)
 	}},
 	{Name: "output", Function: ioFileHelper(output, "w")},
-	{Name: "popen", Function: func(l *luart.State) int { l.Errorf("'popen' not supported"); panic("unreachable") }},
-	{Name: "read", Function: func(l *luart.State) int { return read(l, ioFile(l, input), 1) }},
-	{Name: "tmpfile", Function: func(l *luart.State) int {
+	{Name: "popen", Function: func(l *lua.State) int { l.Errorf("'popen' not supported"); panic("unreachable") }},
+	{Name: "read", Function: func(l *lua.State) int { return read(l, ioFile(l, input), 1) }},
+	{Name: "tmpfile", Function: func(l *lua.State) int {
 		s := newFile(l)
 		f, err := os.CreateTemp("", "")
 		if err == nil {
@@ -245,7 +245,7 @@ var ioLibrary = []luart.RegistryFunction{
 		}
 		return l.FileResult(err, "")
 	}},
-	{Name: "type", Function: func(l *luart.State) int {
+	{Name: "type", Function: func(l *lua.State) int {
 		l.CheckAny(1)
 		if f, ok := l.TestUserData(1, fileHandle).(*stream); !ok {
 			l.PushNil()
@@ -256,15 +256,15 @@ var ioLibrary = []luart.RegistryFunction{
 		}
 		return 1
 	}},
-	{Name: "write", Function: func(l *luart.State) int { return write(l, ioFile(l, output), 1) }},
+	{Name: "write", Function: func(l *lua.State) int { return write(l, ioFile(l, output), 1) }},
 }
 
-var fileHandleMethods = []luart.RegistryFunction{
+var fileHandleMethods = []lua.RegistryFunction{
 	{Name: "close", Function: ioClose},
-	{Name: "flush", Function: func(l *luart.State) int { return l.FileResult(toFile(l).Sync(), "") }},
-	{Name: "lines", Function: func(l *luart.State) int { toFile(l); lines(l, false); return 1 }},
-	{Name: "read", Function: func(l *luart.State) int { return read(l, toFile(l), 2) }},
-	{Name: "seek", Function: func(l *luart.State) int {
+	{Name: "flush", Function: func(l *lua.State) int { return l.FileResult(toFile(l).Sync(), "") }},
+	{Name: "lines", Function: func(l *lua.State) int { toFile(l); lines(l, false); return 1 }},
+	{Name: "read", Function: func(l *lua.State) int { return read(l, toFile(l), 2) }},
+	{Name: "seek", Function: func(l *lua.State) int {
 		whence := []int{os.SEEK_SET, os.SEEK_CUR, os.SEEK_END}
 		f := toFile(l)
 		op := l.CheckOption(2, "cur", []string{"set", "cur", "end"})
@@ -278,16 +278,16 @@ var fileHandleMethods = []luart.RegistryFunction{
 		l.PushNumber(float64(ret))
 		return 1
 	}},
-	{Name: "setvbuf", Function: func(l *luart.State) int { // Files are unbuffered in Go. Fake support for now.
+	{Name: "setvbuf", Function: func(l *lua.State) int { // Files are unbuffered in Go. Fake support for now.
 		//		f := toFile(l)
 		//		op := CheckOption(l, 2, "", []string{"no", "full", "line"})
 		//		size := OptInteger(l, 3, 1024)
 		// TODO err := setvbuf(f, nil, mode[op], size)
 		return l.FileResult(nil, "")
 	}},
-	{Name: "write", Function: func(l *luart.State) int { l.PushValue(1); return write(l, toFile(l), 2) }},
+	{Name: "write", Function: func(l *lua.State) int { l.PushValue(1); return write(l, toFile(l), 2) }},
 	//	{"__gc", },
-	{Name: "__tostring", Function: func(l *luart.State) int {
+	{Name: "__tostring", Function: func(l *lua.State) int {
 		if s := toStream(l); s.close == nil {
 			l.PushString("file (closed)")
 		} else {
@@ -297,24 +297,24 @@ var fileHandleMethods = []luart.RegistryFunction{
 	}},
 }
 
-func dontClose(l *luart.State) int {
+func dontClose(l *lua.State) int {
 	toStream(l).close = dontClose
 	l.PushNil()
 	l.PushString("cannot close standard file")
 	return 2
 }
 
-func registerStdFile(l *luart.State, f *os.File, reg, name string) {
+func registerStdFile(l *lua.State, f *os.File, reg, name string) {
 	newStream(l, f, dontClose)
 	if reg != "" {
 		l.PushValue(-1)
-		l.SetField(luart.RegistryIndex, reg)
+		l.SetField(lua.RegistryIndex, reg)
 	}
 	l.SetField(-2, name)
 }
 
 // OpenIO opens the io library. Usually passed to Require.
-func OpenIO(l *luart.State) int {
+func OpenIO(l *lua.State) int {
 	l.NewLibrary(ioLibrary)
 
 	l.NewMetaTable(fileHandle)

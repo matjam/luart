@@ -7,11 +7,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/matjam/luart"
+	"github.com/matjam/luart/lua"
 )
 
-func baseNext(l *luart.State) int {
-	l.CheckType(1, luart.TypeTable)
+func baseNext(l *lua.State) int {
+	l.CheckType(1, lua.TypeTable)
 	l.SetTop(2)
 	if l.Next(1) {
 		return 2
@@ -20,13 +20,13 @@ func baseNext(l *luart.State) int {
 	return 1
 }
 
-func pairs(method string, isZero bool, iter luart.Function) luart.Function {
-	return func(l *luart.State) int {
+func pairs(method string, isZero bool, iter lua.Function) lua.Function {
+	return func(l *lua.State) int {
 		if hasMetamethod := l.MetaField(1, method); !hasMetamethod {
-			l.CheckType(1, luart.TypeTable) // argument must be a table
-			l.PushGoFunction(iter)          // will return generator,
-			l.PushValue(1)                  // state,
-			if isZero {                     // and initial value
+			l.CheckType(1, lua.TypeTable) // argument must be a table
+			l.PushGoFunction(iter)        // will return generator,
+			l.PushValue(1)                // state,
+			if isZero {                   // and initial value
 				l.PushInteger(0)
 			} else {
 				l.PushNil()
@@ -39,9 +39,9 @@ func pairs(method string, isZero bool, iter luart.Function) luart.Function {
 	}
 }
 
-func intPairs(l *luart.State) int {
+func intPairs(l *lua.State) int {
 	i := l.CheckInteger(2)
-	l.CheckType(1, luart.TypeTable)
+	l.CheckType(1, lua.TypeTable)
 	i++ // next value
 	l.PushInteger(i)
 	l.RawGetInt(1, i)
@@ -51,7 +51,7 @@ func intPairs(l *luart.State) int {
 	return 2
 }
 
-func finishProtectedCall(l *luart.State, status bool) int {
+func finishProtectedCall(l *lua.State, status bool) int {
 	if !l.CheckStack(1) {
 		l.SetTop(0) // create space for return values
 		l.PushBoolean(false)
@@ -63,12 +63,12 @@ func finishProtectedCall(l *luart.State, status bool) int {
 	return l.Top()
 }
 
-func protectedCallContinuation(l *luart.State) int {
+func protectedCallContinuation(l *lua.State) int {
 	_, shouldYield, _ := l.Context()
 	return finishProtectedCall(l, shouldYield)
 }
 
-func loadHelper(l *luart.State, s error, e int) int {
+func loadHelper(l *lua.State, s error, e int) int {
 	if s == nil {
 		if e != 0 {
 			l.PushValue(e)
@@ -84,7 +84,7 @@ func loadHelper(l *luart.State, s error, e int) int {
 }
 
 type genericReader struct {
-	l *luart.State
+	l *lua.State
 	r *strings.Reader
 	e error
 }
@@ -116,15 +116,15 @@ func (r *genericReader) Read(b []byte) (n int, err error) {
 	return
 }
 
-var baseLibrary = []luart.RegistryFunction{
-	{Name: "assert", Function: func(l *luart.State) int {
+var baseLibrary = []lua.RegistryFunction{
+	{Name: "assert", Function: func(l *lua.State) int {
 		if !l.ToBoolean(1) {
 			l.Errorf("%s", l.OptString(2, "assertion failed!"))
 			panic("unreachable")
 		}
 		return l.Top()
 	}},
-	{Name: "collectgarbage", Function: func(l *luart.State) int {
+	{Name: "collectgarbage", Function: func(l *lua.State) int {
 		switch opt, _ := l.OptString(1, "collect"), l.OptInteger(2, 0); opt {
 		case "collect":
 			runtime.GC()
@@ -143,17 +143,17 @@ var baseLibrary = []luart.RegistryFunction{
 		}
 		return 1
 	}},
-	{Name: "dofile", Function: func(l *luart.State) int {
+	{Name: "dofile", Function: func(l *lua.State) int {
 		f := l.OptString(1, "")
 		if l.SetTop(1); l.LoadFile(f, "") != nil {
 			l.Error()
 			panic("unreachable")
 		}
-		continuation := func(l *luart.State) int { return l.Top() - 1 }
-		l.CallWithContinuation(0, luart.MultipleReturns, 0, continuation)
+		continuation := func(l *lua.State) int { return l.Top() - 1 }
+		l.CallWithContinuation(0, lua.MultipleReturns, 0, continuation)
 		return continuation(l)
 	}},
-	{Name: "error", Function: func(l *luart.State) int {
+	{Name: "error", Function: func(l *lua.State) int {
 		level := l.OptInteger(2, 1)
 		l.SetTop(1)
 		if l.IsString(1) && level > 0 {
@@ -164,7 +164,7 @@ var baseLibrary = []luart.RegistryFunction{
 		l.Error()
 		panic("unreachable")
 	}},
-	{Name: "getmetatable", Function: func(l *luart.State) int {
+	{Name: "getmetatable", Function: func(l *lua.State) int {
 		l.CheckAny(1)
 		if !l.MetaTable(1) {
 			l.PushNil()
@@ -174,14 +174,14 @@ var baseLibrary = []luart.RegistryFunction{
 		return 1
 	}},
 	{Name: "ipairs", Function: pairs("__ipairs", true, intPairs)},
-	{Name: "loadfile", Function: func(l *luart.State) int {
+	{Name: "loadfile", Function: func(l *lua.State) int {
 		f, m, e := l.OptString(1, ""), l.OptString(2, ""), 3
 		if l.IsNone(e) {
 			e = 0
 		}
 		return loadHelper(l, l.LoadFile(f, m), e)
 	}},
-	{Name: "load", Function: func(l *luart.State) int {
+	{Name: "load", Function: func(l *lua.State) int {
 		m, e := l.OptString(3, "bt"), 4
 		if l.IsNone(e) {
 			e = 0
@@ -191,20 +191,20 @@ var baseLibrary = []luart.RegistryFunction{
 			err = l.LoadBuffer(s, l.OptString(2, s), m)
 		} else {
 			chunkName := l.OptString(2, "=(load)")
-			l.CheckType(1, luart.TypeFunction)
+			l.CheckType(1, lua.TypeFunction)
 			err = l.Load(&genericReader{l: l}, chunkName, m)
 		}
 		return loadHelper(l, err, e)
 	}},
 	{Name: "next", Function: baseNext},
 	{Name: "pairs", Function: pairs("__pairs", false, baseNext)},
-	{Name: "pcall", Function: func(l *luart.State) int {
+	{Name: "pcall", Function: func(l *lua.State) int {
 		l.CheckAny(1)
 		l.PushNil()
 		l.Insert(1) // create space for status result
-		return finishProtectedCall(l, nil == l.ProtectedCallWithContinuation(l.Top()-2, luart.MultipleReturns, 0, 0, protectedCallContinuation))
+		return finishProtectedCall(l, nil == l.ProtectedCallWithContinuation(l.Top()-2, lua.MultipleReturns, 0, 0, protectedCallContinuation))
 	}},
-	{Name: "print", Function: func(l *luart.State) int {
+	{Name: "print", Function: func(l *lua.State) int {
 		n := l.Top()
 		l.Global("tostring")
 		for i := 1; i <= n; i++ {
@@ -226,36 +226,36 @@ var baseLibrary = []luart.RegistryFunction{
 		os.Stdout.Sync()
 		return 0
 	}},
-	{Name: "rawequal", Function: func(l *luart.State) int {
+	{Name: "rawequal", Function: func(l *lua.State) int {
 		l.CheckAny(1)
 		l.CheckAny(2)
 		l.PushBoolean(l.RawEqual(1, 2))
 		return 1
 	}},
-	{Name: "rawlen", Function: func(l *luart.State) int {
+	{Name: "rawlen", Function: func(l *lua.State) int {
 		t := l.TypeOf(1)
-		l.ArgumentCheck(t == luart.TypeTable || t == luart.TypeString, 1, "table or string expected")
+		l.ArgumentCheck(t == lua.TypeTable || t == lua.TypeString, 1, "table or string expected")
 		l.PushInteger(l.RawLength(1))
 		return 1
 	}},
-	{Name: "rawget", Function: func(l *luart.State) int {
-		l.CheckType(1, luart.TypeTable)
+	{Name: "rawget", Function: func(l *lua.State) int {
+		l.CheckType(1, lua.TypeTable)
 		l.CheckAny(2)
 		l.SetTop(2)
 		l.RawGet(1)
 		return 1
 	}},
-	{Name: "rawset", Function: func(l *luart.State) int {
-		l.CheckType(1, luart.TypeTable)
+	{Name: "rawset", Function: func(l *lua.State) int {
+		l.CheckType(1, lua.TypeTable)
 		l.CheckAny(2)
 		l.CheckAny(3)
 		l.SetTop(3)
 		l.RawSet(1)
 		return 1
 	}},
-	{Name: "select", Function: func(l *luart.State) int {
+	{Name: "select", Function: func(l *lua.State) int {
 		n := l.Top()
-		if l.TypeOf(1) == luart.TypeString {
+		if l.TypeOf(1) == lua.TypeString {
 			if s, _ := l.ToString(1); s[0] == '#' {
 				l.PushInteger(n - 1)
 				return 1
@@ -270,10 +270,10 @@ var baseLibrary = []luart.RegistryFunction{
 		l.ArgumentCheck(1 <= i, 1, "index out of range")
 		return n - i
 	}},
-	{Name: "setmetatable", Function: func(l *luart.State) int {
+	{Name: "setmetatable", Function: func(l *lua.State) int {
 		t := l.TypeOf(2)
-		l.CheckType(1, luart.TypeTable)
-		l.ArgumentCheck(t == luart.TypeNil || t == luart.TypeTable, 2, "nil or table expected")
+		l.CheckType(1, lua.TypeTable)
+		l.ArgumentCheck(t == lua.TypeNil || t == lua.TypeTable, 2, "nil or table expected")
 		if l.MetaField(1, "__metatable") {
 			l.Errorf("cannot change a protected metatable")
 		}
@@ -281,7 +281,7 @@ var baseLibrary = []luart.RegistryFunction{
 		l.SetMetaTable(1)
 		return 1
 	}},
-	{Name: "tonumber", Function: func(l *luart.State) int {
+	{Name: "tonumber", Function: func(l *lua.State) int {
 		if l.IsNoneOrNil(2) { // standard conversion
 			if n, ok := l.ToNumber(1); ok {
 				l.PushNumber(n)
@@ -300,33 +300,33 @@ var baseLibrary = []luart.RegistryFunction{
 		l.PushNil()
 		return 1
 	}},
-	{Name: "tostring", Function: func(l *luart.State) int {
+	{Name: "tostring", Function: func(l *lua.State) int {
 		l.CheckAny(1)
 		l.ToStringMeta(1)
 		return 1
 	}},
-	{Name: "type", Function: func(l *luart.State) int {
+	{Name: "type", Function: func(l *lua.State) int {
 		l.CheckAny(1)
 		l.PushString(l.TypeName(1))
 		return 1
 	}},
-	{Name: "xpcall", Function: func(l *luart.State) int {
+	{Name: "xpcall", Function: func(l *lua.State) int {
 		n := l.Top()
 		l.ArgumentCheck(n >= 2, 2, "value expected")
 		l.PushValue(1) // exchange function and error handler
 		l.Copy(2, 1)
 		l.Replace(2)
-		return finishProtectedCall(l, nil == l.ProtectedCallWithContinuation(n-2, luart.MultipleReturns, 1, 0, protectedCallContinuation))
+		return finishProtectedCall(l, nil == l.ProtectedCallWithContinuation(n-2, lua.MultipleReturns, 1, 0, protectedCallContinuation))
 	}},
 }
 
 // OpenBase opens the basic library. Usually passed to Require.
-func OpenBase(l *luart.State) int {
+func OpenBase(l *lua.State) int {
 	l.PushGlobalTable()
 	l.PushGlobalTable()
 	l.SetField(-2, "_G")
 	l.SetFunctions(baseLibrary, 0)
-	l.PushString(luart.VersionString)
+	l.PushString(lua.VersionString)
 	l.SetField(-2, "_VERSION")
 	return 1
 }

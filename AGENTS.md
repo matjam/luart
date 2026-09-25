@@ -10,7 +10,7 @@ today, the rules it depends on, and where performance work should go next.
 - Run everything CI runs before pushing:
   - `gofmt -l .` must print nothing.
   - `go generate ./...` must leave the tree unchanged; it rewrites
-    `vm_jit.go`.
+    `lua/vm_jit.go`.
   - `go vet ./...`.
   - `go test ./...`, which runs with the JIT at its normal threshold;
     again with `LUART_JIT_TEST=1`, which compiles every function on first
@@ -39,9 +39,13 @@ today, the rules it depends on, and where performance work should go next.
 
 ## Packages
 
-- The root package `luart` is the State, its API (api*.go, auxiliary.go,
-  debug_api.go), the VM, the object types and the JIT. They read each
-  other's unexported fields, and the JIT hard-codes their layout.
+- The root holds no Go package. Users import `lua` and `stdlib`.
+- `lua` is the State, its API (api*.go, auxiliary.go, debug_api.go), the
+  VM, the object types and the JIT. They read each other's unexported
+  fields, and the JIT hard-codes their layout. File names elsewhere in
+  this document are in `lua/` unless a path says otherwise. Its tests
+  open `fixtures/` and `libs/` (which the Lua suite's attrib.lua uses)
+  relative to `lua/`, and the suite as `../lua-tests`.
 - `internal/bytecode` is the instruction format, the opcodes, the limits
   the compiler and VM share, `Arith` (so constant folding and the VM
   compute alike) and `Proto`, a compiled function with Go constants (nil,
@@ -55,12 +59,12 @@ today, the rules it depends on, and where performance work should go next.
   `Dump`). `Load` returns malformed chunks as errors and bounds each
   allocation, but, like Lua, trusts the code of a well-formed chunk.
   `protoOf` (compile.go) converts a prototype back for `Dump`.
-- `stdlib` holds the standard libraries and uses only luart's public API.
+- `stdlib` holds the standard libraries and uses only `lua`'s public API.
   A library that needs something the API cannot do fast gets a public
-  method in the core, as table.sort got `State.SortArray`.
-- Tests that need only the public API are external (`package luart_test`)
-  and call `stdlib.Open`. Tests that reach into internals stay in `luart`,
-  which cannot import stdlib (it imports luart); they open the libraries
+  method in `lua`, as table.sort got `State.SortArray`.
+- Tests that need only the public API are external (`package lua_test`)
+  and call `stdlib.Open`. Tests that reach into internals stay in `lua`,
+  which cannot import stdlib (it imports lua); they open the libraries
   with `openLibraries` from export_test.go, which libs_test.go, an
   external test file in the same binary, sets to `stdlib.Open`.
 
