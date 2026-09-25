@@ -40,6 +40,7 @@ const maxOffset = 1 << 30
 type amd64Compiler struct {
 	a       Asm
 	p       *prototype
+	g       *globalState // the state p runs in, whose string metatable SELF reads
 	code    []bytecode.Instruction
 	pcs     []Label
 	exits   []Label
@@ -47,26 +48,28 @@ type amd64Compiler struct {
 	goCall  []Label // exits at a CALL of a Go function, created on demand
 	numCall []Label // exits at a CALL of a number function, created on demand
 	notLua  []Label // a CALL's out-of-line code for callees other than Lua closures
+	strSelf []Label // a SELF's out-of-line code for receivers other than tables
 	always  []bool
 	sse41   bool // ROUNDSD is available, for floor and modulo
 	ip      int  // the instruction being compiled, for intrinsics' exits
 }
 
-func compileJIT(p *prototype) (code []byte, offsets []int32, entries []int, kernels int) {
+func compileJIT(p *prototype, g *globalState) (code []byte, offsets []int32, entries []int, kernels int) {
 	if len(p.Code) > 1<<16 {
 		return nil, nil, nil, 0
 	}
-	c := &amd64Compiler{p: p, code: p.jitOrig, sse41: HasSSE41()}
+	c := &amd64Compiler{p: p, g: g, code: p.jitOrig, sse41: HasSSE41()}
 	c.pcs = make([]Label, len(c.code))
 	c.exits = make([]Label, len(c.code))
 	c.budget = make([]Label, len(c.code))
 	c.goCall = make([]Label, len(c.code))
 	c.numCall = make([]Label, len(c.code))
 	c.notLua = make([]Label, len(c.code))
+	c.strSelf = make([]Label, len(c.code))
 	c.always = make([]bool, len(c.code))
 	for i := range c.pcs {
 		c.pcs[i], c.exits[i], c.budget[i] = c.a.NewLabel(), -1, -1
-		c.goCall[i], c.numCall[i], c.notLua[i] = -1, -1, -1
+		c.goCall[i], c.numCall[i], c.notLua[i], c.strSelf[i] = -1, -1, -1, -1
 	}
 	c.prologue()
 	loops := map[int]*kernel{}
@@ -123,6 +126,13 @@ func (c *amd64Compiler) stubs() {
 			a.Bind(l)
 			c.goCallee(ip, c.code[ip])
 			a.Jmp(c.exit(ip))
+		}
+	}
+	for ip, l := range c.strSelf {
+		if l >= 0 {
+			a.Bind(l)
+			c.selfString(ip, c.code[ip])
+			a.Jmp(c.pcs[ip+1])
 		}
 	}
 	for ip, l := range c.exits {
@@ -505,6 +515,27 @@ func (c *amd64Compiler) equal(ip int, i bytecode.Instruction) {
 	}
 }
 
+// length compiles LEN of a string, whose length is its second word less
+// the kind; anything else exits, and Go measures a table.
+func (c *amd64Compiler) length(ip int, i bytecode.Instruction) {
+	a := &c.a
+	exit := c.exit(ip)
+	src, dst := reg(i.B()), reg(i.A())
+	a.Load(rP, src.base, src.off+offP)
+	a.Cmp(rP, rNumber)
+	a.J(E, exit)
+	a.Load(rN, src.base, src.off+offN)
+	a.Mov(rTmp, rN)
+	a.Shr(rTmp, kindShift)
+	a.CmpImm(rTmp, int32(vkString))
+	a.J(NE, exit)
+	a.MovImm(rTmp, tagOf(vkString))
+	a.Sub(rN, rTmp)
+	c.guardStore(dst, noReg, ip)
+	a.Cvtsi2sd(0, rN)
+	c.storeNumber(dst, 0)
+}
+
 // signMask loads the sign bit into x.
 func (c *amd64Compiler) signMask(x XReg) {
 	c.a.MovImm(rTmp, 1<<63)
@@ -703,6 +734,8 @@ func (c *amd64Compiler) instruction(ip int) int {
 		c.call(ip, orig)
 	case bytecode.OpReturn:
 		c.returnLua(ip, orig)
+	case bytecode.OpLength:
+		c.length(ip, orig)
 	case bytecode.OpLoadConstantEx, bytecode.OpSetList:
 		c.exitAlways(ip)
 		if op == bytecode.OpLoadConstantEx || orig.C() == 0 {

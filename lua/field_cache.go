@@ -58,7 +58,7 @@ func getField(t value, key value, c *fieldCache) (value, bool) {
 				return v, true
 			}
 		}
-		if v, ok := c.fromIndex(tt); ok {
+		if v, ok := c.fromMeta(tt.metaTable); ok {
 			return v, true
 		}
 	}
@@ -73,11 +73,11 @@ func (c *fieldCache) lookup(tt *table) (value, bool) {
 			return v, true
 		}
 	}
-	return c.fromIndex(tt)
+	return c.fromMeta(tt.metaTable)
 }
 
-func (c *fieldCache) fromIndex(tt *table) (value, bool) {
-	mt := tt.metaTable
+// fromMeta answers from the cache through the receiver's metatable mt.
+func (c *fieldCache) fromMeta(mt *table) (value, bool) {
 	if mt == nil {
 		return nilValue, c.mtShape == nil
 	}
@@ -129,6 +129,30 @@ func indexTable(mt *table) (*table, int32, bool) {
 		return nil, 0, false
 	}
 	return idx, mi, true
+}
+
+// stringShape stands in a fieldCache for every string, whose fields come
+// through the string metatable.
+var stringShape = &shape{}
+
+// getStringField returns s[key] for a string s and a constant string key,
+// as getField does for a table, with mt the string metatable.
+func getStringField(mt *table, key value, c *fieldCache) (value, bool) {
+	if mt == nil { // indexing a string is an error
+		return nilValue, false
+	}
+	if c.shape == stringShape && c.mtShape != nil {
+		if v, ok := c.fromMeta(mt); ok {
+			return v, true
+		}
+	}
+	k, _ := key.str()
+	*c = fieldCache{shape: stringShape, slot: -1, indexSlot: -1, chain: c.chain}
+	if !c.fillIndex(mt, k) {
+		*c = fieldCache{chain: c.chain}
+		return nilValue, false
+	}
+	return c.fromMeta(mt)
 }
 
 // fill caches where tt's shape finds key: in its own slots, and through its

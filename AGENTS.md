@@ -218,9 +218,12 @@ nothing compiles.
     known to lack `__eq`, or equal-length strings longer than
     `maxInlineCompare`.
   - Upvalues.
-  - Fields through the field caches, including `__index` tables, and
-    array elements, including appends within capacity, of tables in
-    registers or upvalues.
+  - Fields through the field caches, including `__index` tables two
+    deep, own fields holding nil, and string methods through the string
+    metatable (whose cache `jitStep` fills), and array elements,
+    including appends within capacity, of tables in registers or
+    upvalues.
+  - `#` of strings.
   - Native calls and returns between compiled fixed-parameter Lua
     functions.
   - `math.floor`, `ceil`, `sqrt`, `abs`, `sin` and `cos` inline.
