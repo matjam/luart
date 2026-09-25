@@ -86,8 +86,8 @@ func chart(r *results) string {
 
 	// Legend, in series order.
 	lx := 24.0
-	for j, im := range impls {
-		fmt.Fprintf(&b, `<rect class="s%d" x="%g" y="70" width="12" height="12" rx="2"/>`, j, lx)
+	for _, im := range impls {
+		fmt.Fprintf(&b, `<rect class="s%d" x="%g" y="70" width="12" height="12" rx="2"/>`, im.slot, lx)
 		fmt.Fprintf(&b, `<text class="label" x="%g" y="80">%s</text>`+"\n", lx+18, html.EscapeString(im.label))
 		lx += 18 + 6.6*float64(len(im.label)) + 28 // about 6.6px a character
 	}
@@ -111,7 +111,7 @@ func chart(r *results) string {
 			y := top + float64(br.impl)*(barH+barGap)
 			x0, x1 := x(1), x(br.ratio)
 			fmt.Fprintf(&b, `<path class="s%d" d="%s"><title>%s: %s</title></path>`,
-				br.impl, barPath(x0, x1, y, barH), html.EscapeString(impls[br.impl].label), times(br.ratio))
+				impls[br.impl].slot, barPath(x0, x1, y, barH), html.EscapeString(impls[br.impl].label), times(br.ratio))
 			anchor, lx := "start", x1+5
 			if x1 < x0 {
 				anchor, lx = "end", x1-5

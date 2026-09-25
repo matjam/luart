@@ -40,11 +40,15 @@ var workloads = []struct{ name, label string }{
 }
 
 // impls are the interpreters, in column and series order, by the name of
-// their sub-benchmark.
-var impls = []struct{ name, label string }{
-	{"luart", "Luart (no JIT)"},
-	{"luart-jit", "Luart (JIT)"},
-	{"shopify", "go-lua"},
+// their sub-benchmark. slot is each one's color, the chart's .sN class,
+// which stays with the interpreter whatever its order.
+var impls = []struct {
+	name, label string
+	slot        int
+}{
+	{"luart-jit", "Luart (JIT)", 1},
+	{"luart", "Luart (no JIT)", 0},
+	{"shopify", "go-lua", 2},
 }
 
 type results struct {
