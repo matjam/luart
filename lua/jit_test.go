@@ -6,6 +6,8 @@ import (
 	"math"
 	"math/rand/v2"
 	"os"
+	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -680,42 +682,54 @@ func TestJITIntegers(t *testing.T) {
 
 func TestJITKernels(t *testing.T) {
 	skipWithoutJIT(t)
-	tests := []struct {
-		name    string
-		kernels int
-		src     string
-	}{
-		{"sum", 1, `function run() local s = 0; for i = 1.0, 1000 do s = s + i * 0.5 end; return s end`},
-		{"modulo is left to Go", 0, `function run() local s = 0; for i = 1.0, 1000 do s = s + (i * i) % 7 end; return s end`},
-		{"temporaries", 1, `function run() local s, t = 0, {}; for i = 1.0, 100 do local a = i * 2.0; local b = a - 1.0; s = s + a / b end; return s, type(t) end`},
-		{"old value in a temporary", 1, `function run() local s = 0; do local x = {} end; for i = 1.0, 10 do local y = i; s = s + y end; return s end`},
-		{"branches", 1, `function run() local a, b = 0.0, 0.0; for i = 1.0, 100 do if i == 30.0 then a = a + i elseif i < 50.0 then b = b - 1.0 else b = b + 2.0 end end; return a, b end`},
-		{"conditional write keeps old value", 1, `function run() local x, s = 5.0, 0.0; for i = 1.0, 10 do if i > 5.0 then x = i end; s = s + x end; return x, s end`},
-		{"zero iterations", 1, `function run() local s = 3; for i = 5.0, 1 do s = s + i end; return s end`},
-		{"negative and fractional steps", 2, `function run() local s = 0; for i = 10, 1, -0.5 do s = s + i end; for j = 0, 1, 0.1 do s = s * 1.01 + j end; return s end`},
-		{"NaN step", 1, `function run() local s, z = 0.0, 0; for i = 1.0, 3, z/z do s = s + 1.0 end; return s end`},
-		{"non-number live-in", 1, `function run() local s = "1"; for i = 1.0, 3 do s = s + i end; return s end`},
-		{"number constants", 1, `function run() local s = 0; for i = 1.0, 10 do local k = 2.5; s = s - k + i end; return s end`},
-		{"unary minus and equality", 1, `function run() local s = 0.0; for i = 1.0, 20 do local n = -i; if n == -10.0 then s = s + 100.0 end; s = s + n end; return s end`},
-		{"long loop spends budget", 1, `function run() local s = 0.0; for i = 1.0, 300000 do s = s + 1.0 end; return s end`},
-		{"loop variable after the loop", 1, `function run() local last = 0; for i = 1.0, 7 do last = i end; return last end`},
-		{"nested: inner only", 1, `function run() local s = 0; for i = 1.0, 10 do for j = 1.0, 10 do s = s + i * j end end; return s end`},
-		{"break is not a kernel", 0, `function run() local s = 0; for i = 1.0, 10 do s = s + i; if s > 20 then break end end; return s end`},
-		{"calls are not kernels", 0, `function run() local s = 0; for i = 1.0, 10 do s = s + math.floor(i / 2) end; return s end`},
+	// runs says which kernels must run: "int", "float", "both" or "".
+	tests := []struct{ name, runs, src string }{
+		{"integer sum", "int", `function run() local s = 0; for i = 1, 1000 do s = s + i end; return s end`},
+		{"float sum", "float", `function run() local s = 0; for i = 1.0, 1000 do s = s + i * 0.5 end; return s end`},
+		{"integer loop, float accumulator", "int", `function run() local s = 0.0; for i = 1, 1000 do s = s + i * 0.5 end; return s end`},
+		{"accumulator turning float", "int", `function run() local s = 0; for i = 1, 100 do s = s + i / 3 end; return s end`},
+		{"integer modulo", "int", `function run() local s = 0; for i = 1, 1000 do s = s + (i * i) % 7 end; return s end`},
+		{"floor division and signs", "int", `function run() local s = 0; for i = -50, 50 do s = s + i // 3 + i % -4 + (-i) // 5 + (-i) % 6 + i // -7 end; return s end`},
+		{"divisor -1", "int", `function run() local s = 0; for i = math.mininteger, math.mininteger + 3 do s = s + i % -1 + i // -1 end; return s end`},
+		{"float modulo is left to Go", "", `function run() local s = 0.0; for i = 1.0, 1000 do s = s + (i * i) % 7 end; return s end`},
+		{"modulo by a register is not a kernel", "", `function run() local s, m = 0, 7; for i = 1, 100 do s = s + i % m end; return s end`},
+		{"temporaries", "int", `function run() local s, t = 0, {}; for i = 1, 100 do local a = i * 2; local b = a - 1; s = s + a / b end; return s, type(t) end`},
+		{"old value in a temporary", "int", `function run() local s = 0; do local x = {} end; for i = 1, 10 do local y = i; s = s + y end; return s end`},
+		{"branches", "int", `function run() local a, b = 0, 0; for i = 1, 100 do if i % 3 == 0 then a = a + i elseif i < 50 then b = b - 1 else b = b + 2 end end; return a, b end`},
+		{"conditional write keeps old value", "int", `function run() local x, s = 5, 0; for i = 1, 10 do if i > 5 then x = i end; s = s + x end; return x, s end`},
+		{"zero iterations", "", `function run() local s = 3; for i = 5, 1 do s = s + i end; return s end`},
+		{"negative and fractional steps", "both", `function run() local s = 0; for i = 10, 1, -3 do s = s + i end; for i = 10, 1, -0.5 do s = s + i end; for j = 0, 1, 0.1 do s = s * 1.01 + j end; return s end`},
+		{"NaN step", "float", `function run() local s, z = 0, 0; for i = 1.0, 3, z/z do s = s + 1 end; return s end`},
+		{"string live-in converts after one iteration", "int", `function run() local s = "1"; for i = 1, 3 do s = s + i end; return s end`},
+		{"number constants", "int", `function run() local s = 0; for i = 1, 10 do local k = 2.5; s = s - k + i end; return s end`},
+		{"unary minus and equality", "int", `function run() local s = 0; for i = 1, 20 do local n = -i; if n == -10 then s = s + 100 end; s = s + n end; return s end`},
+		{"float loop against integer constants", "float", `function run() local s = 0; for i = 1.0, 20 do if i < 10 then s = s + 1 end; if i == 15 then s = s + 100 end end; return s end`},
+		{"mixed register comparison is not a kernel", "", `function run() local s, x = 0, 2.5; for i = 1, 10 do if i < x then s = s + 1 end end; return s end`},
+		{"overflow wraps", "int", `function run() local s = math.maxinteger - 5; for i = 1, 10 do s = s + 1 end; return s end`},
+		{"loop at the end of the range", "int", `function run() local s = 0; for i = math.maxinteger - 3, math.maxinteger do s = s + i % 5 end; return s end`},
+		{"long loop spends budget", "int", `function run() local s = 0; for i = 1, 300000 do s = s + 1 end; return s end`},
+		{"loop variable after the loop", "int", `function run() local last = 0; for i = 1, 7 do last = i end; return last end`},
+		{"nested: inner only", "int", `function run() local s = 0; for i = 1, 10 do for j = 1, 10 do s = s + i * j end end; return s end`},
+		{"break is not a kernel", "", `function run() local s = 0; for i = 1, 10 do s = s + i; if s > 20 then break end end; return s end`},
+		{"calls are not kernels", "", `function run() local s = 0; for i = 1, 10 do s = s + math.floor(i / 2) end; return s end`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Kernels run only while the write barrier is off: finish any
+			// collection and hold off the next.
+			runtime.GC()
+			defer debug.SetGCPercent(debug.SetGCPercent(-1))
 			jit, interp, lj := runBoth(t, tt.src)
 			if jit != interp {
 				t.Fatalf("JIT %q, interpreter %q", jit, interp)
 			}
 			lj.Global("run")
-			p := lj.ToValue(-1).(*luaClosure).prototype
-			if p.jit == nil {
+			if p := lj.ToValue(-1).(*luaClosure).prototype; p.jit == nil {
 				t.Fatal("run was not compiled")
 			}
-			if p.jit.kernels != tt.kernels {
-				t.Fatalf("%d kernels, want %d", p.jit.kernels, tt.kernels)
+			floats, ints := lj.jitCtx.kernels[0] > 0, lj.jitCtx.kernels[1] > 0
+			if want := tt.runs; floats != (want == "float" || want == "both") || ints != (want == "int" || want == "both") {
+				t.Fatalf("float kernels ran: %v, integer kernels ran: %v; want %q", floats, ints, want)
 			}
 		})
 	}

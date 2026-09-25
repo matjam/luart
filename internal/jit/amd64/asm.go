@@ -262,6 +262,9 @@ func (a *Asm) Div(rs Reg) { a.opRR([]byte{0xf7}, 6, uint8(rs)) }
 // divisor and on overflow.
 func (a *Asm) Idiv(rs Reg) { a.opRR([]byte{0xf7}, 7, uint8(rs)) }
 
+// IdivMem is Idiv by the 64-bit word at base+disp.
+func (a *Asm) IdivMem(base Reg, disp uint32) { a.opRM(true, []byte{0xf7}, 7, base, disp) }
+
 // Cqo sign-extends RAX into RDX.
 func (a *Asm) Cqo() { a.byte(0x48, 0x99) }
 

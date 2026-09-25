@@ -72,17 +72,17 @@ func compileJIT(p *prototype, g *globalState) (code []byte, offsets []int32, ent
 		c.goCall[i], c.numCall[i], c.notLua[i], c.strSelf[i] = -1, -1, -1, -1
 	}
 	c.prologue()
-	loops := map[int]*kernel{}
+	loops := map[int][]*kernel{}
 	for ip, i := range c.p.Code {
 		if i.OpCode() == bytecode.OpForLoop && !isExtraArg(c.p.Code, ip) {
-			if k := c.findKernel(ip); k != nil {
-				loops[ip] = k
+			if ks := c.findKernels(ip); ks != nil {
+				loops[ip] = ks
 			}
 		}
 	}
 	for ip := 0; ip < len(c.code); ip++ {
 		c.a.Bind(c.pcs[ip])
-		if k := loops[ip]; k != nil {
+		for _, k := range loops[ip] {
 			normal := c.a.NewLabel()
 			c.emitKernel(k, normal)
 			c.a.Bind(normal)
@@ -105,7 +105,11 @@ func compileJIT(p *prototype, g *globalState) (code []byte, offsets []int32, ent
 	for i, l := range c.exits {
 		exits[i] = l >= 0
 	}
-	return code, offsets, jitEntries(c.p, exits, c.always), len(loops)
+	kernels = 0
+	for _, ks := range loops {
+		kernels += len(ks)
+	}
+	return code, offsets, jitEntries(c.p, exits, c.always), kernels
 }
 
 // prologue loads the fixed registers and jumps to ctx.target.
