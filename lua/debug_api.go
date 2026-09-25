@@ -1,6 +1,8 @@
 package lua
 
 import (
+	"strings"
+
 	"github.com/matjam/luart/internal/bytecode"
 	"github.com/matjam/luart/internal/compiler"
 )
@@ -200,7 +202,7 @@ func (l *State) Info(what string, frame Frame) (d Debug, ok bool) {
 	where := frame.ci
 	var f closure
 	var fun value
-	if what[0] == '>' {
+	if strings.HasPrefix(what, ">") {
 		where = nil
 		fun = l.stack[l.top-1]
 		if !fun.isFunction() {

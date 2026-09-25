@@ -2,13 +2,13 @@ package compiler
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"math"
 	"slices"
 	"strconv"
 	"strings"
-	"unicode"
 )
 
 const firstReserved = 257
@@ -89,24 +89,40 @@ func (s *scanner) numberError()               { s.scanError("malformed number", 
 func isNewLine(c rune) bool                   { return c == '\n' || c == '\r' }
 func isDecimal(c rune) bool                   { return '0' <= c && c <= '9' }
 
+// Characters classify as in the C locale, as in Lua: names are ASCII.
+func isNameStart(c rune) bool { return 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || c == '_' }
+func isSpace(c rune) bool     { return c == ' ' || '\t' <= c && c <= '\r' }
+
+// tokenToString describes a token as llex.c's luaX_token2str does: a
+// symbol or reserved word quoted, any other token by its kind, such as
+// <name>.
 func (s *scanner) tokenToString(t rune) string {
 	switch {
-	case t == tkName || t == tkString:
-		return s.s
-	case t == tkNumber:
-		return fmt.Sprintf("%f", s.n)
+	case t < firstReserved && ' ' <= t && t < 0x7f:
+		return fmt.Sprintf("'%c'", t)
 	case t < firstReserved:
-		return string(t) // TODO check for printable rune
+		return fmt.Sprintf("char(%d)", t)
 	case t < tkEOS:
 		return fmt.Sprintf("'%s'", tokens[t-firstReserved])
 	}
 	return tokens[t-firstReserved]
 }
 
+// txtToken describes a token for an error message as llex.c's txtToken
+// does: a name, string or numeral by its text, which is in the buffer, the
+// text of the token being scanned or the last one scanned.
+func (s *scanner) txtToken(t rune) string {
+	switch t {
+	case tkName, tkString, tkNumber:
+		return fmt.Sprintf("'%s'", s.buffer.String())
+	}
+	return s.tokenToString(t)
+}
+
 func (s *scanner) scanError(message string, token rune) {
 	buff := ChunkID(s.source)
 	if token != 0 {
-		message = fmt.Sprintf("%s:%d: %s near %s", buff, s.lineNumber, message, s.tokenToString(token))
+		message = fmt.Sprintf("%s:%d: %s near %s", buff, s.lineNumber, message, s.txtToken(token))
 	} else {
 		message = fmt.Sprintf("%s:%d: %s", buff, s.lineNumber, message)
 	}
@@ -183,18 +199,16 @@ func (s *scanner) readMultiLine(comment bool, sep int) (str string) {
 		case ']':
 			if s.skipSeparator() == sep {
 				s.saveAndAdvance()
-				if !comment {
+				if comment {
+					s.buffer.Reset()
+				} else {
 					str = s.buffer.String()
 					str = str[2+sep : len(str)-(2+sep)]
 				}
-				s.buffer.Reset()
 				return
 			}
-		case '\r':
-			s.current = '\n'
-			fallthrough
-		case '\n':
-			s.save(s.current)
+		case '\r', '\n':
+			s.save('\n')
 			s.incrementLineNumber()
 		default:
 			if !comment {
@@ -205,102 +219,103 @@ func (s *scanner) readMultiLine(comment bool, sep int) (str string) {
 	}
 }
 
-func (s *scanner) readDigits() (c rune) {
-	for c = s.current; isDecimal(c); c = s.current {
-		s.saveAndAdvance()
-	}
-	return
-}
-
 func isHexadecimal(c rune) bool {
 	return '0' <= c && c <= '9' || 'a' <= c && c <= 'f' || 'A' <= c && c <= 'F'
 }
 
-func (s *scanner) readHexNumber(x float64) (n float64, c rune, i int) {
-	if c, n = s.current, x; !isHexadecimal(c) {
-		return
+func hexValue(c byte) float64 {
+	switch {
+	case '0' <= c && c <= '9':
+		return float64(c - '0')
+	case 'a' <= c && c <= 'f':
+		return float64(c - 'a' + 10)
 	}
-	for {
-		switch {
-		case '0' <= c && c <= '9':
-			c = c - '0'
-		case 'a' <= c && c <= 'f':
-			c = c - 'a' + 10
-		case 'A' <= c && c <= 'F':
-			c = c - 'A' + 10
-		default:
-			return
-		}
-		s.advance()
-		c, n, i = s.current, n*16.0+float64(c), i+1
-	}
+	return float64(c - 'A' + 10)
 }
 
+// readNumber reads a numeral as llex.c's read_numeral does, greedily:
+// digits, hexadecimal digits, '.'s and an exponent with its sign. The text
+// converts as a whole, so 3f and 1..2 are malformed numbers.
 func (s *scanner) readNumber() token {
-	const bits64, base10 = 64, 10
-	c := s.current
-	s.assert(isDecimal(c))
+	expo := "Ee"
+	first := s.current
+	s.assert(isDecimal(first))
 	s.saveAndAdvance()
-	if c == '0' && s.checkNext("Xx") { // hexadecimal
-		prefix := s.buffer.String()
-		s.assert(prefix == "0x" || prefix == "0X")
-		s.buffer.Reset()
-		var exponent int
-		fraction, c, i := s.readHexNumber(0)
-		if c == '.' {
-			s.advance()
-			fraction, c, exponent = s.readHexNumber(fraction)
-		}
-		if i == 0 && exponent == 0 {
-			s.numberError()
-		}
-		exponent *= -4
-		if c == 'p' || c == 'P' {
-			s.advance()
-			var negativeExponent bool
-			if c = s.current; c == '+' || c == '-' {
-				negativeExponent = c == '-'
-				s.advance()
-			}
-			if !isDecimal(s.current) {
-				s.numberError()
-			}
-			_ = s.readDigits()
-			if e, err := strconv.ParseInt(s.buffer.String(), base10, bits64); err != nil {
-				s.numberError()
-			} else if negativeExponent {
-				exponent += int(-e)
-			} else {
-				exponent += int(e)
-			}
-			s.buffer.Reset()
-		}
-		return token{t: tkNumber, n: math.Ldexp(fraction, exponent)}
+	if first == '0' && s.checkNext("Xx") {
+		expo = "Pp"
 	}
-	c = s.readDigits()
-	if c == '.' {
-		s.saveAndAdvance()
-		c = s.readDigits()
-	}
-	if c == 'e' || c == 'E' {
-		s.saveAndAdvance()
-		if c = s.current; c == '+' || c == '-' {
+	for {
+		if s.checkNext(expo) {
+			s.checkNext("+-")
+		}
+		if isHexadecimal(s.current) || s.current == '.' {
 			s.saveAndAdvance()
-		}
-		_ = s.readDigits()
-	}
-	str := s.buffer.String()
-	if strings.HasPrefix(str, "0") {
-		if str = strings.TrimLeft(str, "0"); str == "" || !isDecimal(rune(str[0])) {
-			str = "0" + str
+		} else {
+			break
 		}
 	}
-	f, err := strconv.ParseFloat(str, bits64)
-	if err != nil {
+	f, ok := numeral(s.buffer.String())
+	if !ok {
 		s.numberError()
 	}
-	s.buffer.Reset()
 	return token{t: tkNumber, n: f}
+}
+
+// numeral converts a numeral's text as lobject.c's luaO_str2d does. A
+// decimal numeral too large to represent is infinite, as strtod makes it.
+func numeral(s string) (float64, bool) {
+	if len(s) > 1 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X') {
+		return hexNumeral(s[2:])
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil && !errors.Is(err, strconv.ErrRange) {
+		return 0, false
+	}
+	return f, true
+}
+
+// hexNumeral converts a hexadecimal numeral after its 0x, as lobject.c's
+// lua_strx2number does: digits, an optional fraction and an optional
+// binary exponent.
+func hexNumeral(s string) (float64, bool) {
+	var r float64
+	var i, e int // digits before and after the point
+	readHex := func(n *int) {
+		for ; s != "" && isHexadecimal(rune(s[0])); s = s[1:] {
+			r = r*16 + hexValue(s[0])
+			*n++
+		}
+	}
+	readHex(&i)
+	if s != "" && s[0] == '.' {
+		s = s[1:]
+		readHex(&e)
+	}
+	if i == 0 && e == 0 {
+		return 0, false
+	}
+	e *= -4 // each fractional digit divides by 16
+	if s != "" && (s[0] == 'p' || s[0] == 'P') {
+		s = s[1:]
+		negative := s != "" && s[0] == '-'
+		if s != "" && (s[0] == '+' || s[0] == '-') {
+			s = s[1:]
+		}
+		if s == "" || !isDecimal(rune(s[0])) {
+			return 0, false
+		}
+		exponent := 0
+		for ; s != "" && isDecimal(rune(s[0])); s = s[1:] {
+			if exponent < 1<<20 { // beyond any float64's range already
+				exponent = exponent*10 + int(s[0]-'0')
+			}
+		}
+		if negative {
+			exponent = -exponent
+		}
+		e += exponent
+	}
+	return math.Ldexp(r, e), s == ""
 }
 
 var escapes map[rune]rune = map[rune]rune{
@@ -370,7 +385,7 @@ func (s *scanner) readString() token {
 			case c == 'x':
 				s.save(s.readHexEscape())
 			case c == 'z':
-				for s.advance(); unicode.IsSpace(s.current); {
+				for s.advance(); isSpace(s.current); {
 					if isNewLine(s.current) {
 						s.incrementLineNumber()
 					} else {
@@ -389,7 +404,6 @@ func (s *scanner) readString() token {
 	}
 	s.saveAndAdvance()
 	str := s.buffer.String()
-	s.buffer.Reset()
 	return token{t: tkString, s: str[1 : len(str)-1]}
 }
 
@@ -399,7 +413,6 @@ func isReserved(s string) bool {
 
 func (s *scanner) reservedOrName() token {
 	str := s.buffer.String()
-	s.buffer.Reset()
 	for i, reserved := range tokens[:reservedCount] {
 		if str == reserved {
 			return token{t: rune(i + firstReserved), s: reserved}
@@ -408,8 +421,11 @@ func (s *scanner) reservedOrName() token {
 	return token{t: tkName, s: str}
 }
 
+// scan reads the next token. Its text stays in the buffer until the next
+// scan, for error messages.
 func (s *scanner) scan() token {
 	const comment, str = true, false
+	s.buffer.Reset()
 	for {
 		switch c := s.current; c {
 		case '\n', '\r':
@@ -433,7 +449,7 @@ func (s *scanner) scan() token {
 		case '[':
 			if sep := s.skipSeparator(); sep >= 0 {
 				return token{t: tkString, s: s.readMultiLine(str, sep)}
-			} else if s.buffer.Reset(); sep == -1 {
+			} else if sep == -1 {
 				return token{t: '['}
 			}
 			s.scanError("invalid long string delimiter", tkString)
@@ -479,7 +495,7 @@ func (s *scanner) scan() token {
 				}
 				s.buffer.Reset()
 				return token{t: tkConcat}
-			} else if !unicode.IsDigit(s.current) {
+			} else if !isDecimal(s.current) {
 				s.buffer.Reset()
 				return token{t: '.'}
 			} else {
@@ -488,10 +504,10 @@ func (s *scanner) scan() token {
 		case 0:
 			s.advance()
 		default:
-			if unicode.IsDigit(c) {
+			if isDecimal(c) {
 				return s.readNumber()
-			} else if c == '_' || unicode.IsLetter(c) {
-				for ; c == '_' || unicode.IsLetter(c) || unicode.IsDigit(c); c = s.current {
+			} else if isNameStart(c) {
+				for ; isNameStart(c) || isDecimal(c); c = s.current {
 					s.saveAndAdvance()
 				}
 				return s.reservedOrName()

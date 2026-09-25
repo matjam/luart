@@ -20,7 +20,10 @@ func TestScanner(t *testing.T) {
 		{"=", []token{{t: '='}}},
 		{"==", []token{{t: tkEq}}},
 		{"\"hello, world\"", []token{{t: tkString, s: "hello, world"}}},
-		{"[[hello,\r\nworld]]", []token{{t: tkString, s: "hello,\n\nworld"}}},
+		// "\r\n" and "\n\r" are one line break; "\r\r" is two.
+		{"[[hello,\r\nworld]]", []token{{t: tkString, s: "hello,\nworld"}}},
+		{"[[hello,\n\rworld]]", []token{{t: tkString, s: "hello,\nworld"}}},
+		{"[[hello,\r\rworld]]", []token{{t: tkString, s: "hello,\n\nworld"}}},
 		{".", []token{{t: '.'}}},
 		{"..", []token{{t: tkConcat}}},
 		{"...", []token{{t: tkDots}}},

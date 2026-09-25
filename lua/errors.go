@@ -122,5 +122,11 @@ func (l *State) errorMessage() {
 		l.top++
 		l.call(l.top-2, 1, false)
 	}
-	l.throw(RuntimeError(l.CheckString(-1)))
+	// The error value stays on the stack, whatever its type; the Go error
+	// carries it as text, or says what it is.
+	msg, ok := toString(l.stack[l.top-1])
+	if !ok {
+		msg = fmt.Sprintf("(error object is a %s value)", l.TypeName(-1))
+	}
+	l.throw(RuntimeError(msg))
 }

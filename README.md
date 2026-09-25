@@ -60,8 +60,8 @@ Work so far:
 Inherited from go-lua:
 
 - Most core libraries are implemented. The gaps are the coroutine library,
-  `debug.getinfo`, `getlocal`, `setlocal` and `debug`, `os.date` and
-  `os.setlocale`, and `io.popen`.
+  `debug.getlocal`, `setlocal` and `debug`, `os.date` and `os.setlocale`,
+  and `io.popen`.
 - Weak tables are not supported. Go's `weak` package (Go 1.24) could make
   them possible.
 

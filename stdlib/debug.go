@@ -85,6 +85,81 @@ func stringToMask(s string, maskCount bool) (mask byte) {
 	return
 }
 
+// getInfo is debug.getinfo([thread,] f [, what]), after ldblib.c's
+// db_getinfo. f is a function or a stack level.
+func getInfo(l *lua.State) int {
+	arg, l1 := threadArg(l)
+	options := l.OptString(arg+2, "flnStu")
+	var frame lua.Frame
+	if l.IsNumber(arg + 1) {
+		level, _ := l.ToInteger(arg + 1)
+		var ok bool
+		if frame, ok = l1.Frame(level); !ok {
+			l.PushNil() // level out of range
+			return 1
+		}
+	} else if l.IsFunction(arg + 1) {
+		options = ">" + options
+		l.PushValue(arg + 1)
+		l.XMove(l1, 1)
+	} else {
+		l.ArgumentError(arg+1, "function or level expected")
+	}
+	d, ok := l1.Info(options, frame)
+	if !ok {
+		l.ArgumentError(arg+2, "invalid option")
+	}
+	has := func(o byte) bool { return strings.IndexByte(options, o) >= 0 }
+	setString := func(k, v string) { l.PushString(v); l.SetField(-2, k) }
+	setInteger := func(k string, v int) { l.PushInteger(v); l.SetField(-2, k) }
+	setBoolean := func(k string, v bool) { l.PushBoolean(v); l.SetField(-2, k) }
+	l.CreateTable(0, 2)
+	if has('S') {
+		setString("source", d.Source)
+		setString("short_src", d.ShortSource)
+		setInteger("linedefined", d.LineDefined)
+		setInteger("lastlinedefined", d.LastLineDefined)
+		setString("what", d.What)
+	}
+	if has('l') {
+		setInteger("currentline", d.CurrentLine)
+	}
+	if has('u') {
+		setInteger("nups", d.UpValueCount)
+		setInteger("nparams", d.ParameterCount)
+		setBoolean("isvararg", d.IsVarArg)
+	}
+	if has('n') {
+		if d.NameKind != "" { // no name found leaves name nil, as in C
+			setString("name", d.Name)
+		}
+		setString("namewhat", d.NameKind)
+	}
+	if has('t') {
+		setBoolean("istailcall", d.IsTailCall)
+	}
+	// Info pushed the function for 'f' and then the lines for 'L'.
+	if has('L') {
+		moveStackOption(l, l1, "activelines")
+	}
+	if has('f') {
+		moveStackOption(l, l1, "func")
+	}
+	return 1
+}
+
+// moveStackOption moves a value Info pushed, below the result table on l
+// or on top of l1's stack, to the table's field name.
+func moveStackOption(l, l1 *lua.State, name string) {
+	if l == l1 {
+		l.PushValue(-2)
+		l.Remove(-3)
+	} else {
+		l1.XMove(l, 1)
+	}
+	l.SetField(-2, name)
+}
+
 var debugLibrary = []lua.RegistryFunction{
 	// {"debug", db_debug},
 	{Name: "getuservalue", Function: func(l *lua.State) int {
@@ -111,7 +186,7 @@ var debugLibrary = []lua.RegistryFunction{
 		l.PushInteger(l1.HookCount())
 		return 3
 	}},
-	// {"getinfo", db_getinfo},
+	{Name: "getinfo", Function: getInfo},
 	// {"getlocal", db_getlocal},
 	{Name: "getregistry", Function: func(l *lua.State) int { l.PushValue(lua.RegistryIndex); return 1 }},
 	{Name: "getmetatable", Function: func(l *lua.State) int {
