@@ -22,6 +22,33 @@ func field(l *lua.State, key string, def int) int {
 	return r
 }
 
+// shellCommand runs c with the shell, as C's system and popen do.
+func shellCommand(c string) *exec.Cmd { return exec.Command("sh", "-c", c) }
+
+// execResult returns a finished command's results, as lauxlib.c's
+// luaL_execresult does: true or nil, then "exit" and the exit status, or
+// "signal" and the signal that ended it.
+func execResult(l *lua.State, err error) int {
+	reason, status := "exit", 0
+	if err != nil {
+		if e, ok := err.(*exec.ExitError); !ok {
+			status = -1 // not run, or no status, as system() reports it
+		} else if ws, ok := e.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+			reason, status = "signal", int(ws.Signal())
+		} else {
+			status = e.ExitCode()
+		}
+	}
+	if err == nil {
+		l.PushBoolean(true)
+	} else {
+		l.PushNil()
+	}
+	l.PushString(reason)
+	l.PushInteger(status)
+	return 3
+}
+
 var osLibrary = []lua.RegistryFunction{
 	{Name: "clock", Function: clock},
 	{Name: "date", Function: osDate},
@@ -43,52 +70,9 @@ var osLibrary = []lua.RegistryFunction{
 			return 1
 		}
 
-		terminatedSuccessfully := true
-		terminationReason := "exit"
-		terminationData := 0
-
-		// Create the command.
-		cmd := exec.Command("sh", "-c", c)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-
-		// Run the command.
-		if err := cmd.Run(); err != nil {
-			terminatedSuccessfully = false
-			terminationReason = "exit"
-			terminationData = 1
-
-			if exiterr, ok := err.(*exec.ExitError); ok {
-				if status, ok := exiterr.Sys().(syscall.WaitStatus); ok {
-					if status.Signaled() {
-						terminationReason = "signal"
-						terminationData = int(status.Signal())
-					} else {
-						terminationData = status.ExitStatus()
-					}
-				} else {
-					// Unsupported system?
-				}
-			} else {
-				// From man 3 system:
-				// "If a child process could not be created, or its
-				// status could not be retrieved, the return value
-				// is -1."
-				terminationData = -1
-			}
-		}
-
-		// Deal with the return values.
-		if terminatedSuccessfully {
-			l.PushBoolean(true)
-		} else {
-			l.PushNil()
-		}
-
-		l.PushString(terminationReason)
-		l.PushInteger(terminationData)
-
-		return 3
+		cmd := shellCommand(c)
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+		return execResult(l, cmd.Run())
 	}},
 	{Name: "exit", Function: func(l *lua.State) int {
 		var status int

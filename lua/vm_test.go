@@ -69,7 +69,7 @@ func TestLua(t *testing.T) {
 		// {name: "db"},
 		// {name: "errors"},
 		{name: "events"},
-		// {name: "files"},
+		{name: "files"},
 		// {name: "gc"},
 		{name: "goto"},
 		// {name: "literals"},
@@ -90,7 +90,9 @@ func TestLua(t *testing.T) {
 		t.Log(v)
 		l := NewState()
 		openLibraries(l)
-		for _, s := range []string{"_port", "_no32", "_noformatA"} {
+		// _noposix skips files.lua's checks of popen and os.execute, whose
+		// results depend on the host's /bin/sh and its lua binary.
+		for _, s := range []string{"_port", "_no32", "_noformatA", "_noposix"} {
 			l.PushBoolean(true)
 			l.SetGlobal(s)
 		}
