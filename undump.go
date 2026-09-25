@@ -96,7 +96,7 @@ func (state *loadState) readCode() (code []bytecode.Instruction, err error) {
 	return
 }
 
-func (state *loadState) readUpValues() (u []upValueDesc, err error) {
+func (state *loadState) readUpValues() (u []bytecode.UpValueDesc, err error) {
 	n, err := state.readInt()
 	if err != nil || n == 0 {
 		return
@@ -106,29 +106,31 @@ func (state *loadState) readUpValues() (u []upValueDesc, err error) {
 	if err != nil {
 		return
 	}
-	u = make([]upValueDesc, n)
+	u = make([]bytecode.UpValueDesc, n)
 	for i := range v {
 		u[i].IsLocal, u[i].Index = v[i].IsLocal != 0, int(v[i].Index)
 	}
 	return
 }
 
-func (state *loadState) readLocalVariables() (localVariables []localVariable, err error) {
+func (state *loadState) readLocalVariables() (localVariables []bytecode.LocalVariable, err error) {
 	var n int32
 	if n, err = state.readInt(); err != nil || n == 0 {
 		return
 	}
-	localVariables = make([]localVariable, n)
+	localVariables = make([]bytecode.LocalVariable, n)
 	for i := range localVariables {
 		if localVariables[i].Name, err = state.readString(); err != nil {
 			return
 		}
-		if localVariables[i].StartPC, err = state.readPC(); err != nil {
+		var start, end pc
+		if start, err = state.readPC(); err != nil {
 			return
 		}
-		if localVariables[i].EndPC, err = state.readPC(); err != nil {
+		if end, err = state.readPC(); err != nil {
 			return
 		}
+		localVariables[i].StartPC, localVariables[i].EndPC = int(start), int(end)
 	}
 	return
 }
@@ -143,7 +145,7 @@ func (state *loadState) readLineInfo() (lineInfo []int32, err error) {
 	return
 }
 
-func (state *loadState) readDebug(p *prototype) (source string, lineInfo []int32, localVariables []localVariable, names []string, err error) {
+func (state *loadState) readDebug(p *prototype) (source string, lineInfo []int32, localVariables []bytecode.LocalVariable, names []string, err error) {
 	var n int32
 	if source, err = state.readString(); err != nil {
 		return

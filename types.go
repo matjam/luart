@@ -5,10 +5,10 @@ import (
 	"math"
 	"reflect"
 	"strconv"
-	"strings"
 	"unsafe"
 
 	"github.com/matjam/luart/internal/bytecode"
+	"github.com/matjam/luart/internal/compiler"
 )
 
 // value is a Lua value in two words. p is nil for nil, a sentinel address
@@ -352,8 +352,6 @@ type hashValue struct {
 
 func (h hashValue) value() value { return tagged(h.p, h.x) }
 
-type float8 int
-
 func isFalse(s value) bool {
 	switch s.p {
 	case nil, nonePtr():
@@ -364,20 +362,9 @@ func isFalse(s value) bool {
 	return false
 }
 
-type localVariable struct {
-	Name           string
-	StartPC, EndPC pc
-}
-
 type userData struct {
 	metaTable, env *table
 	data           any
-}
-
-type upValueDesc struct {
-	Name    string
-	IsLocal bool
-	Index   int
 }
 
 type prototype struct {
@@ -387,8 +374,8 @@ type prototype struct {
 	fields                       []fieldCache           // by pc, for exec's field instructions
 	Prototypes                   []prototype
 	LineInfo                     []int32
-	LocalVariables               []localVariable
-	UpValues                     []upValueDesc
+	LocalVariables               []bytecode.LocalVariable
+	UpValues                     []bytecode.UpValueDesc
 	cache                        *luaClosure
 	Source                       string
 	LineDefined, LastLineDefined int
@@ -491,7 +478,8 @@ func (p *prototype) constantName(k int, pc pc) string {
 	return "?"
 }
 
-func (p *prototype) localName(index int, pc pc) (string, bool) {
+func (p *prototype) localName(index int, at pc) (string, bool) {
+	pc := int(at)
 	for i := 0; i < len(p.LocalVariables) && p.LocalVariables[i].StartPC <= pc; i++ {
 		if pc < p.LocalVariables[i].EndPC {
 			if index--; index == 0 {
@@ -502,98 +490,13 @@ func (p *prototype) localName(index int, pc pc) (string, bool) {
 	return "", false
 }
 
-// Converts an integer to a "floating point byte", represented as
-// (eeeeexxx), where the real value is (1xxx) * 2^(eeeee - 1) if
-// eeeee != 0 and (xxx) otherwise.
-func float8FromInt(x int) float8 {
-	if x < 8 {
-		return float8(x)
-	}
-	e := 0
-	for ; x >= 0x10; e++ {
-		x = (x + 1) >> 1
-	}
-	return float8(((e + 1) << 3) | (x - 8))
-}
-
-func intFromFloat8(x float8) int {
-	e := x >> 3 & 0x1f
-	if e == 0 {
-		return int(x)
-	}
-	return int(x&7+8) << uint(e-1)
-}
-
-const minPow10, maxPow10 = -323, 308
-
-// pow10 holds correctly rounded powers of ten from 1e-323 to 1e308.
-var pow10 = func() (t [maxPow10 - minPow10 + 1]float64) {
-	for i := range t {
-		t[i], _ = strconv.ParseFloat("1e"+strconv.Itoa(i+minPow10), 64)
-	}
-	return
-}()
-
-func arith(op Operator, v1, v2 float64) float64 {
-	switch op {
-	case OpAdd:
-		return v1 + v2
-	case OpSub:
-		return v1 - v2
-	case OpMul:
-		return v1 * v2
-	case OpDiv:
-		return v1 / v2
-	case OpMod:
-		return v1 - math.Floor(v1/v2)*v2
-	case OpPow:
-		// math.Pow and math.Pow10 can be 1 ulp off for powers of ten, which
-		// luac folds exactly.
-		if v1 == 10.0 && minPow10 <= v2 && v2 <= maxPow10 && math.Trunc(v2) == v2 {
-			return pow10[int(v2)-minPow10]
-		}
-		return math.Pow(v1, v2)
-	case OpUnaryMinus:
-		return -v1
-	}
-	panic(fmt.Sprintf("not an arithmetic op code (%d)", op))
-}
-
-func (l *State) parseNumber(s string) (v float64, ok bool) { // TODO this is f*cking ugly - scanner.readNumber should be refactored.
-	if len(strings.Fields(s)) != 1 || strings.ContainsRune(s, 0) {
-		return
-	}
-	scanner := scanner{l: l, r: strings.NewReader(s)}
-	t := scanner.scan()
-	if t.t == '-' {
-		if t := scanner.scan(); t.t == tkNumber {
-			v, ok = -t.n, true
-		}
-	} else if t.t == tkNumber {
-		v, ok = t.n, true
-	} else if t.t == '+' {
-		if t := scanner.scan(); t.t == tkNumber {
-			v, ok = t.n, true
-		}
-	}
-	if ok && scanner.scan().t != tkEOS {
-		ok = false
-	} else if math.IsInf(v, 0) || math.IsNaN(v) {
-		ok = false
-	}
-	return
-}
-
 func (l *State) toNumber(r value) (v float64, ok bool) {
 	if v, ok = r.number(); ok {
 		return
 	}
 	var s string
 	if s, ok = r.str(); ok {
-		if err := l.protectedCall(func() { v, ok = l.parseNumber(strings.TrimSpace(s)) }, l.top, l.errorFunction); err != nil {
-			l.pop() // Remove error message from the stack.
-			ok = false
-		}
+		v, ok = compiler.ParseNumber(s)
 	}
 	return
 }

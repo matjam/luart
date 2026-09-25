@@ -2,9 +2,9 @@ package luart
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/matjam/luart/internal/bytecode"
+	"github.com/matjam/luart/internal/compiler"
 )
 
 func (l *State) runtimeError(message string) {
@@ -14,7 +14,7 @@ func (l *State) runtimeError(message string) {
 		if source == "" {
 			source = "?"
 		} else {
-			source = chunkID(source)
+			source = compiler.ChunkID(source)
 		}
 		l.push(stringValue(fmt.Sprintf("%s:%d: %s", source, line, message)))
 	}
@@ -123,24 +123,4 @@ func (l *State) errorMessage() {
 		l.call(l.top-2, 1, false)
 	}
 	l.throw(RuntimeError(l.CheckString(-1)))
-}
-
-func chunkID(source string) string {
-	switch source[0] {
-	case '=': // "literal" source
-		if len(source) <= idSize {
-			return source[1:]
-		}
-		return source[1:idSize]
-	case '@': // file name
-		if len(source) <= idSize {
-			return source[1:]
-		}
-		return "..." + source[1:idSize-3]
-	}
-	source = strings.Split(source, "\n")[0]
-	if l := len("[string \"...\"]"); len(source) > idSize-l {
-		return "[string \"" + source + "...\"]"
-	}
-	return "[string \"" + source + "\"]"
 }

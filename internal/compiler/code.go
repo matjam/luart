@@ -1,4 +1,4 @@
-package luart
+package compiler
 
 import (
 	"fmt"
@@ -103,7 +103,7 @@ type block struct {
 
 type function struct {
 	constantLookup      map[any]int // Go-native key for each constant; see addConstant
-	f                   *prototype
+	f                   *bytecode.Proto
 	previous            *function
 	p                   *parser
 	block               *block
@@ -114,8 +114,9 @@ type function struct {
 }
 
 func (f *function) OpenFunction(line int) {
-	f.f.Prototypes = append(f.f.Prototypes, prototype{Source: f.p.source, MaxStackSize: 2, LineDefined: line})
-	f.p.function = &function{f: &f.f.Prototypes[len(f.f.Prototypes)-1], constantLookup: make(map[any]int), previous: f, p: f.p, jumpPC: noJump, firstLocal: len(f.p.activeVariables)}
+	p := &bytecode.Proto{Source: f.p.source, MaxStackSize: 2, LineDefined: line}
+	f.f.Prototypes = append(f.f.Prototypes, p)
+	f.p.function = &function{f: p, constantLookup: make(map[any]int), previous: f, p: f.p, jumpPC: noJump, firstLocal: len(f.p.activeVariables)}
 	f.p.function.EnterBlock(false)
 }
 
@@ -142,20 +143,20 @@ func (f *function) undefinedGotoError(g label) {
 	}
 }
 
-func (f *function) LocalVariable(i int) *localVariable {
+func (f *function) LocalVariable(i int) *bytecode.LocalVariable {
 	index := f.p.activeVariables[f.firstLocal+i]
 	return &f.f.LocalVariables[index]
 }
 
 func (f *function) AdjustLocalVariables(n int) {
 	for f.activeVariableCount += n; n != 0; n-- {
-		f.LocalVariable(f.activeVariableCount - n).StartPC = pc(len(f.f.Code))
+		f.LocalVariable(f.activeVariableCount - n).StartPC = len(f.f.Code)
 	}
 }
 
 func (f *function) removeLocalVariables(level int) {
 	for i := level; i < f.activeVariableCount; i++ {
-		f.LocalVariable(i).EndPC = pc(len(f.f.Code))
+		f.LocalVariable(i).EndPC = len(f.f.Code)
 	}
 	f.p.activeVariables = f.p.activeVariables[:len(f.p.activeVariables)-(f.activeVariableCount-level)]
 	f.activeVariableCount = level
@@ -163,7 +164,7 @@ func (f *function) removeLocalVariables(level int) {
 
 func (f *function) MakeLocalVariable(name string) {
 	r := len(f.f.LocalVariables)
-	f.f.LocalVariables = append(f.f.LocalVariables, localVariable{Name: name})
+	f.f.LocalVariables = append(f.f.LocalVariables, bytecode.LocalVariable{Name: name})
 	f.p.checkLimit(len(f.p.activeVariables)+1-f.firstLocal, maxLocalVariables, "local variables")
 	f.p.activeVariables = append(f.p.activeVariables, r)
 }
@@ -278,7 +279,7 @@ func (f *function) semanticError(message string) {
 
 func (f *function) breakLabel()                                  { f.FindGotos(f.MakeLabel("break", 0)) }
 func (f *function) unreachable()                                 { f.assert(false) }
-func (f *function) assert(cond bool)                             { f.p.l.assert(cond) }
+func (f *function) assert(cond bool)                             { f.p.assert(cond) }
 func (f *function) Instruction(e exprDesc) *bytecode.Instruction { return &f.f.Code[e.info] }
 func (e exprDesc) hasJumps() bool                                { return e.t != e.f }
 func (e exprDesc) isNumeral() bool                               { return e.kind == kindNumber && e.t == noJump && e.f == noJump }
@@ -365,7 +366,7 @@ func (f *function) Jump() int {
 
 func (f *function) JumpTo(target int)             { f.PatchList(f.Jump(), target) }
 func (f *function) ReturnNone()                   { f.EncodeABC(bytecode.OpReturn, 0, 1, 0) }
-func (f *function) SetMultipleReturns(e exprDesc) { f.setReturns(e, MultipleReturns) }
+func (f *function) SetMultipleReturns(e exprDesc) { f.setReturns(e, bytecode.MultipleReturns) }
 
 func (f *function) Return(e exprDesc, resultCount int) {
 	if e.hasMultipleReturns() {
@@ -373,7 +374,7 @@ func (f *function) Return(e exprDesc, resultCount int) {
 			f.Instruction(e).SetOpCode(bytecode.OpTailCall)
 			f.assert(f.Instruction(e).A() == f.activeVariableCount)
 		}
-		f.EncodeABC(bytecode.OpReturn, f.activeVariableCount, MultipleReturns+1, 0)
+		f.EncodeABC(bytecode.OpReturn, f.activeVariableCount, bytecode.MultipleReturns+1, 0)
 	} else if resultCount == 1 {
 		f.EncodeABC(bytecode.OpReturn, f.ExpressionToAnyRegister(e).info, 1+1, 0)
 	} else {
@@ -517,10 +518,11 @@ func (f *function) Concatenate(l1, l2 int) int {
 	return l1
 }
 
-// addConstant returns the index of constant v, adding it if needed. k is a
-// Go key that identifies v: its float64, string or bool, the bits of 0 and
-// NaN (which float keys would merge or lose), or f itself for nil.
-func (f *function) addConstant(k any, v value) int {
+// addConstant returns the index of constant v, a float64, string, bool or
+// nil, adding it if needed. k is a Go key that identifies v: v itself, the
+// bits of 0 and NaN (which float keys would merge or lose), or f itself
+// for nil.
+func (f *function) addConstant(k, v any) int {
 	if index, ok := f.constantLookup[k]; ok {
 		return index
 	}
@@ -532,13 +534,13 @@ func (f *function) addConstant(k any, v value) int {
 
 func (f *function) NumberConstant(n float64) int {
 	if n == 0.0 || math.IsNaN(n) {
-		return f.addConstant(math.Float64bits(n), numberValue(n))
+		return f.addConstant(math.Float64bits(n), n)
 	}
-	return f.addConstant(n, numberValue(n))
+	return f.addConstant(n, n)
 }
 
 func (f *function) CheckStack(n int) {
-	if n += f.freeRegisterCount; n >= maxStack {
+	if n += f.freeRegisterCount; n >= bytecode.MaxStack {
 		f.p.syntaxError("function or expression too complex")
 	} else if n > f.f.MaxStackSize {
 		f.f.MaxStackSize = n
@@ -563,9 +565,9 @@ func (f *function) freeExpression(e exprDesc) {
 	}
 }
 
-func (f *function) stringConstant(s string) int { return f.addConstant(s, stringValue(s)) }
-func (f *function) booleanConstant(b bool) int  { return f.addConstant(b, boolValue(b)) }
-func (f *function) nilConstant() int            { return f.addConstant(f, nilValue) }
+func (f *function) stringConstant(s string) int { return f.addConstant(s, s) }
+func (f *function) booleanConstant(b bool) int  { return f.addConstant(b, b) }
+func (f *function) nilConstant() int            { return f.addConstant(f, nil) }
 
 func (f *function) setReturns(e exprDesc, resultCount int) {
 	if e.kind == kindCall {
@@ -761,7 +763,7 @@ func (f *function) Self(e, key exprDesc) exprDesc {
 
 func (f *function) invertJump(pc int) {
 	i := f.jumpControl(pc)
-	f.p.l.assert(bytecode.TestTMode(i.OpCode()) && i.OpCode() != bytecode.OpTestSet && i.OpCode() != bytecode.OpTest)
+	f.p.assert(bytecode.TestTMode(i.OpCode()) && i.OpCode() != bytecode.OpTestSet && i.OpCode() != bytecode.OpTest)
 	i.SetA(not(i.A()))
 }
 
@@ -849,7 +851,7 @@ func foldConstants(op bytecode.OpCode, e1, e2 exprDesc) (exprDesc, bool) {
 	} else if (op == bytecode.OpDiv || op == bytecode.OpMod) && e2.value == 0.0 {
 		return e1, false
 	}
-	e1.value = arith(Operator(op-bytecode.OpAdd)+OpAdd, e1.value, e2.value)
+	e1.value = bytecode.Arith(op, e1.value, e2.value)
 	return e1, true
 }
 
@@ -952,7 +954,7 @@ func (f *function) Postfix(op int, e1, e2 exprDesc, line int) exprDesc {
 func (f *function) FixLine(line int) { f.f.LineInfo[len(f.f.Code)-1] = int32(line) }
 
 func (f *function) setList(base, elementCount, storeCount int) {
-	if f.assert(storeCount != 0); storeCount == MultipleReturns {
+	if f.assert(storeCount != 0); storeCount == bytecode.MultipleReturns {
 		storeCount = 0
 	}
 	if c := (elementCount-1)/bytecode.ListItemsPerFlush + 1; c <= bytecode.MaxArgC {
@@ -1011,8 +1013,8 @@ func (f *function) AdjustAssignment(variableCount, expressionCount int, e exprDe
 }
 
 func (f *function) makeUpValue(name string, e exprDesc) int {
-	f.p.checkLimit(len(f.f.UpValues)+1, maxUpValue, "upvalues")
-	f.f.UpValues = append(f.f.UpValues, upValueDesc{Name: name, IsLocal: e.kind == kindLocal, Index: e.info})
+	f.p.checkLimit(len(f.f.UpValues)+1, bytecode.MaxUpValue, "upvalues")
+	f.f.UpValues = append(f.f.UpValues, bytecode.UpValueDesc{Name: name, IsLocal: e.kind == kindLocal, Index: e.info})
 	return len(f.f.UpValues) - 1
 }
 
@@ -1094,7 +1096,7 @@ func (f *function) CloseConstructor(pc, tableRegister, pending, arrayCount, hash
 	if pending != 0 {
 		if e.hasMultipleReturns() {
 			f.SetMultipleReturns(e)
-			f.setList(tableRegister, arrayCount, MultipleReturns)
+			f.setList(tableRegister, arrayCount, bytecode.MultipleReturns)
 			arrayCount--
 		} else {
 			if e.kind != kindVoid {
@@ -1103,8 +1105,8 @@ func (f *function) CloseConstructor(pc, tableRegister, pending, arrayCount, hash
 			f.setList(tableRegister, arrayCount, pending)
 		}
 	}
-	f.f.Code[pc].SetB(int(float8FromInt(arrayCount)))
-	f.f.Code[pc].SetC(int(float8FromInt(hashCount)))
+	f.f.Code[pc].SetB(bytecode.Float8FromInt(arrayCount))
+	f.f.Code[pc].SetC(bytecode.Float8FromInt(hashCount))
 }
 
 func (f *function) OpenForBody(base, n int, isNumeric bool) (prep int) {

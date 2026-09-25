@@ -42,6 +42,15 @@ today, the rules it depends on, and where performance work should go next.
 - The root package `luart` is the State, its API (api*.go, auxiliary.go,
   debug_api.go), the VM, the object types and the JIT. They read each
   other's unexported fields, and the JIT hard-codes their layout.
+- `internal/bytecode` is the instruction format, the opcodes, the limits
+  the compiler and VM share, `Arith` (so constant folding and the VM
+  compute alike) and `Proto`, a compiled function with Go constants (nil,
+  bool, float64, string).
+- `internal/compiler` compiles source to a `bytecode.Proto`; it knows
+  nothing of the VM. `Parse` returns syntax errors as Go errors, and
+  `ParseNumber` is Lua's string-to-number conversion. The core builds its
+  `prototype` from a Proto (`prototypeOf`, compile.go), keeping runtime
+  state beside it: the specialised code, field caches and JIT state.
 - `stdlib` holds the standard libraries and uses only luart's public API.
   A library that needs something the API cannot do fast gets a public
   method in the core, as table.sort got `State.SortArray`.

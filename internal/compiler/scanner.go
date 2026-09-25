@@ -1,4 +1,4 @@
-package luart
+package compiler
 
 import (
 	"bytes"
@@ -68,7 +68,7 @@ type token struct {
 }
 
 type scanner struct {
-	l                    *State
+	depth                int // nested Go calls and parser levels, as MaxCallCount counts
 	buffer               bytes.Buffer
 	r                    io.ByteReader
 	current              rune
@@ -78,7 +78,11 @@ type scanner struct {
 	token
 }
 
-func (s *scanner) assert(cond bool)           { s.l.assert(cond) }
+func (s *scanner) assert(cond bool) {
+	if !cond {
+		panic(syntaxError("assertion failure"))
+	}
+}
 func (s *scanner) syntaxError(message string) { s.scanError(message, s.t) }
 func (s *scanner) errorExpected(t rune)       { s.syntaxError(s.tokenToString(t) + " expected") }
 func (s *scanner) numberError()               { s.scanError("malformed number", tkNumber) }
@@ -100,14 +104,13 @@ func (s *scanner) tokenToString(t rune) string {
 }
 
 func (s *scanner) scanError(message string, token rune) {
-	buff := chunkID(s.source)
+	buff := ChunkID(s.source)
 	if token != 0 {
 		message = fmt.Sprintf("%s:%d: %s near %s", buff, s.lineNumber, message, s.tokenToString(token))
 	} else {
 		message = fmt.Sprintf("%s:%d: %s", buff, s.lineNumber, message)
 	}
-	s.l.push(stringValue(message))
-	s.l.throw(ErrSyntax)
+	panic(syntaxError(message))
 }
 
 func (s *scanner) incrementLineNumber() {
@@ -510,7 +513,7 @@ func (s *scanner) next() {
 }
 
 func (s *scanner) lookAhead() rune {
-	s.l.assert(s.lookAheadToken.t == tkEOS)
+	s.assert(s.lookAheadToken.t == tkEOS)
 	s.lookAheadToken = s.scan()
 	return s.lookAheadToken.t
 }
@@ -536,4 +539,70 @@ func (s *scanner) checkMatch(what, who rune, where int) {
 			s.syntaxError(fmt.Sprintf("%s expected (to close %s at line %d)", s.tokenToString(what), s.tokenToString(who), where))
 		}
 	}
+}
+
+// IDSize bounds the length of a chunk's name in messages, as ChunkID
+// shortens it.
+const IDSize = 60
+
+// ChunkID returns the name of a chunk with source source as messages show
+// it: the text after = or @, shortened to IDSize, or [string "..."] with
+// the source's first line.
+func ChunkID(source string) string {
+	if source == "" {
+		return `[string ""]`
+	}
+	switch source[0] {
+	case '=': // "literal" source
+		if len(source) <= IDSize {
+			return source[1:]
+		}
+		return source[1:IDSize]
+	case '@': // file name
+		if len(source) <= IDSize {
+			return source[1:]
+		}
+		return "..." + source[1:IDSize-3]
+	}
+	source = strings.Split(source, "\n")[0]
+	if l := len("[string \"...\"]"); len(source) > IDSize-l {
+		return "[string \"" + source + "...\"]"
+	}
+	return "[string \"" + source + "\"]"
+}
+
+// ParseNumber converts s to a number as Lua's tonumber does: a decimal or
+// hexadecimal numeral with an optional sign, and space around it.
+func ParseNumber(s string) (v float64, ok bool) { // TODO this is f*cking ugly - scanner.readNumber should be refactored.
+	s = strings.TrimSpace(s)
+	if len(strings.Fields(s)) != 1 || strings.ContainsRune(s, 0) {
+		return
+	}
+	defer func() {
+		if e := recover(); e != nil {
+			if _, isSyntax := e.(syntaxError); !isSyntax {
+				panic(e)
+			}
+			v, ok = 0, false
+		}
+	}()
+	scanner := scanner{r: strings.NewReader(s)}
+	t := scanner.scan()
+	if t.t == '-' {
+		if t := scanner.scan(); t.t == tkNumber {
+			v, ok = -t.n, true
+		}
+	} else if t.t == tkNumber {
+		v, ok = t.n, true
+	} else if t.t == '+' {
+		if t := scanner.scan(); t.t == tkNumber {
+			v, ok = t.n, true
+		}
+	}
+	if ok && scanner.scan().t != tkEOS {
+		ok = false
+	} else if math.IsInf(v, 0) || math.IsNaN(v) {
+		ok = false
+	}
+	return
 }
