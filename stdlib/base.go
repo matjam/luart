@@ -20,13 +20,15 @@ func baseNext(l *lua.State) int {
 	return 1
 }
 
-func pairs(method string, isZero bool, iter lua.Function) lua.Function {
+// pairs returns pairs or ipairs, a Go closure whose upvalue is the
+// iterator it returns, so it returns the same function each time.
+func pairs(method string, isZero bool) lua.Function {
 	return func(l *lua.State) int {
 		if hasMetamethod := l.MetaField(1, method); !hasMetamethod {
-			l.CheckType(1, lua.TypeTable) // argument must be a table
-			l.PushGoFunction(iter)        // will return generator,
-			l.PushValue(1)                // state,
-			if isZero {                   // and initial value
+			l.CheckType(1, lua.TypeTable)    // argument must be a table
+			l.PushValue(lua.UpValueIndex(1)) // will return generator,
+			l.PushValue(1)                   // state,
+			if isZero {                      // and initial value
 				l.PushInteger(0)
 			} else {
 				l.PushNil()
@@ -175,7 +177,6 @@ var baseLibrary = []lua.RegistryFunction{
 		l.MetaField(1, "__metatable")
 		return 1
 	}},
-	{Name: "ipairs", Function: pairs("__ipairs", true, intPairs)},
 	{Name: "loadfile", Function: func(l *lua.State) int {
 		f, m, e := l.OptString(1, ""), l.OptString(2, ""), 3
 		if l.IsNone(e) {
@@ -199,7 +200,6 @@ var baseLibrary = []lua.RegistryFunction{
 		return loadHelper(l, err, e)
 	}},
 	{Name: "next", Function: baseNext},
-	{Name: "pairs", Function: pairs("__pairs", false, baseNext)},
 	{Name: "pcall", Function: func(l *lua.State) int {
 		l.CheckAny(1)
 		l.PushNil()
@@ -328,6 +328,13 @@ func OpenBase(l *lua.State) int {
 	l.PushGlobalTable()
 	l.SetField(-2, "_G")
 	l.SetFunctions(baseLibrary, 0)
+	// pairs returns next, and ipairs one iterator, as C Lua's do.
+	l.Field(-1, "next")
+	l.PushGoClosure(pairs("__pairs", false), 1)
+	l.SetField(-2, "pairs")
+	l.PushGoFunction(intPairs)
+	l.PushGoClosure(pairs("__ipairs", true), 1)
+	l.SetField(-2, "ipairs")
 	l.PushString(lua.VersionString)
 	l.SetField(-2, "_VERSION")
 	return 1

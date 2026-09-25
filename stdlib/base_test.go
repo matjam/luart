@@ -2,6 +2,22 @@ package stdlib_test
 
 import "testing"
 
+// pairs returns next and ipairs one iterator, the same function each time,
+// and neither allocates it; metamethods still take over.
+func TestPairsIterators(t *testing.T) {
+	run(t, `
+		assert(pairs({}) == next and ipairs({}) == ipairs({}))
+		assert(type(ipairs({})) == "function")
+		local mt = {__pairs = function(t) return "p" end, __ipairs = function(t) return "i" end}
+		local t = setmetatable({}, mt)
+		assert(pairs(t) == "p" and ipairs(t) == "i")
+		local n = 0
+		for i, v in ipairs({10, 20, 30}) do n = n + i * v end
+		for k, v in pairs({a = 1}) do n = n + v end
+		assert(n == 141)
+	`)
+}
+
 // error raises any value, not only strings.
 func TestErrorValues(t *testing.T) {
 	run(t, `
