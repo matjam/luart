@@ -46,7 +46,17 @@ type jitContext struct {
 	barrier   uint64         // nonzero while the GC write barrier is on
 	reason    uint64         // why the last run exited, set by runJIT
 	state     unsafe.Pointer // the *State, for calls and returns
+	callee    unsafe.Pointer // the *goFunction or *goClosure a jitExitCallGo calls
 }
+
+// A jitExitCallGo exit leaves only the callee's object in the context, and
+// runJIT calls its Function without knowing which kind it is, so the
+// Function must come first in both.
+// Each array length below overflows otherwise.
+var (
+	_ [0 - unsafe.Offsetof(goFunction{}.Function)]struct{}
+	_ [0 - unsafe.Offsetof(goClosure{}.function)]struct{}
+)
 
 // writeBarrier is the runtime's flag that Go's own compiled code tests
 // before storing a pointer. The runtime changes it only while the world is
@@ -296,7 +306,7 @@ func (l *State) runJIT(ci *callInfo, ip pc, bottom *callInfo) bool {
 			runtime.Gosched()
 			continue
 		case jitExitCallGo:
-			l.jitCallGo(ci, p.jitOrig[ip], ip)
+			l.jitCallGoFunction(ci, p.jitOrig[ip], ip)
 			ip++
 			continue
 		}
@@ -454,25 +464,21 @@ func (l *State) jitStep(ci *callInfo, i instruction, ip pc) {
 // leaving the exit's pc and reason in l.jitCtx.
 func (l *State) enterJIT(ci *callInfo, c *luaClosure, p *prototype, jc *jitCode, off int32) {
 	ctx := &l.jitCtx
-	frame, constants := ci.frame, p.constants
-	ctx.frame = unsafe.Pointer(&frame[0])
-	ctx.constants = nil
-	if len(constants) > 0 {
-		ctx.constants = unsafe.Pointer(&constants[0])
-	}
-	ctx.upValues = nil
-	if len(c.upValues) > 0 {
-		ctx.upValues = unsafe.Pointer(&c.upValues[0])
-	}
+	// Compiled code reads constants and upvalues only when the function
+	// has them, so an empty slice's data pointer, whatever it is, does.
+	frame := ci.frame
+	ctx.frame = unsafe.Pointer(unsafe.SliceData(frame))
+	ctx.constants = unsafe.Pointer(unsafe.SliceData(p.constants))
+	ctx.upValues = unsafe.Pointer(unsafe.SliceData(c.upValues))
 	ctx.barrier = 0
 	if writeBarrier.enabled {
 		ctx.barrier = 1
 		l.jitBarrierRuns++
 	}
-	ctx.target = jc.mem.Addr(int(off))
+	ctx.target = jc.base + uintptr(off)
 	ctx.budget = jitBudget
 	ctx.state = unsafe.Pointer(l)
-	ctx.reason = call.Call(jc.mem.Addr(0), unsafe.Pointer(ctx))
+	ctx.reason = call.Call(jc.base, unsafe.Pointer(ctx))
 	l.jitRuns++
 	runtime.KeepAlive(frame)
 	runtime.KeepAlive(c)
@@ -521,6 +527,42 @@ func (l *State) jitCallGo(ci *callInfo, i instruction, ip pc) {
 	}
 	l.top = ci.stackIndex(a + b)
 	l.callGo(fv, ci.stackIndex(a), c-1)
+	l.top = ci.top
+}
+
+// jitCallGoFunction runs the CALL i at ip that compiled code exited at
+// with jitExitCallGo: fixed arguments and results, to the Go function or
+// Go closure whose object compiled code left in l.jitCtx.callee, with the
+// frame's address in l.jitCtx.frame. It does what callGo does, without
+// reloading the callee from the frame, and copies the results itself
+// unless a hook is set. No hook is set on entry, as compiled code runs
+// only without one.
+func (l *State) jitCallGoFunction(ci *callInfo, i instruction, ip pc) {
+	ctx := &l.jitCtx
+	f := *(*Function)(ctx.callee)
+	ctx.callee = nil
+	a, b, wanted := i.a(), i.b(), i.c()-1
+	base := int((uintptr(ctx.frame) - uintptr(unsafe.Pointer(unsafe.SliceData(l.stack)))) / unsafe.Sizeof(value{}))
+	function := base + a
+	ci.savedPC = ip + 1
+	l.top = function + b
+	l.checkStack(MinStack)
+	l.pushGoFrame(function, wanted)
+	n := f(l)
+	apiCheckStackSpace(l, n)
+	if l.hookMask != 0 { // the function set one
+		l.postCall(l.top - n)
+	} else {
+		// A loop, not copy: copy of a few values is a runtime call.
+		l.callInfo = ci
+		first, k := l.top-n, 0
+		for ; k < wanted && k < n; k++ {
+			l.stack[function+k] = l.stack[first+k]
+		}
+		for ; k < wanted; k++ {
+			l.stack[function+k] = nilValue
+		}
+	}
 	l.top = ci.top
 }
 

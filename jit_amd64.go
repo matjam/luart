@@ -136,6 +136,10 @@ func (c *amd64Compiler) stubs() {
 	for ip, l := range c.goCall {
 		if l >= 0 {
 			a.Bind(l)
+			fn := reg(c.code[ip].a())
+			a.Load(rTmp, fn.base, fn.off+offP)
+			a.Store(rCtx, offCallee, rTmp)
+			a.Store(rCtx, offFrame, rFrame) // compiled calls may have moved it
 			c.exitWith(ip, jitExitCallGo)
 		}
 	}

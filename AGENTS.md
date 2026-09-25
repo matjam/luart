@@ -69,10 +69,13 @@ no-op.
   - It enters compiled code through `internal/jit/call` and handles exits
     in Go.
   - Compiled code exits with `jitExitCallGo` at a CALL whose callee is a
-    Go function or Go closure that is not an inline intrinsic; the driver
-    makes the call (`jitCallGo`) and re-enters after it. The check sits
-    out of line, after the Lua closure check, so Lua-to-Lua calls neither
-    run it nor have it in their code path.
+    Go closure, or a Go function that is neither an inline intrinsic nor a
+    number function. The exit stub leaves the callee's object in
+    `jitContext.callee` and the frame register in `jitContext.frame`
+    (native calls move the frame without updating the context), and the
+    driver calls it (`jitCallGoFunction`) and re-enters after it. The
+    check sits out of line, after the Lua closure check, so Lua-to-Lua
+    calls neither run it nor have it in their code path.
   - Other exits at CALL and at RETURN are run by the driver, as are
     CLOSURE, NEWTABLE, LEN, generic table access and upvalue-closing JMPs
     (`jitStep`). Compiled code then carries on after the instruction.
@@ -153,11 +156,11 @@ bench/README.md has full tables for Apple M1 Pro (arm64) and AMD Ryzen 9
 | numeric loop | 8.66 ms | 1.00 ms | 0.77 ms |
 | fib(25) | 5.55 ms | 1.57 ms | 0.22 ms |
 | array fill and sum | 2.70 ms | 1.19 ms | 0.43 ms |
-| plasma frame | 1.35 ms | 0.80 ms | 0.29 ms |
+| plasma frame | 1.35 ms | 0.74 ms | 0.29 ms |
 | particles frame | 0.25 ms | 0.10 ms | 0.005 ms |
 | closures | 5.32 ms | 4.66 ms | 0.22 ms |
 | sort with comparator | 3.61 ms | 3.54 ms | 1.28 ms |
-| calls into Go | 1.74 ms | 1.47 ms | 0.22 ms |
+| calls into Go | 1.73 ms | 1.25 ms | 0.22 ms |
 
 Apple M1 Pro, arm64, before the Go-call exit:
 
@@ -175,9 +178,8 @@ Apple M1 Pro, arm64, before the Go-call exit:
 The JIT gains least where a script crosses between compiled code and Go
 every few instructions. A bare `call.Call` round trip costs about 2 ns
 (`BenchmarkCallRet`). On the 9900X3D a call into Go from compiled code
-now costs about 14.7 ns in all, against 17.2 ns interpreted: about 3.5
-ns in `callGo` (the API's Go frame), 3–4 ns in compiled code, and the rest
-in the driver.
+now costs about 12.5 ns in all, against 17.3 ns interpreted; about 4.5
+ns of that is compiled code around the call.
 
 On amd64 most of plasma's JIT time (about 80%) is in compiled code, not
 in calls to `set`: every Lua register lives in memory, each store
@@ -189,14 +191,15 @@ compares the callee against each intrinsic in turn (`sin` is fifth).
 In order of expected payoff for real-time scripts such as visualisers:
 
 1. **Cheaper calls into Go.**
-   - *Done:* the `jitExitCallGo` exit and reloading the prototype only
-     when the frame changes took calls into Go from 16.6 to 14.7 ns on
+   - *Done:* the `jitExitCallGo` exit, which leaves the callee's object
+     and frame in the context; `jitCallGoFunction`, which pushes the Go
+     frame and copies results itself (a loop: `copy` of a few values is a
+     runtime call); reloading the prototype only when the frame changes;
+     and a leaner `enterJIT`. Calls into Go went from 16.6 to 12.5 ns on
      amd64.
-   - *Left:* `callGo` and `postCall` implement the API's general Go
-     frame. A path for fixed arguments and results, with no hooks, could
-     skip `checkStack`'s and `postCall`'s general cases. Number functions
-     could exit with their own reason and be called from the argument
-     registers. Measure with go-calls.
+   - *Left:* number functions take the general exit so `tryCall` can
+     call them frameless; they could have their own reason and be called
+     from the argument registers.
 2. **Go calling compiled Lua** (the `table.sort` comparator, callbacks
    from host code).
    - *Done:* `callJIT` and `jitReturnToGo`, and `table.sort` working on

@@ -289,12 +289,17 @@ func TestJITGoCallExits(t *testing.T) {
 	if !jitSupported {
 		t.Skip("no JIT on this platform")
 	}
-	src := `function run()
+	src := `local function inner(x) return gofn(x) + 1 end
+	function run()
 		local exp, s = math.exp, 0
 		for i = 1, 50 do
+			s = s + inner(i) -- a Go call from a frame compiled code entered
 			s = s + gofn(i) + counter() + exp(i / 50) + gofn(i, s)
 			local ok = pcall(fail, i)
 			if ok then s = s + 1 end
+			local p, q, r = two(i)
+			local u = two(i)
+			if r == nil then s = s + p + q + u end
 		end
 		return s, counter()
 	end`
@@ -303,6 +308,12 @@ func TestJITGoCallExits(t *testing.T) {
 			v, _ := l.ToNumber(1)
 			l.PushNumber(v * 2)
 			return 1
+		})
+		l.Register("two", func(l *State) int {
+			v, _ := l.ToNumber(1)
+			l.PushNumber(v + 1)
+			l.PushNumber(v * 3)
+			return 2
 		})
 		l.Register("fail", func(l *State) int {
 			if n, _ := l.ToNumber(1); int(n)%7 == 0 {

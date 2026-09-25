@@ -36,6 +36,7 @@ const (
 	offNFUnary   = uint32(unsafe.Offsetof(numberFunction{}.unary))
 	offSliceLen  = 8
 	offCtxS      = uint32(unsafe.Offsetof(jitContext{}.state))
+	offCallee    = uint32(unsafe.Offsetof(jitContext{}.callee))
 
 	offClProto   = uint32(unsafe.Offsetof(luaClosure{}.prototype))
 	offClUpVals  = uint32(unsafe.Offsetof(luaClosure{}.upValues))
