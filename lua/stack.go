@@ -395,7 +395,9 @@ func (l *State) call(function int, resultCount int, allowYield bool) {
 	if !allowYield {
 		l.nonYieldableCallCount--
 	}
-	l.nestedGoCallCount--
+	if l.nestedGoCallCount--; l.nestedGoCallCount == 0 {
+		l.dropInterrupt()
+	}
 }
 
 func (l *State) throw(errorCode error) {
@@ -420,6 +422,9 @@ func (l *State) protect(f func()) (err error) {
 	l.protectFunction = func() {
 		if e := recover(); e != nil {
 			l.nestedGoCallCount, l.protectFunction = nestedGoCallCount, protectFunction
+			if nestedGoCallCount == 0 {
+				l.dropInterrupt()
+			}
 			var ok bool
 			if err, ok = e.(error); !ok {
 				panic(e) // not a Lua error: pass it on unchanged

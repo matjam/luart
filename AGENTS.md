@@ -257,6 +257,16 @@ nothing compiles.
   runs out, compiled code returns to Go, which calls `runtime.Gosched`, so
   the GC can stop the world. Any new backward branch or call path must
   spend budget.
+- **Interrupt:** `State.Interrupt` sets an atomic flag from any goroutine.
+  The interpreter checks it every `interruptPoll` (1024) loop iterations
+  and tail calls (`pollInterrupt`: backward jumps, FORLOOP, TFORLOOP,
+  TAILCALL); compiled code is checked at the budget exit and on every
+  1024th entry (`enterJIT`), since a loop that leaves compiled code every
+  iteration re-enters with a full budget. A new kind of loop must reach
+  one of these. An atomic load on every iteration measured 6% slower on
+  an interpreted numeric loop, and any check inside `runJIT`'s loop 12–18%
+  slower on calls into Go; the paced checks cost 1–5% on interpreted loops
+  and nothing measurable with the JIT.
 - **No calls into Go:** generated code never calls Go and never uses the
   Go stack; Go's unwinder cannot see its frames. Anything needing Go
   exits.
