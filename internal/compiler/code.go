@@ -112,22 +112,33 @@ type block struct {
 	hasUpValue, isLoop    bool
 }
 
-// A globalDeclaration is a Lua 5.5 global declaration in scope: of name,
-// or of every name (global *) when name is "". It takes no register;
-// position, the active local variables when it was made, orders it among
-// them, as lparser.c keeps both in one list.
-type globalDeclaration struct {
+// A declaration is a variable in scope that takes no register: a Lua 5.5
+// global declaration, of name or of every name (global *) when name is
+// "", or a local compile-time constant, whose value it holds. position,
+// the active local variables when it was made, orders it among them, as
+// lparser.c keeps all of them in one list.
+type declaration struct {
 	name     string
-	constant bool
+	constant bool           // a const global
+	value    *constantValue // the value of a local constant; nil for a global
 	position int
+}
+
+// A constantValue is a compile-time constant's value, as an exprDesc
+// holds one: kind is kindNil, kindTrue, kindFalse, kindNumber (n) or
+// kindConstant (the string s).
+type constantValue struct {
+	kind int
+	n    bytecode.Number
+	s    string
 }
 
 // A globalScope collects the global declarations a name's lookup passes,
 // innermost first, as lparser.c's searchvar does with var->u.info.
 type globalScope struct {
-	found      *globalDeclaration // a declaration of the name, which ends the lookup
-	collective *globalDeclaration // the innermost global * passed
-	named      bool               // another name's declaration was passed before any global *: the implicit one is void
+	found      *declaration // a declaration of the name, a global or a local constant, which ends the lookup
+	collective *declaration // the innermost global * passed
+	named      bool         // another name's declaration was passed before any global *: the implicit one is void
 }
 
 type function struct {
@@ -140,7 +151,9 @@ type function struct {
 	freeRegisterCount   int
 	activeVariableCount int
 	firstLocal          int
-	globals             []globalDeclaration
+	globals             []declaration // declarations in scope, globals and local constants
+	readOnlyLocals      map[int]bool  // <const> locals and loop control variables, by debug index
+	readOnlyUpValues    map[int]bool  // upvalues of read-only variables
 }
 
 func (f *function) OpenFunction(line int) {
@@ -1110,13 +1123,14 @@ func singleVariableHelper(f *function, name string, base bool, scope *globalScop
 		for i := f.activeVariableCount - 1; i >= -1; i-- {
 			for ; j >= 0 && f.globals[j].position > i; j-- { // declared after local i
 				switch g := &f.globals[j]; {
+				case g.name == name:
+					scope.found = g
+					return 0, false
+				case g.value != nil: // another name's local constant
 				case g.name == "":
 					if scope.collective == nil {
 						scope.collective = g
 					}
-				case g.name == name:
-					scope.found = g
-					return 0, false
 				case scope.collective == nil:
 					scope.named = true
 				}
@@ -1143,18 +1157,32 @@ func singleVariableHelper(f *function, name string, base bool, scope *globalScop
 		if e = makeExpression(kindLocal, v); !base {
 			owningBlock(f.block, v).hasUpValue = true
 		}
+		if f.readOnlyLocals[f.p.activeVariables[f.firstLocal+v]] {
+			e.readOnly = name
+		}
 		return
 	}
 	if scope.found != nil {
 		return
 	}
 	if v, found = findUpValue(); found {
-		return makeExpression(kindUpValue, v), true
+		if e = makeExpression(kindUpValue, v); f.readOnlyUpValues[v] {
+			e.readOnly = name
+		}
+		return e, true
 	}
 	if e, found = singleVariableHelper(f.previous, name, false, scope); !found {
 		return
 	}
-	return makeExpression(kindUpValue, f.makeUpValue(name, e)), true
+	u := makeExpression(kindUpValue, f.makeUpValue(name, e))
+	if e.readOnly != "" {
+		if f.readOnlyUpValues == nil {
+			f.readOnlyUpValues = map[int]bool{}
+		}
+		f.readOnlyUpValues[u.info] = true
+		u.readOnly = name
+	}
+	return u, true
 }
 
 // SingleVariable returns the variable name: a local, an upvalue, or a
@@ -1165,8 +1193,10 @@ func (f *function) SingleVariable(name string) exprDesc {
 	if e, found := singleVariableHelper(f, name, true, &scope); found {
 		return e
 	}
-	var d *globalDeclaration
+	var d *declaration
 	switch {
+	case scope.found != nil && scope.found.value != nil:
+		return f.constantExpression(name, scope.found.value)
 	case scope.found != nil:
 		d = scope.found
 	case scope.collective != nil:
@@ -1183,17 +1213,77 @@ func (f *function) SingleVariable(name string) exprDesc {
 
 // Global returns _ENV.name, whatever declarations are in scope.
 func (f *function) Global(name string) exprDesc {
-	env, found := singleVariableHelper(f, "_ENV", true, &globalScope{})
-	if !found {
+	var scope globalScope
+	env, found := singleVariableHelper(f, "_ENV", true, &scope)
+	switch {
+	case !found && scope.found != nil && scope.found.value != nil: // local _ENV <const> = k
+		env = f.ExpressionToAnyRegisterOrUpValue(f.constantExpression("_ENV", scope.found.value))
+	case !found:
 		f.semanticError(fmt.Sprintf("_ENV is global when accessing variable '%s'", name))
 	}
 	return f.Indexed(env, f.EncodeString(name))
 }
 
+// constantExpression is the local constant name, whose value is c, as an
+// expression of f.
+func (f *function) constantExpression(name string, c *constantValue) exprDesc {
+	var e exprDesc
+	switch c.kind {
+	case kindConstant:
+		e = f.EncodeString(c.s)
+	case kindNumber:
+		e = makeExpression(kindNumber, 0)
+		e.value = c.n
+	default:
+		e = makeExpression(c.kind, 0)
+	}
+	e.readOnly = name
+	return e
+}
+
+// ConstantValue returns the value of e if it is a compile-time constant,
+// as luaK_exp2const decides: nil, a boolean, a number or a string.
+func (f *function) ConstantValue(e exprDesc) (*constantValue, bool) {
+	if e.hasJumps() {
+		return nil, false
+	}
+	switch e.kind {
+	case kindNil, kindTrue, kindFalse:
+		return &constantValue{kind: e.kind}, true
+	case kindNumber:
+		return &constantValue{kind: kindNumber, n: e.value}, true
+	case kindConstant:
+		if s, ok := f.f.Constants[e.info].(string); ok {
+			return &constantValue{kind: kindConstant, s: s}, true
+		}
+	}
+	return nil, false
+}
+
+// MakeConstant turns the last local variable made, not yet active, into
+// the compile-time constant c: it takes no register and has no debug
+// entry, as in lparser.c.
+func (f *function) MakeConstant(c *constantValue) {
+	last := len(f.f.LocalVariables) - 1
+	name := f.f.LocalVariables[last].Name
+	delete(f.readOnlyLocals, last) // the next local takes its debug index
+	f.f.LocalVariables = f.f.LocalVariables[:last]
+	f.p.activeVariables = f.p.activeVariables[:len(f.p.activeVariables)-1]
+	f.globals = append(f.globals, declaration{name: name, value: c, position: f.activeVariableCount})
+}
+
+// MarkReadOnly makes the last local variable made read-only.
+func (f *function) MarkReadOnly() {
+	if f.readOnlyLocals == nil {
+		f.readOnlyLocals = map[int]bool{}
+	}
+	f.readOnlyLocals[len(f.f.LocalVariables)-1] = true
+}
+
 // DeclareGlobal brings a declaration of name (every name if "") into
 // scope.
 func (f *function) DeclareGlobal(name string, constant bool) {
-	f.globals = append(f.globals, globalDeclaration{name: name, constant: constant, position: f.activeVariableCount})
+	f.globals = append(f.globals, declaration{name: name, constant: constant, position: f.activeVariableCount})
 }
 
 // CheckReadOnly raises Lua 5.5's error for an assignment to v, a const

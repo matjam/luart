@@ -24,8 +24,8 @@ JIT compiler. Quite far, it turns out.
   on arm64 and amd64, and numbers, booleans and calls never allocate, so a
   script can run every frame without pressure on the garbage collector.
 - **Lua 5.5 compatibility.** Move on from Lua 5.2 to the current language:
-  integers, bitwise operators and `global` declarations (done), `utf8`,
-  `<const>` and `<close>` variables, and 5.5's other changes.
+  integers, bitwise operators, `global` and `<const>` (done), `utf8`,
+  `<close>` variables, and 5.5's other changes.
 - **Pure Go, easy to embed.** No cgo and no dependencies in the library,
   an API that reads like Go (typed arguments, generic userdata, number
   functions, `Interrupt`), and the interpreter everywhere the JIT does not
@@ -48,8 +48,8 @@ JIT compiler. Quite far, it turns out.
   On top of them: Lua 5.4's integer subtype, `//` and the bitwise
   operators, exact integer/float comparisons, integer for loops, 5.4's
   math library (`math.type`, `tointeger`, `ult`, xoshiro256** `random`)
-  and `string.format`, 5.5's number printing and
-  `global` declarations. `bit32` is gone, as in 5.4.
+  and `string.format`; and 5.5's number printing, `global` declarations
+  and `<const>` locals. `bit32` is gone, as in 5.4.
 - The official Lua 5.5 suite runs from `lua-5.5-tests/`; its pending list
   in [lua/lua55_test.go](lua/lua55_test.go) says what each file still
   needs. The files of the Lua 5.2 suite whose behaviour 5.5 kept still

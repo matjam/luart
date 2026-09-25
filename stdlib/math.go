@@ -9,7 +9,7 @@ import (
 	"github.com/matjam/luart/lua"
 )
 
-// The math library, after Lua 5.4's lmathlib.c.
+// The math library, after Lua 5.5's lmathlib.c.
 
 const radiansPerDegree = math.Pi / 180.0
 
@@ -108,6 +108,17 @@ var mathLibrary = []lua.RegistryFunction{
 		} else {
 			l.PushNumber(math.Mod(l.CheckNumber(1), l.CheckNumber(2)))
 		}
+		return 1
+	}},
+	{Name: "frexp", Function: func(l *lua.State) int { // back in Lua 5.5
+		m, e := math.Frexp(l.CheckNumber(1))
+		l.PushNumber(m)
+		l.PushInteger(e)
+		return 2
+	}},
+	{Name: "ldexp", Function: func(l *lua.State) int {
+		x, e := l.CheckNumber(1), l.CheckInteger(2)
+		l.PushNumber(math.Ldexp(x, int(int32(e)))) // C's (int) cast
 		return 1
 	}},
 	{Name: "log", Function: func(l *lua.State) int {

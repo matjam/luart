@@ -125,7 +125,7 @@ func TestJITControlFlow(t *testing.T) {
 		{"for counting down", `function run() local s = 0; for i = 10, 1, -3 do s = s * 2 + i end; return s end`},
 		{"for that never runs", `function run() local s = 7; for i = 5, 1 do s = 0 end; return s end`},
 		{"for with NaN step", `function run() local s = 0; local z = 0; for i = 1, 3, z/z do s = s + 1 end; return s end`},
-		{"loop variable reassigned", `function run() local s = 0; for i = 1, 5 do s = s + i; i = "x" end; return s end`},
+		{"loop variable's copy reassigned", `function run() local s = 0; for i = 1, 5 do local j = i; s = s + j; j = "x" end; return s end`},
 		{"nested loops", `function run() local s = 0; for i = 1, 20 do for j = i, 20 do s = s + i * j % 7 end end; return s end`},
 		{"while", `function run() local i, s = 0, 0; while i < 50 do i = i + 1; s = s + i end; return i, s end`},
 		{"repeat", `function run() local i = 0; repeat i = i + 2 until i >= 9; return i end`},

@@ -65,7 +65,7 @@ func TestLua(t *testing.T) {
 		// {name: "bitwise"}, // retired: uses bit32; lua-5.5-tests has its 5.5 version
 		{name: "calls"},
 		// {name: "checktable"}, // needs the C test library (T)
-		{name: "closure"},
+		// {name: "closure"}, // retired: assigns to for-loop control variables, read-only since 5.5; lua-5.5-tests has its 5.5 version
 		// {name: "code"}, // needs the C test library (T)
 		{name: "constructs"},
 		// {name: "db", goAsC: true}, // retired: traces 5.2 for-loop lines; lua-5.5-tests has its 5.5 version

@@ -22,7 +22,7 @@ func TestDebugLocals(t *testing.T) {
 		end
 		local n1, v1, n3, v3, nv, vv, none, past = f(10, 20, "x", "y")
 		assert(n1 == "a" and v1 == 10 and n3 == "c" and v3 == 30)
-		assert(nv == "(*vararg)" and vv == "y" and none == nil and past == nil)
+		assert(nv == "(vararg)" and vv == "y" and none == nil and past == nil)
 
 		-- A function's parameters, by name only.
 		assert(debug.getlocal(f, 1) == "a" and debug.getlocal(f, 2) == "b" and debug.getlocal(f, 3) == nil)
@@ -30,7 +30,7 @@ func TestDebugLocals(t *testing.T) {
 
 		-- A Go function's arguments are temporaries: level 0 is getlocal.
 		local n, v = debug.getlocal(0, 1)
-		assert(n == "(*temporary)" and v == 0)
+		assert(n == "(C temporary)" and v == 0)
 
 		local function g()
 			local x = 1
