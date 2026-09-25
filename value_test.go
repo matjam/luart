@@ -1,6 +1,11 @@
-package luart
+package luart_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/matjam/luart"
+	"github.com/matjam/luart/stdlib"
+)
 
 func TestValueSemantics(t *testing.T) {
 	tests := []struct {
@@ -73,8 +78,8 @@ func TestValueSemantics(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := NewState()
-			openLibraries(l)
+			l := luart.NewState()
+			stdlib.Open(l)
 			if err := l.DoString(tt.src); err != nil {
 				t.Fatal(err)
 			}

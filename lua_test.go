@@ -1,12 +1,14 @@
-package luart
+package luart_test
 
 import (
 	"fmt"
 	"testing"
+
+	"github.com/matjam/luart"
 )
 
 func TestPushFStringPointer(t *testing.T) {
-	l := NewState()
+	l := luart.NewState()
 	l.PushFString("%p %s", l, "test")
 
 	expected := fmt.Sprintf("%p %s", l, "test")
@@ -17,7 +19,7 @@ func TestPushFStringPointer(t *testing.T) {
 }
 
 func TestToBooleanOutOfRange(t *testing.T) {
-	l := NewState()
+	l := luart.NewState()
 	l.SetTop(0)
 	l.PushBoolean(false)
 	l.PushBoolean(true)

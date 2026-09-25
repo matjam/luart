@@ -1,6 +1,11 @@
-package luart
+package luart_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/matjam/luart"
+	"github.com/matjam/luart/stdlib"
+)
 
 // The two-word value compares numbers by bits and strings by address, so
 // equality and table keys must go through rawEqual and hashKey.
@@ -46,8 +51,8 @@ func TestTwoWordValueSemantics(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := NewState()
-			openLibraries(l)
+			l := luart.NewState()
+			stdlib.Open(l)
 			if err := l.DoString(tt.src); err != nil {
 				t.Fatal(err)
 			}
@@ -57,8 +62,8 @@ func TestTwoWordValueSemantics(t *testing.T) {
 
 func TestLightUserData(t *testing.T) {
 	type key struct{ n int }
-	l := NewState()
-	openLibraries(l)
+	l := luart.NewState()
+	stdlib.Open(l)
 
 	l.PushLightUserData(key{1})
 	l.PushLightUserData(key{1})
@@ -69,7 +74,7 @@ func TestLightUserData(t *testing.T) {
 	if l.RawEqual(-1, -2) {
 		t.Fatal("different Go values are equal light userdata")
 	}
-	if got := l.TypeOf(-1); got != TypeLightUserData {
+	if got := l.TypeOf(-1); got != luart.TypeLightUserData {
 		t.Fatalf("TypeOf = %v, want TypeLightUserData", got)
 	}
 	if got := l.ToValue(-1); got != (key{2}) {

@@ -11,7 +11,8 @@ import (
 
 func load(l *State, t *testing.T, fileName string) *luaClosure {
 	if err := l.LoadFile(fileName, "bt"); err != nil {
-		return nil
+		msg, _ := l.ToString(-1)
+		t.Fatal(err, msg)
 	}
 	return l.ToValue(-1).(*luaClosure)
 }

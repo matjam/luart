@@ -1,6 +1,11 @@
-package luart
+package luart_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/matjam/luart"
+	"github.com/matjam/luart/stdlib"
+)
 
 // Pre-shaped tables and inline upvalues must not change what scripts see.
 func TestAllocationSemantics(t *testing.T) {
@@ -82,8 +87,8 @@ func TestAllocationSemantics(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := NewState()
-			openLibraries(l)
+			l := luart.NewState()
+			stdlib.Open(l)
 			if err := l.DoString(tt.src); err != nil {
 				t.Fatal(err)
 			}

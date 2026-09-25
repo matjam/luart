@@ -58,10 +58,11 @@ today, the rules it depends on, and where performance work should go next.
 - `stdlib` holds the standard libraries and uses only luart's public API.
   A library that needs something the API cannot do fast gets a public
   method in the core, as table.sort got `State.SortArray`.
-- The root's own tests cannot import stdlib (it imports luart). They open
-  the libraries with `openLibraries` from export_test.go, which
-  libs_test.go, an external test file in the same binary, sets to
-  `stdlib.Open`.
+- Tests that need only the public API are external (`package luart_test`)
+  and call `stdlib.Open`. Tests that reach into internals stay in `luart`,
+  which cannot import stdlib (it imports luart); they open the libraries
+  with `openLibraries` from export_test.go, which libs_test.go, an
+  external test file in the same binary, sets to `stdlib.Open`.
 
 ## Interpreter
 

@@ -1,6 +1,11 @@
-package luart
+package luart_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/matjam/luart"
+	"github.com/matjam/luart/stdlib"
+)
 
 func TestObjectAllocations(t *testing.T) {
 	tests := []struct {
@@ -15,8 +20,8 @@ func TestObjectAllocations(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := NewState()
-			openLibraries(l)
+			l := luart.NewState()
+			stdlib.Open(l)
 			if err := l.DoString(tt.src); err != nil {
 				t.Fatal(err)
 			}
@@ -36,10 +41,10 @@ func TestObjectAllocations(t *testing.T) {
 // Numeric code and calls into Go must not allocate, so scripts can run
 // every frame without feeding the garbage collector.
 func TestNumericFrameDoesNotAllocate(t *testing.T) {
-	l := NewState()
-	openLibraries(l)
+	l := luart.NewState()
+	stdlib.Open(l)
 	var sum float64
-	l.Register("set", func(l *State) int {
+	l.Register("set", func(l *luart.State) int {
 		sum += l.Arg[float64](3)
 		return 0
 	})
