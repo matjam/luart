@@ -6,7 +6,7 @@ import "testing"
 // debug.gethook returns it with its mask and count.
 func TestDebugLuaHook(t *testing.T) {
 	l := NewState()
-	OpenLibraries(l)
+	openLibraries(l)
 	src := `
 		local calls = 0
 		local function hook(event) calls = calls + 1 end

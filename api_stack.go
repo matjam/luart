@@ -2,6 +2,21 @@ package luart
 
 import "fmt"
 
+// XMove pops n values from l's stack and pushes them onto to's. Moving
+// within one state leaves the stack as it is.
+//
+// http://www.lua.org/manual/5.2/manual.html#lua_xmove
+func (l *State) XMove(to *State, n int) {
+	if l == to {
+		return
+	}
+	l.checkElementCount(n)
+	for _, v := range l.stack[l.top-n : l.top] {
+		to.apiPush(v)
+	}
+	l.top -= n
+}
+
 func (l *State) adjustResults(resultCount int) {
 	if resultCount == MultipleReturns && l.callInfo.top < l.top {
 		l.callInfo.setTop(l.top)
@@ -44,14 +59,10 @@ func (l *State) indexToValue(index int) value {
 	switch {
 	case index > 0:
 		// TODO apiCheck(index <= callInfo.top_-(callInfo.function+1), "unacceptable index")
-		// if i := callInfo.function + index; i < l.top {
-		// 	return l.stack[i]
-		// }
-		// return none
-		if l.callInfo.function+index >= l.top {
-			return none
+		if i := l.callInfo.function + index; i < l.top {
+			return l.stack[i]
 		}
-		return l.stack[l.callInfo.function:l.top][index]
+		return none
 	case index > RegistryIndex: // negative index
 		// TODO apiCheck(index != 0 && -index <= l.top-(callInfo.function+1), "invalid index")
 		return l.stack[l.top+index]

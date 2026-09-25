@@ -24,7 +24,7 @@ func TestArg(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			l := NewState()
-			OpenLibraries(l)
+			openLibraries(l)
 			var got string
 			l.Register("f", func(l *State) int { got = numberToString(l.Arg[float64](1)); return 0 })
 			l.Register("i", func(l *State) int { got = numberToString(float64(l.Arg[int](1))); return 0 })

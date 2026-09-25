@@ -9,6 +9,7 @@ import (
 
 	shopify "github.com/Shopify/go-lua"
 	"github.com/matjam/luart"
+	"github.com/matjam/luart/stdlib"
 )
 
 // A workload is one unit of work, written once in Lua (as a global function
@@ -179,7 +180,7 @@ func nativeCall(f func(float64) float64, x float64) float64 { return f(x) }
 
 func newSuiteLuart(tb testing.TB, src string, options ...luart.Option) *luart.State {
 	l := luart.NewState(options...)
-	luart.OpenLibraries(l)
+	stdlib.Open(l)
 	l.Register("gofn", func(l *luart.State) int { v, _ := l.ToNumber(1); l.PushNumber(v); return 1 })
 	l.Register("set", func(l *luart.State) int {
 		x, _ := l.ToNumber(1)

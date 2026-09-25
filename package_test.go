@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/matjam/luart"
+	"github.com/matjam/luart/stdlib"
 )
 
 type step struct {
@@ -14,7 +15,7 @@ type step struct {
 func Example() {
 	steps := []step{}
 	l := luart.NewState()
-	luart.BaseOpen(l)
+	stdlib.OpenBase(l)
 	_ = l.NewMetaTable("stepMetaTable")
 	l.SetFunctions([]luart.RegistryFunction{{"__newindex", func(l *luart.State) int {
 		k, v := l.CheckString(2), l.ToValue(3)

@@ -47,7 +47,7 @@ func TestTwoWordValueSemantics(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			l := NewState()
-			OpenLibraries(l)
+			openLibraries(l)
 			if err := l.DoString(tt.src); err != nil {
 				t.Fatal(err)
 			}
@@ -58,7 +58,7 @@ func TestTwoWordValueSemantics(t *testing.T) {
 func TestLightUserData(t *testing.T) {
 	type key struct{ n int }
 	l := NewState()
-	OpenLibraries(l)
+	openLibraries(l)
 
 	l.PushLightUserData(key{1})
 	l.PushLightUserData(key{1})

@@ -28,7 +28,6 @@ type State struct {
 	nestedGoCallCount     int
 	hookMask              byte
 	allowHook             bool
-	internalHook          bool
 	baseHookCount         int
 	hookCount             int
 	hooker                Hook

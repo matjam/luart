@@ -1,13 +1,15 @@
-package luart
+package stdlib
 
 import (
 	"os"
 	"os/exec"
 	"syscall"
 	"time"
+
+	"github.com/matjam/luart"
 )
 
-func field(l *State, key string, def int) int {
+func field(l *luart.State, key string, def int) int {
 	l.Field(-1, key)
 	r, ok := l.ToInteger(-1)
 	if !ok {
@@ -20,10 +22,10 @@ func field(l *State, key string, def int) int {
 	return r
 }
 
-var osLibrary = []RegistryFunction{
-	{"clock", clock},
+var osLibrary = []luart.RegistryFunction{
+	{Name: "clock", Function: clock},
 	// {"date", os_date},
-	{"difftime", func(l *State) int {
+	{Name: "difftime", Function: func(l *luart.State) int {
 		l.PushNumber(time.Unix(int64(l.CheckNumber(1)), 0).Sub(time.Unix(int64(l.OptNumber(2, 0)), 0)).Seconds())
 		return 1
 	}},
@@ -31,7 +33,7 @@ var osLibrary = []RegistryFunction{
 	// From the Lua manual:
 	// "This function is equivalent to the ISO C function system"
 	// https://www.lua.org/manual/5.2/manual.html#pdf-os.execute
-	{"execute", func(l *State) int {
+	{Name: "execute", Function: func(l *luart.State) int {
 		c := l.OptString(1, "")
 
 		if c == "" {
@@ -88,7 +90,7 @@ var osLibrary = []RegistryFunction{
 
 		return 3
 	}},
-	{"exit", func(l *State) int {
+	{Name: "exit", Function: func(l *luart.State) int {
 		var status int
 		if l.IsBoolean(1) {
 			if !l.ToBoolean(1) {
@@ -103,19 +105,19 @@ var osLibrary = []RegistryFunction{
 		os.Exit(status)
 		panic("unreachable")
 	}},
-	{"getenv", func(l *State) int { l.PushString(os.Getenv(l.CheckString(1))); return 1 }},
-	{"remove", func(l *State) int { name := l.CheckString(1); return l.FileResult(os.Remove(name), name) }},
-	{"rename", func(l *State) int { return l.FileResult(os.Rename(l.CheckString(1), l.CheckString(2)), "") }},
+	{Name: "getenv", Function: func(l *luart.State) int { l.PushString(os.Getenv(l.CheckString(1))); return 1 }},
+	{Name: "remove", Function: func(l *luart.State) int { name := l.CheckString(1); return l.FileResult(os.Remove(name), name) }},
+	{Name: "rename", Function: func(l *luart.State) int { return l.FileResult(os.Rename(l.CheckString(1), l.CheckString(2)), "") }},
 	// {"setlocale", func(l *State) int {
 	// 	op := CheckOption(l, 2, "all", []string{"all", "collate", "ctype", "monetary", "numeric", "time"})
 	// 	l.PushString(setlocale([]int{LC_ALL, LC_COLLATE, LC_CTYPE, LC_MONETARY, LC_NUMERIC, LC_TIME}, OptString(l, 1, "")))
 	// 	return 1
 	// }},
-	{"time", func(l *State) int {
+	{Name: "time", Function: func(l *luart.State) int {
 		if l.IsNoneOrNil(1) {
 			l.PushNumber(float64(time.Now().Unix()))
 		} else {
-			l.CheckType(1, TypeTable)
+			l.CheckType(1, luart.TypeTable)
 			l.SetTop(1)
 			year := field(l, "year", -1) - 1900
 			month := field(l, "month", -1) - 1
@@ -128,7 +130,7 @@ var osLibrary = []RegistryFunction{
 		}
 		return 1
 	}},
-	{"tmpname", func(l *State) int {
+	{Name: "tmpname", Function: func(l *luart.State) int {
 		f, err := os.CreateTemp("", "lua_")
 		if err != nil {
 			l.Errorf("unable to generate a unique filename")
@@ -139,8 +141,8 @@ var osLibrary = []RegistryFunction{
 	}},
 }
 
-// OSOpen opens the os library. Usually passed to Require.
-func OSOpen(l *State) int {
+// OpenOS opens the os library. Usually passed to Require.
+func OpenOS(l *luart.State) int {
 	l.NewLibrary(osLibrary)
 	return 1
 }

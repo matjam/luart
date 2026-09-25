@@ -1,10 +1,12 @@
-package luart
+package stdlib
 
 import (
 	"fmt"
 	"io"
 
 	"os"
+
+	"github.com/matjam/luart"
 )
 
 const fileHandle = "FILE*"
@@ -13,33 +15,35 @@ const output = "_IO_output"
 
 type stream struct {
 	f     *os.File
-	close Function
+	close luart.Function
 }
 
-func toStream(l *State) *stream { return l.CheckUserData[*stream](1, fileHandle) }
+func toStream(l *luart.State) *stream { return l.CheckUserData[*stream](1, fileHandle) }
 
-func toFile(l *State) *os.File {
+func toFile(l *luart.State) *os.File {
 	s := toStream(l)
 	if s.close == nil {
 		l.Errorf("attempt to use a closed file")
 	}
-	l.assert(s.f != nil)
+	if s.f == nil {
+		l.Errorf("file handle has no file")
+	}
 	return s.f
 }
 
-func newStream(l *State, f *os.File, close Function) *stream {
+func newStream(l *luart.State, f *os.File, close luart.Function) *stream {
 	s := &stream{f: f, close: close}
 	l.PushUserData(s)
 	l.SetMetaTableNamed(fileHandle)
 	return s
 }
 
-func newFile(l *State) *stream {
-	return newStream(l, nil, func(l *State) int { return l.FileResult(toStream(l).f.Close(), "") })
+func newFile(l *luart.State) *stream {
+	return newStream(l, nil, func(l *luart.State) int { return l.FileResult(toStream(l).f.Close(), "") })
 }
 
-func ioFile(l *State, name string) *os.File {
-	l.Field(RegistryIndex, name)
+func ioFile(l *luart.State, name string) *os.File {
+	l.Field(luart.RegistryIndex, name)
 	s := l.ToUserData(-1).(*stream)
 	if s.close == nil {
 		l.Errorf(fmt.Sprintf("standard %s file is closed", name[len("_IO_"):]))
@@ -47,7 +51,7 @@ func ioFile(l *State, name string) *os.File {
 	return s.f
 }
 
-func forceOpen(l *State, name, mode string) {
+func forceOpen(l *luart.State, name, mode string) {
 	s := newFile(l)
 	flags, err := flags(mode)
 	if err == nil {
@@ -58,8 +62,8 @@ func forceOpen(l *State, name, mode string) {
 	}
 }
 
-func ioFileHelper(name, mode string) Function {
-	return func(l *State) int {
+func ioFileHelper(name, mode string) luart.Function {
+	return func(l *luart.State) int {
 		if !l.IsNoneOrNil(1) {
 			if name, ok := l.ToString(1); ok {
 				forceOpen(l, name, mode)
@@ -67,33 +71,34 @@ func ioFileHelper(name, mode string) Function {
 				toFile(l)
 				l.PushValue(1)
 			}
-			l.SetField(RegistryIndex, name)
+			l.SetField(luart.RegistryIndex, name)
 		}
-		l.Field(RegistryIndex, name)
+		l.Field(luart.RegistryIndex, name)
 		return 1
 	}
 }
 
-func closeHelper(l *State) int {
+func closeHelper(l *luart.State) int {
 	s := toStream(l)
 	close := s.close
 	s.close = nil
 	return close(l)
 }
 
-func close(l *State) int {
+func ioClose(l *luart.State) int {
 	if l.IsNone(1) {
-		l.Field(RegistryIndex, output)
+		l.Field(luart.RegistryIndex, output)
 	}
 	toFile(l)
 	return closeHelper(l)
 }
 
-func write(l *State, f *os.File, argIndex int) int {
+func write(l *luart.State, f *os.File, argIndex int) int {
 	var err error
 	for argCount := l.Top(); argIndex < argCount && err == nil; argIndex++ {
-		if n, ok := l.ToNumber(argIndex); ok {
-			_, err = f.WriteString(numberToString(n))
+		if l.TypeOf(argIndex) == luart.TypeNumber { // not numeric strings, as C Lua
+			s, _ := l.ToString(argIndex) // formats as Lua does
+			_, err = f.WriteString(s)
 		} else {
 			_, err = f.WriteString(l.CheckString(argIndex))
 		}
@@ -104,7 +109,7 @@ func write(l *State, f *os.File, argIndex int) int {
 	return l.FileResult(err, "")
 }
 
-func readNumber(l *State, f *os.File) (err error) {
+func readNumber(l *luart.State, f *os.File) (err error) {
 	var n float64
 	if _, err = fmt.Fscanf(f, "%f", &n); err == nil {
 		l.PushNumber(n)
@@ -114,7 +119,7 @@ func readNumber(l *State, f *os.File) (err error) {
 	return
 }
 
-func read(l *State, f *os.File, argIndex int) int {
+func read(l *luart.State, f *os.File, argIndex int) int {
 	resultCount := 0
 	var err error
 	if argCount := l.Top() - 1; argCount == 0 {
@@ -133,18 +138,20 @@ func read(l *State, f *os.File, argIndex int) int {
 	return resultCount - argIndex
 }
 
-func readLine(l *State) int {
-	s := l.ToUserData(UpValueIndex(1)).(*stream)
-	argCount, _ := l.ToInteger(UpValueIndex(2))
+func readLine(l *luart.State) int {
+	s := l.ToUserData(luart.UpValueIndex(1)).(*stream)
+	argCount, _ := l.ToInteger(luart.UpValueIndex(2))
 	if s.close == nil {
 		l.Errorf("file is already closed")
 	}
 	l.SetTop(1)
 	for i := 1; i <= argCount; i++ {
-		l.PushValue(UpValueIndex(3 + i))
+		l.PushValue(luart.UpValueIndex(3 + i))
 	}
 	resultCount := read(l, s.f, 2)
-	l.assert(resultCount > 0)
+	if resultCount <= 0 {
+		l.Errorf("read returned no results")
+	}
 	if !l.IsNil(-resultCount) {
 		return resultCount
 	}
@@ -152,17 +159,17 @@ func readLine(l *State) int {
 		m, _ := l.ToString(-resultCount + 1)
 		l.Errorf(m)
 	}
-	if l.ToBoolean(UpValueIndex(3)) {
+	if l.ToBoolean(luart.UpValueIndex(3)) {
 		l.SetTop(0)
-		l.PushValue(UpValueIndex(1))
+		l.PushValue(luart.UpValueIndex(1))
 		closeHelper(l)
 	}
 	return 0
 }
 
-func lines(l *State, shouldClose bool) {
+func lines(l *luart.State, shouldClose bool) {
 	argCount := l.Top() - 1
-	l.ArgumentCheck(argCount <= MinStack-3, MinStack-3, "too many options")
+	l.ArgumentCheck(argCount <= luart.MinStack-3, luart.MinStack-3, "too many options")
 	l.PushValue(1)
 	l.PushInteger(argCount)
 	l.PushBoolean(shouldClose)
@@ -195,16 +202,16 @@ func flags(m string) (f int, err error) {
 	return
 }
 
-var ioLibrary = []RegistryFunction{
-	{"close", close},
-	{"flush", func(l *State) int { return l.FileResult(ioFile(l, output).Sync(), "") }},
-	{"input", ioFileHelper(input, "r")},
-	{"lines", func(l *State) int {
+var ioLibrary = []luart.RegistryFunction{
+	{Name: "close", Function: ioClose},
+	{Name: "flush", Function: func(l *luart.State) int { return l.FileResult(ioFile(l, output).Sync(), "") }},
+	{Name: "input", Function: ioFileHelper(input, "r")},
+	{Name: "lines", Function: func(l *luart.State) int {
 		if l.IsNone(1) {
 			l.PushNil()
 		}
 		if l.IsNil(1) { // No file name.
-			l.Field(RegistryIndex, input)
+			l.Field(luart.RegistryIndex, input)
 			l.Replace(1)
 			toFile(l)
 			lines(l, false)
@@ -215,7 +222,7 @@ var ioLibrary = []RegistryFunction{
 		}
 		return 1
 	}},
-	{"open", func(l *State) int {
+	{Name: "open", Function: func(l *luart.State) int {
 		name := l.CheckString(1)
 		flags, err := flags(l.OptString(2, "r"))
 		s := newFile(l)
@@ -226,10 +233,10 @@ var ioLibrary = []RegistryFunction{
 		}
 		return l.FileResult(err, name)
 	}},
-	{"output", ioFileHelper(output, "w")},
-	{"popen", func(l *State) int { l.Errorf("'popen' not supported"); panic("unreachable") }},
-	{"read", func(l *State) int { return read(l, ioFile(l, input), 1) }},
-	{"tmpfile", func(l *State) int {
+	{Name: "output", Function: ioFileHelper(output, "w")},
+	{Name: "popen", Function: func(l *luart.State) int { l.Errorf("'popen' not supported"); panic("unreachable") }},
+	{Name: "read", Function: func(l *luart.State) int { return read(l, ioFile(l, input), 1) }},
+	{Name: "tmpfile", Function: func(l *luart.State) int {
 		s := newFile(l)
 		f, err := os.CreateTemp("", "")
 		if err == nil {
@@ -238,7 +245,7 @@ var ioLibrary = []RegistryFunction{
 		}
 		return l.FileResult(err, "")
 	}},
-	{"type", func(l *State) int {
+	{Name: "type", Function: func(l *luart.State) int {
 		l.CheckAny(1)
 		if f, ok := l.TestUserData(1, fileHandle).(*stream); !ok {
 			l.PushNil()
@@ -249,15 +256,15 @@ var ioLibrary = []RegistryFunction{
 		}
 		return 1
 	}},
-	{"write", func(l *State) int { return write(l, ioFile(l, output), 1) }},
+	{Name: "write", Function: func(l *luart.State) int { return write(l, ioFile(l, output), 1) }},
 }
 
-var fileHandleMethods = []RegistryFunction{
-	{"close", close},
-	{"flush", func(l *State) int { return l.FileResult(toFile(l).Sync(), "") }},
-	{"lines", func(l *State) int { toFile(l); lines(l, false); return 1 }},
-	{"read", func(l *State) int { return read(l, toFile(l), 2) }},
-	{"seek", func(l *State) int {
+var fileHandleMethods = []luart.RegistryFunction{
+	{Name: "close", Function: ioClose},
+	{Name: "flush", Function: func(l *luart.State) int { return l.FileResult(toFile(l).Sync(), "") }},
+	{Name: "lines", Function: func(l *luart.State) int { toFile(l); lines(l, false); return 1 }},
+	{Name: "read", Function: func(l *luart.State) int { return read(l, toFile(l), 2) }},
+	{Name: "seek", Function: func(l *luart.State) int {
 		whence := []int{os.SEEK_SET, os.SEEK_CUR, os.SEEK_END}
 		f := toFile(l)
 		op := l.CheckOption(2, "cur", []string{"set", "cur", "end"})
@@ -271,16 +278,16 @@ var fileHandleMethods = []RegistryFunction{
 		l.PushNumber(float64(ret))
 		return 1
 	}},
-	{"setvbuf", func(l *State) int { // Files are unbuffered in Go. Fake support for now.
+	{Name: "setvbuf", Function: func(l *luart.State) int { // Files are unbuffered in Go. Fake support for now.
 		//		f := toFile(l)
 		//		op := CheckOption(l, 2, "", []string{"no", "full", "line"})
 		//		size := OptInteger(l, 3, 1024)
 		// TODO err := setvbuf(f, nil, mode[op], size)
 		return l.FileResult(nil, "")
 	}},
-	{"write", func(l *State) int { l.PushValue(1); return write(l, toFile(l), 2) }},
+	{Name: "write", Function: func(l *luart.State) int { l.PushValue(1); return write(l, toFile(l), 2) }},
 	//	{"__gc", },
-	{"__tostring", func(l *State) int {
+	{Name: "__tostring", Function: func(l *luart.State) int {
 		if s := toStream(l); s.close == nil {
 			l.PushString("file (closed)")
 		} else {
@@ -290,24 +297,24 @@ var fileHandleMethods = []RegistryFunction{
 	}},
 }
 
-func dontClose(l *State) int {
+func dontClose(l *luart.State) int {
 	toStream(l).close = dontClose
 	l.PushNil()
 	l.PushString("cannot close standard file")
 	return 2
 }
 
-func registerStdFile(l *State, f *os.File, reg, name string) {
+func registerStdFile(l *luart.State, f *os.File, reg, name string) {
 	newStream(l, f, dontClose)
 	if reg != "" {
 		l.PushValue(-1)
-		l.SetField(RegistryIndex, reg)
+		l.SetField(luart.RegistryIndex, reg)
 	}
 	l.SetField(-2, name)
 }
 
-// IOOpen opens the io library. Usually passed to Require.
-func IOOpen(l *State) int {
+// OpenIO opens the io library. Usually passed to Require.
+func OpenIO(l *luart.State) int {
 	l.NewLibrary(ioLibrary)
 
 	l.NewMetaTable(fileHandle)

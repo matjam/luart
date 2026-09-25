@@ -49,7 +49,6 @@ func (l *State) SetHook(f Hook, mask byte, count int) {
 	l.hooker, l.baseHookCount = f, count
 	l.resetHookCount()
 	l.hookMask = mask
-	l.internalHook = false
 }
 
 // Hook returns the current hook function.

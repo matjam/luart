@@ -18,7 +18,7 @@ func load(l *State, t *testing.T, fileName string) *luaClosure {
 
 func TestParser(t *testing.T) {
 	l := NewState()
-	OpenLibraries(l)
+	openLibraries(l)
 	bin := load(l, t, "fixtures/fib.bin")
 	l.Pop(1)
 	closure := load(l, t, "fixtures/fib.lua")
