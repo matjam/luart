@@ -66,6 +66,9 @@ func (d *dumpState) writeConstants(p *bytecode.Proto) {
 		case float64:
 			d.writeByte(tagNumber)
 			d.writeNumber(k)
+		case int64:
+			d.writeByte(tagInteger)
+			d.write(k)
 		case string:
 			d.writeByte(tagString)
 			d.writeString(k)

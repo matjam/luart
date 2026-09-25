@@ -2,13 +2,13 @@ package compiler
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"math"
 	"slices"
-	"strconv"
 	"strings"
+
+	"github.com/matjam/luart/internal/bytecode"
 )
 
 const firstReserved = 257
@@ -45,6 +45,9 @@ const (
 	tkLE
 	tkNE
 	tkDoubleColon
+	tkIDiv
+	tkShl
+	tkShr
 	tkEOS
 	tkNumber
 	tkName
@@ -57,13 +60,13 @@ var tokens []string = []string{
 	"end", "false", "for", "function", "goto", "if",
 	"in", "local", "nil", "not", "or", "repeat",
 	"return", "then", "true", "until", "while",
-	"..", "...", "==", ">=", "<=", "~=", "::", "<eof>",
+	"..", "...", "==", ">=", "<=", "~=", "::", "//", "<<", ">>", "<eof>",
 	"<number>", "<name>", "<string>",
 }
 
 type token struct {
 	t rune
-	n float64
+	n bytecode.Number
 	s string
 }
 
@@ -223,16 +226,6 @@ func isHexadecimal(c rune) bool {
 	return '0' <= c && c <= '9' || 'a' <= c && c <= 'f' || 'A' <= c && c <= 'F'
 }
 
-func hexValue(c byte) float64 {
-	switch {
-	case '0' <= c && c <= '9':
-		return float64(c - '0')
-	case 'a' <= c && c <= 'f':
-		return float64(c - 'a' + 10)
-	}
-	return float64(c - 'A' + 10)
-}
-
 // readNumber reads a numeral as llex.c's read_numeral does, greedily:
 // digits, hexadecimal digits, '.'s and an exponent with its sign. The text
 // converts as a whole, so 3f and 1..2 are malformed numbers.
@@ -254,68 +247,11 @@ func (s *scanner) readNumber() token {
 			break
 		}
 	}
-	f, ok := numeral(s.buffer.String())
+	n, ok := bytecode.Numeral(s.buffer.String())
 	if !ok {
 		s.numberError()
 	}
-	return token{t: tkNumber, n: f}
-}
-
-// numeral converts a numeral's text as lobject.c's luaO_str2d does. A
-// decimal numeral too large to represent is infinite, as strtod makes it.
-func numeral(s string) (float64, bool) {
-	if len(s) > 1 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X') {
-		return hexNumeral(s[2:])
-	}
-	f, err := strconv.ParseFloat(s, 64)
-	if err != nil && !errors.Is(err, strconv.ErrRange) {
-		return 0, false
-	}
-	return f, true
-}
-
-// hexNumeral converts a hexadecimal numeral after its 0x, as lobject.c's
-// lua_strx2number does: digits, an optional fraction and an optional
-// binary exponent.
-func hexNumeral(s string) (float64, bool) {
-	var r float64
-	var i, e int // digits before and after the point
-	readHex := func(n *int) {
-		for ; s != "" && isHexadecimal(rune(s[0])); s = s[1:] {
-			r = r*16 + hexValue(s[0])
-			*n++
-		}
-	}
-	readHex(&i)
-	if s != "" && s[0] == '.' {
-		s = s[1:]
-		readHex(&e)
-	}
-	if i == 0 && e == 0 {
-		return 0, false
-	}
-	e *= -4 // each fractional digit divides by 16
-	if s != "" && (s[0] == 'p' || s[0] == 'P') {
-		s = s[1:]
-		negative := s != "" && s[0] == '-'
-		if s != "" && (s[0] == '+' || s[0] == '-') {
-			s = s[1:]
-		}
-		if s == "" || !isDecimal(rune(s[0])) {
-			return 0, false
-		}
-		exponent := 0
-		for ; s != "" && isDecimal(rune(s[0])); s = s[1:] {
-			if exponent < 1<<20 { // beyond any float64's range already
-				exponent = exponent*10 + int(s[0]-'0')
-			}
-		}
-		if negative {
-			exponent = -exponent
-		}
-		e += exponent
-	}
-	return math.Ldexp(r, e), s == ""
+	return token{t: tkNumber, n: n}
 }
 
 var escapes map[rune]rune = map[rune]rune{
@@ -460,17 +396,31 @@ func (s *scanner) scan() token {
 			s.advance()
 			return token{t: tkEq}
 		case '<':
-			if s.advance(); s.current != '=' {
-				return token{t: '<'}
+			switch s.advance(); s.current {
+			case '=':
+				s.advance()
+				return token{t: tkLE}
+			case '<':
+				s.advance()
+				return token{t: tkShl}
 			}
-			s.advance()
-			return token{t: tkLE}
+			return token{t: '<'}
 		case '>':
-			if s.advance(); s.current != '=' {
-				return token{t: '>'}
+			switch s.advance(); s.current {
+			case '=':
+				s.advance()
+				return token{t: tkGE}
+			case '>':
+				s.advance()
+				return token{t: tkShr}
+			}
+			return token{t: '>'}
+		case '/':
+			if s.advance(); s.current != '/' {
+				return token{t: '/'}
 			}
 			s.advance()
-			return token{t: tkGE}
+			return token{t: tkIDiv}
 		case '~':
 			if s.advance(); s.current != '=' {
 				return token{t: '~'}
@@ -587,40 +537,4 @@ func ChunkID(source string) string {
 		source = source[:room]
 	}
 	return pre + source + rets + pos
-}
-
-// ParseNumber converts s to a number as Lua's tonumber does: a decimal or
-// hexadecimal numeral with an optional sign, and space around it.
-func ParseNumber(s string) (v float64, ok bool) { // TODO this is f*cking ugly - scanner.readNumber should be refactored.
-	s = strings.TrimSpace(s)
-	if len(strings.Fields(s)) != 1 || strings.ContainsRune(s, 0) {
-		return
-	}
-	defer func() {
-		if e := recover(); e != nil {
-			if _, isSyntax := e.(syntaxError); !isSyntax {
-				panic(e)
-			}
-			v, ok = 0, false
-		}
-	}()
-	scanner := scanner{r: strings.NewReader(s)}
-	t := scanner.scan()
-	if t.t == '-' {
-		if t := scanner.scan(); t.t == tkNumber {
-			v, ok = -t.n, true
-		}
-	} else if t.t == tkNumber {
-		v, ok = t.n, true
-	} else if t.t == '+' {
-		if t := scanner.scan(); t.t == tkNumber {
-			v, ok = t.n, true
-		}
-	}
-	if ok && scanner.scan().t != tkEOS {
-		ok = false
-	} else if math.IsInf(v, 0) || math.IsNaN(v) {
-		ok = false
-	}
-	return
 }

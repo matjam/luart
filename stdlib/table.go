@@ -11,12 +11,12 @@ var tableLibrary = []lua.RegistryFunction{
 	{Name: "concat", Function: func(l *lua.State) int {
 		l.CheckType(1, lua.TypeTable)
 		sep := l.OptString(2, "")
-		i := l.OptInteger(3, 1)
+		i := optInt(l, 3, 1)
 		var last int
 		if l.IsNoneOrNil(4) {
-			last = l.Len(1)
+			last = int(l.Len(1))
 		} else {
-			last = l.CheckInteger(4)
+			last = checkInt(l, 4)
 		}
 		var s strings.Builder
 		addField := func() {
@@ -40,12 +40,12 @@ var tableLibrary = []lua.RegistryFunction{
 	}},
 	{Name: "insert", Function: func(l *lua.State) int {
 		l.CheckType(1, lua.TypeTable)
-		e := l.Len(1) + 1 // First empty element.
+		e := int(l.Len(1)) + 1 // First empty element.
 		switch l.Top() {
 		case 2:
 			l.RawSetInt(1, e) // Insert new element at the end.
 		case 3:
-			pos := l.CheckInteger(2)
+			pos := checkInt(l, 2)
 			l.ArgumentCheck(1 <= pos && pos <= e, 2, "position out of bounds")
 			for i := e; i > pos; i-- {
 				l.RawGetInt(1, i-1)
@@ -74,12 +74,12 @@ var tableLibrary = []lua.RegistryFunction{
 	}},
 	{Name: "unpack", Function: func(l *lua.State) int {
 		l.CheckType(1, lua.TypeTable)
-		i := l.OptInteger(2, 1)
+		i := optInt(l, 2, 1)
 		var e int
 		if l.IsNoneOrNil(3) {
-			e = l.Len(1)
+			e = int(l.Len(1))
 		} else {
-			e = l.CheckInteger(3)
+			e = checkInt(l, 3)
 		}
 		if i > e {
 			return 0
@@ -96,8 +96,8 @@ var tableLibrary = []lua.RegistryFunction{
 	}},
 	{Name: "remove", Function: func(l *lua.State) int {
 		l.CheckType(1, lua.TypeTable)
-		size := l.Len(1)
-		pos := l.OptInteger(2, size)
+		size := int(l.Len(1))
+		pos := optInt(l, 2, size)
 		if pos != size {
 			l.ArgumentCheck(1 <= pos && pos <= size+1, 2, "position out of bounds")
 		}
@@ -111,7 +111,7 @@ var tableLibrary = []lua.RegistryFunction{
 	}},
 	{Name: "sort", Function: func(l *lua.State) int {
 		l.CheckType(1, lua.TypeTable)
-		n := l.Len(1)
+		n := int(l.Len(1))
 		hasFunction := !l.IsNoneOrNil(2)
 		if hasFunction {
 			l.CheckType(2, lua.TypeFunction)

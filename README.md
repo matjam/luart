@@ -3,7 +3,7 @@
 
 # luart
 
-luart ("Lua RT") is a Lua 5.2 VM in pure Go, built for real-time use such as
+luart ("Lua RT") is a Lua VM in pure Go, built for real-time use such as
 per-frame scripts in games, visualisers and audio tools. It is a fork of
 [Shopify/go-lua](https://github.com/Shopify/go-lua).
 
@@ -24,7 +24,8 @@ JIT compiler. Quite far, it turns out.
   on arm64 and amd64, and numbers, booleans and calls never allocate, so a
   script can run every frame without pressure on the garbage collector.
 - **Lua 5.5 compatibility.** Move on from Lua 5.2 to the current language:
-  integers, `utf8`, `<const>` and `<close>` variables, and 5.5's changes.
+  integers and bitwise operators (done), `utf8`, `<const>` and `<close>`
+  variables, and 5.5's changes.
 - **Pure Go, easy to embed.** No cgo and no dependencies in the library,
   an API that reads like Go (typed arguments, generic userdata, number
   functions, `Interrupt`), and the interpreter everywhere the JIT does not
@@ -36,7 +37,7 @@ JIT compiler. Quite far, it turns out.
 
 | | |
 |---|---|
-| Lua version | 5.2, compatible with `luac` 5.2 binary chunks |
+| Lua version | 5.2 moving to 5.5: 5.4's integers, bitwise operators and number formatting are in; binary chunks are luart's own format |
 | Go | 1.27.1 or later, `CGO_ENABLED=0` |
 | API | Methods on `*lua.State`, following Lua's C API and auxiliary library, in `github.com/matjam/luart/lua`; standard libraries in `github.com/matjam/luart/stdlib` |
 | JIT | linux and darwin on arm64 and amd64; elsewhere, Windows included, states interpret |
@@ -44,13 +45,19 @@ JIT compiler. Quite far, it turns out.
 - The language and standard library of Lua 5.2 are complete, including
   coroutines (yielding across `pcall`, metamethods and iterators), Lua
   patterns, weak tables and `__gc` finalizers, `io`, `os` and `debug`.
-- It passes every file of the Lua 5.2 test suite except `api`,
-  `checktable` and `code`, which need C Lua's internal test library, and
-  `main`, which tests the standalone interpreter.
+  On top of them: Lua 5.4's integer subtype, `//` and the bitwise
+  operators, exact integer/float comparisons, integer for loops, 5.4's
+  math library (`math.type`, `tointeger`, `ult`, xoshiro256** `random`)
+  and `string.format`, and 5.5's number printing. `bit32` is gone, as in
+  5.4.
+- The official Lua 5.5 suite runs from `lua-5.5-tests/`; its pending list
+  in [lua/lua55_test.go](lua/lua55_test.go) says what each file still
+  needs. The files of the Lua 5.2 suite whose behaviour 5.5 kept still
+  pass.
 - With the JIT it is faster than C Lua 5.4 on the standard benchmarks; see
   [Performance](#performance).
 
-Differences from C Lua 5.2:
+Differences from C Lua:
 
 - There is only the C locale, and C modules cannot load: luart has no
   dynamic libraries.
@@ -211,7 +218,7 @@ with the chunk name and line, and the message is left on the stack:
 l.Global("update")
 l.PushNumber(0.016)
 if err := l.ProtectedCall(1, 0, 0); err != nil {
-	fmt.Println(err) // runtime error: game.lua:4: attempt to perform arithmetic on local 'speed' (a nil value)
+	fmt.Println(err) // runtime error: game.lua:4: attempt to perform arithmetic on a nil value (local 'speed')
 	l.Pop(1)
 }
 ```
@@ -251,7 +258,7 @@ l.Register("point", func(l *lua.State) int {
 	l.SetMetaTableNamed("point")
 	return 1
 })
-// Lua: print(point(3, 4):norm()) prints 5
+// Lua: print(point(3, 4):norm()) prints 5.0
 ```
 
 **Choosing libraries.** `stdlib.Open` opens every standard library. A
@@ -288,13 +295,13 @@ only interprets; see [JIT](#jit).
 ## Development
 
 ```sh
-git submodule update --init   # lua-tests
+git submodule update --init   # lua-tests, the Lua 5.2 suite
 go test ./...
 cd bench && go test -bench . -benchmem
 ```
 
-The parser and dump tests compare against `luac` 5.2 and skip when it is not
-installed. CI installs it.
+C Lua 5.5 (`brew install lua`) is the reference for behaviour the suites
+do not pin down.
 
 ## Licence
 

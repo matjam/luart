@@ -28,13 +28,6 @@ func (c *amd64Compiler) findKernel(latch int) *kernel {
 	if plan == nil {
 		return nil
 	}
-	if !c.sse41 {
-		for ip := plan.start; ip < latch; ip++ {
-			if c.p.Code[ip].OpCode() == bytecode.OpMod {
-				return nil
-			}
-		}
-	}
 	k := &kernel{kernelPlan: plan, labels: make([]Label, latch-plan.start)}
 	for i := range k.labels {
 		k.labels[i] = c.a.NewLabel()
@@ -129,7 +122,7 @@ func (c *amd64Compiler) kernelInstruction(k *kernel, ip int, latch Label) int {
 	case bytecode.OpLoadConstant:
 		o, _ := c.constant(i.Bx())
 		a.LoadSD(k.reg(i.A()), o.base, o.off+offN)
-	case bytecode.OpAdd, bytecode.OpSub, bytecode.OpMul, bytecode.OpDiv, bytecode.OpMod:
+	case bytecode.OpAdd, bytecode.OpSub, bytecode.OpMul, bytecode.OpDiv:
 		b, cc := c.kernelOperand(k, i.B(), 0), c.kernelOperand(k, i.C(), 1)
 		c.arith(op, 4, b, cc) // in X4, as the destination may be an operand
 		a.MovSD(k.reg(i.A()), 4)

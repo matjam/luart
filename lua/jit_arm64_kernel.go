@@ -151,7 +151,7 @@ func (c *arm64Compiler) kernelInstruction(k *kernel, ip int, latch Label) int {
 	case bytecode.OpLoadConstant:
 		o, _ := c.constant(i.Bx())
 		a.LdrD(k.reg(i.A()), o.base, o.off+offN)
-	case bytecode.OpAdd, bytecode.OpSub, bytecode.OpMul, bytecode.OpDiv, bytecode.OpMod:
+	case bytecode.OpAdd, bytecode.OpSub, bytecode.OpMul, bytecode.OpDiv:
 		b, cc, d := c.kernelOperand(k, i.B(), 0), c.kernelOperand(k, i.C(), 1), k.reg(i.A())
 		switch op {
 		case bytecode.OpAdd:
@@ -162,11 +162,6 @@ func (c *arm64Compiler) kernelInstruction(k *kernel, ip int, latch Label) int {
 			a.Fmul(d, b, cc)
 		case bytecode.OpDiv:
 			a.Fdiv(d, b, cc)
-		case bytecode.OpMod: // b - floor(b/c)*c, rounded step by step as arith does
-			a.Fdiv(2, b, cc)
-			a.Frintm(2, 2)
-			a.Fmul(2, 2, cc)
-			a.Fsub(d, b, 2)
 		}
 	case bytecode.OpUnaryMinus:
 		a.Fneg(k.reg(i.A()), k.reg(i.B()))

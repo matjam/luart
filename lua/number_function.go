@@ -49,6 +49,7 @@ func newNumberFunction(f any) *numberFunction {
 }
 
 // tryCall calls f directly when args are exactly its number arguments.
+// Integers convert to floats, as the parameters are float64s.
 func (f *numberFunction) tryCall(args []value) (float64, bool) {
 	if len(args) != f.arity {
 		return 0, false
@@ -57,14 +58,14 @@ func (f *numberFunction) tryCall(args []value) (float64, bool) {
 		if !args[0].isNumber() {
 			return 0, false
 		}
-		return f.unary(args[0].f()), true
+		return f.unary(args[0].toFloat()), true
 	}
 	var a [maxNumberArgs]float64
 	for i, v := range args {
 		if !v.isNumber() {
 			return 0, false
 		}
-		a[i] = v.f()
+		a[i] = v.toFloat()
 	}
 	return f.call(a[0], a[1], a[2], a[3]), true
 }

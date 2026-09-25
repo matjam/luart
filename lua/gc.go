@@ -478,7 +478,7 @@ func (c *collector) clearKeys(l *State) {
 func (t *table) forEach(f func(k, v value)) {
 	for i, v := range t.array {
 		if !v.isNil() {
-			f(numberValue(float64(i+1)), v)
+			f(integerValue(int64(i+1)), v)
 		}
 	}
 	if t.shape != nil {

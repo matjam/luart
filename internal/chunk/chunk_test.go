@@ -61,7 +61,7 @@ func TestEmptyStrings(t *testing.T) {
 		return b.Bytes()
 	}
 	dump := func(source string) []byte {
-		p, err := compiler.Parse(strings.NewReader("return 1"), source, 0)
+		p, err := compiler.Parse(strings.NewReader("return true"), source, 0)
 		if err != nil {
 			t.Fatal(err)
 		}

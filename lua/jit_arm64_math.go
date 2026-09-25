@@ -17,10 +17,9 @@ var intrinsics = []struct {
 	fn   uint64
 	emit func(c *arm64Compiler, ip int)
 }{
-	{funcValue(math.Floor), func(c *arm64Compiler, ip int) { c.a.Frintm(0, 0) }},
-	{funcValue(math.Ceil), func(c *arm64Compiler, ip int) { c.a.Frintp(0, 0) }},
+	// floor, ceil and abs return integers for integers, so they are no
+	// longer number functions of floats.
 	{funcValue(math.Sqrt), func(c *arm64Compiler, ip int) { c.a.Fsqrt(0, 0) }},
-	{funcValue(math.Abs), func(c *arm64Compiler, ip int) { c.a.Fabs(0, 0) }},
 	{funcValue(math.Sin), func(c *arm64Compiler, ip int) { c.trig(ip, false) }},
 	{funcValue(math.Cos), func(c *arm64Compiler, ip int) { c.trig(ip, true) }},
 }

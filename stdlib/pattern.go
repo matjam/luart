@@ -403,7 +403,7 @@ func (ms *matchState) pushCaptures(s, e int) int {
 // find is string.find and, if !isFind, string.match.
 func find(l *lua.State, isFind bool) int {
 	s, p := l.CheckString(1), l.CheckString(2)
-	init := relativePosition(l.OptInteger(3, 1), len(s))
+	init := relativePosition(optInt(l, 3, 1), len(s))
 	if init < 1 {
 		init = 1
 	} else if init > len(s)+1 { // starts after the end
@@ -456,7 +456,8 @@ func gmatch(l *lua.State) int {
 func gmatchNext(l *lua.State) int {
 	s, _ := l.ToString(lua.UpValueIndex(1))
 	p, _ := l.ToString(lua.UpValueIndex(2))
-	start, _ := l.ToInteger(lua.UpValueIndex(3))
+	start64, _ := l.ToInteger(lua.UpValueIndex(3))
+	start := int(start64)
 	ms := newMatchState(l, s, p)
 	for src := start; src <= len(s); src++ {
 		ms.reset()
@@ -476,7 +477,7 @@ func gmatchNext(l *lua.State) int {
 func gsub(l *lua.State) int {
 	src, p := l.CheckString(1), l.CheckString(2)
 	tr := l.TypeOf(3)
-	maxN := l.OptInteger(4, len(src)+1) // negative is unlimited, as in C
+	maxN := optInt(l, 4, len(src)+1) // negative is unlimited, as in C
 	l.ArgumentCheck(tr == lua.TypeNumber || tr == lua.TypeString || tr == lua.TypeFunction || tr == lua.TypeTable, 3, "string/function/table expected")
 	anchor := len(p) > 0 && p[0] == '^'
 	if anchor {

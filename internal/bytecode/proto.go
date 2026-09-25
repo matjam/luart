@@ -4,7 +4,7 @@ package bytecode
 // chunks hold. The VM builds its own prototype from it, with runtime
 // state alongside.
 type Proto struct {
-	Constants                    []any // nil, bool, float64 or string
+	Constants                    []any // nil, bool, int64, float64 or string
 	Code                         []Instruction
 	Prototypes                   []*Proto
 	LineInfo                     []int32

@@ -226,6 +226,10 @@ func (state *loadState) readConstants() (constants []any, err error) {
 			k, err = state.readBool()
 		case t == tagNumber:
 			k, err = state.readNumber()
+		case t == tagInteger:
+			var i int64
+			err = state.read(&i)
+			k = i
 		case t == tagString:
 			k, err = state.readString()
 		default:

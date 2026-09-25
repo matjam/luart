@@ -66,7 +66,7 @@ func planKernel(p *prototype, latch, maxRegs int, constOK func(k int) bool) *ker
 		}
 		return false
 	}
-	number := func(kk int) bool { return constOK(kk) && p.Constants[kk].isNumber() }
+	number := func(kk int) bool { return constOK(kk) && p.Constants[kk].isFloat() }
 	read := func(field int) bool {
 		if bytecode.IsConstant(field) {
 			return number(bytecode.ConstantIndex(field))
@@ -108,7 +108,7 @@ func planKernel(p *prototype, latch, maxRegs int, constOK func(k int) bool) *ker
 			if !number(i.Bx()) || !write(i.A(), ip) {
 				return nil
 			}
-		case bytecode.OpAdd, bytecode.OpSub, bytecode.OpMul, bytecode.OpDiv, bytecode.OpMod:
+		case bytecode.OpAdd, bytecode.OpSub, bytecode.OpMul, bytecode.OpDiv:
 			if !read(i.B()) || !read(i.C()) || !write(i.A(), ip) {
 				return nil
 			}

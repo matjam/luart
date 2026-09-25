@@ -1,5 +1,7 @@
-// Package chunk reads and writes Lua 5.2 binary chunks: the precompiled
-// functions luac writes and string.dump returns.
+// Package chunk reads and writes luart's binary chunks, the precompiled
+// functions string.dump returns. The format is Lua 5.2's with integer
+// constants added, marked as version 0x55 and format 1 (luart's). C Lua's
+// chunks, of any version, do not load: luart runs its own instruction set.
 package chunk
 
 import (
@@ -13,12 +15,14 @@ import (
 // Signature is the mark that starts a binary chunk ('<esc>Lua').
 const Signature = "\033Lua"
 
-// The type tags of constants.
+// The type tags of constants. A float is 5.2's number; an integer has
+// Lua 5.4's tag for integers, a variant of number.
 const (
 	tagNil     = 0
 	tagBoolean = 1
 	tagNumber  = 3
 	tagString  = 4
+	tagInteger = 0x13
 )
 
 // header is the header of the chunks this platform reads and writes.
@@ -32,8 +36,8 @@ var header struct {
 
 func init() {
 	copy(header.Signature[:], Signature)
-	header.Version = 0x52
-	header.Format = 0
+	header.Version = 0x55
+	header.Format = 1
 	if endianness() == binary.LittleEndian {
 		header.Endianness = 1
 	} else {

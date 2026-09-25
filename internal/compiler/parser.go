@@ -203,6 +203,8 @@ func unaryOp(op rune) int {
 		return oprNot
 	case '-':
 		return oprMinus
+	case '~':
+		return oprBNot
 	case '#':
 		return oprLength
 	}
@@ -223,6 +225,18 @@ func binaryOp(op rune) int {
 		return oprMod
 	case '^':
 		return oprPow
+	case tkIDiv:
+		return oprIDiv
+	case '&':
+		return oprBAnd
+	case '|':
+		return oprBOr
+	case '~':
+		return oprBXor
+	case tkShl:
+		return oprShl
+	case tkShr:
+		return oprShr
 	case tkConcat:
 		return oprConcat
 	case tkNE:
@@ -245,15 +259,21 @@ func binaryOp(op rune) int {
 	return oprNoBinary
 }
 
-var priority []struct{ left, right int } = []struct{ left, right int }{
-	{6, 6}, {6, 6}, {7, 7}, {7, 7}, {7, 7}, // `+' `-' `*' `/' `%'
-	{10, 9}, {5, 4}, // ^, .. (right associative)
-	{3, 3}, {3, 3}, {3, 3}, // ==, <, <=
-	{3, 3}, {3, 3}, {3, 3}, // ~=, >, >=
-	{2, 2}, {1, 1}, // and, or
+// priority is each binary operator's left and right priority, as in Lua
+// 5.4's lparser.c, indexed by the opr constants.
+var priority = [...]struct{ left, right int }{
+	oprAdd: {10, 10}, oprSub: {10, 10},
+	oprMul: {11, 11}, oprDiv: {11, 11}, oprMod: {11, 11}, oprIDiv: {11, 11},
+	oprPow:  {14, 13}, // right associative
+	oprBAnd: {6, 6}, oprBOr: {4, 4}, oprBXor: {5, 5},
+	oprShl: {7, 7}, oprShr: {7, 7},
+	oprConcat: {9, 8}, // right associative
+	oprEq:     {3, 3}, oprLT: {3, 3}, oprLE: {3, 3},
+	oprNE: {3, 3}, oprGT: {3, 3}, oprGE: {3, 3},
+	oprAnd: {2, 2}, oprOr: {1, 1},
 }
 
-const unaryPriority = 8
+const unaryPriority = 12
 
 func (p *parser) subExpression(limit int) (e exprDesc, op int) {
 	p.enterLevel()
@@ -360,7 +380,7 @@ func (p *parser) forNumeric(name string, line int) {
 	if p.testNext(',') {
 		expr()
 	} else {
-		p.function.EncodeConstant(p.function.freeRegisterCount, p.function.NumberConstant(1))
+		p.function.EncodeConstant(p.function.freeRegisterCount, p.function.NumberConstant(bytecode.Integer(1)))
 		p.function.ReserveRegisters(1)
 	}
 	p.forBody(base, line, 1, true)

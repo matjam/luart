@@ -2,12 +2,12 @@ package lua
 
 import "github.com/matjam/luart/internal/bytecode"
 
-// Opcodes that exist only in a prototype's exec code. They follow the Lua 5.2
-// opcodes and fit the 6-bit opcode field. Each is an arithmetic instruction
+// Opcodes that exist only in a prototype's exec code. They follow the
+// compiler's opcodes and fit the 6-bit opcode field. Each is an arithmetic instruction
 // with its operand kinds fixed at load time: R reads a register and K a
 // constant, whose index has the RK bit cleared.
 const (
-	opAddRR bytecode.OpCode = bytecode.OpExtraArg + 1 + iota
+	opAddRR bytecode.OpCode = bytecode.OpBitwise + 1 + iota
 	opAddRK
 	opAddKR
 	opSubRR

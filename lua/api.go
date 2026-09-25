@@ -60,10 +60,17 @@ const (
 	OpAdd        Operator = iota // Performs addition (+).
 	OpSub                        // Performs subtraction (-).
 	OpMul                        // Performs multiplication (*).
-	OpDiv                        // Performs division (/).
 	OpMod                        // Performs modulo (%).
 	OpPow                        // Performs exponentiation (^).
+	OpDiv                        // Performs float division (/).
+	OpIDiv                       // Performs floor division (//).
+	OpBAnd                       // Performs bitwise and (&).
+	OpBOr                        // Performs bitwise or (|).
+	OpBXor                       // Performs bitwise exclusive or (~).
+	OpShl                        // Performs left shift (<<).
+	OpShr                        // Performs right shift (>>).
 	OpUnaryMinus                 // Performs mathematical negation (unary -).
+	OpBNot                       // Performs bitwise not (unary ~).
 )
 
 // A ComparisonOperator is an op argument for Compare.
@@ -113,8 +120,8 @@ const MinStack = 20
 
 const (
 	VersionMajor  = 5
-	VersionMinor  = 2
-	VersionNumber = 502
+	VersionMinor  = 5
+	VersionNumber = 505
 	VersionString = "Lua " + string('0'+VersionMajor) + "." + string('0'+VersionMinor)
 )
 

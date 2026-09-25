@@ -18,7 +18,10 @@ func TestArg(t *testing.T) {
 	}{
 		{"float64", `f(1.5)`, "1.5", ""},
 		{"float64 from a string", `f("2")`, "2", ""},
-		{"int", `i(3.9)`, "3", ""},
+		{"int", `i(3)`, "3", ""},
+		{"int from an integral float", `i(3.0)`, "3", ""},
+		{"int from a float with a fraction", `i(3.9)`, "", "bad argument #1 to 'i' (number has no integer representation)"},
+		{"int64", `j(math.maxinteger)`, "9223372036854775807", ""},
 		{"string", `s("x")`, "x", ""},
 		{"string from a number", `s(4)`, "4", ""},
 		{"bool", `b(nil)`, "false", ""},
@@ -32,6 +35,7 @@ func TestArg(t *testing.T) {
 			var got string
 			l.Register("f", func(l *lua.State) int { got = fmt.Sprintf("%.14g", l.Arg[float64](1)); return 0 })
 			l.Register("i", func(l *lua.State) int { got = fmt.Sprint(l.Arg[int](1)); return 0 })
+			l.Register("j", func(l *lua.State) int { got = fmt.Sprint(l.Arg[int64](1)); return 0 })
 			l.Register("s", func(l *lua.State) int { got = l.Arg[string](1); return 0 })
 			l.Register("b", func(l *lua.State) int {
 				if l.Arg[bool](1) {

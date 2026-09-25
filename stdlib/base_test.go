@@ -8,9 +8,12 @@ func TestPairsIterators(t *testing.T) {
 	run(t, `
 		assert(pairs({}) == next and ipairs({}) == ipairs({}))
 		assert(type(ipairs({})) == "function")
-		local mt = {__pairs = function(t) return "p" end, __ipairs = function(t) return "i" end}
+		local mt = {__pairs = function(t) return "p" end, __index = function(t, i) if i <= 3 then return i end end}
 		local t = setmetatable({}, mt)
-		assert(pairs(t) == "p" and ipairs(t) == "i")
+		assert(pairs(t) == "p") -- ipairs has no metamethod since 5.4, but respects __index
+		local s = 0
+		for i, v in ipairs(t) do s = s + v end
+		assert(s == 6)
 		local n = 0
 		for i, v in ipairs({10, 20, 30}) do n = n + i * v end
 		for k, v in pairs({a = 1}) do n = n + v end
@@ -18,12 +21,12 @@ func TestPairsIterators(t *testing.T) {
 	`)
 }
 
-// collectgarbage takes Lua 5.2's options and returns what C Lua returns.
+// collectgarbage takes Lua 5.4's options and returns what C Lua returns.
 func TestCollectGarbage(t *testing.T) {
 	run(t, `
 		assert(collectgarbage() == 0 and collectgarbage("collect") == 0)
 		local k, b = collectgarbage("count")
-		assert(k > 0 and b >= 0 and b < 1024 and k * 1024 == math.floor(k) * 1024 + b)
+		assert(k > 0 and b == nil) -- one value since 5.3
 		repeat until collectgarbage("step") -- true once a cycle finishes
 		assert(collectgarbage("step", 1e6) == true)
 		assert(collectgarbage("isrunning") == true)

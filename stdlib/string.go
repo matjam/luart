@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/matjam/luart/lua"
 )
@@ -21,118 +20,200 @@ func relativePosition(pos, length int) int {
 	return length + pos + 1
 }
 
-func scanFormat(l *lua.State, fs string) string {
-	i := 0
-	skipDigit := func() {
-		if unicode.IsDigit(rune(fs[i])) {
-			i++
-		}
+// The flags each conversion takes, as lstrlib.c's L_FMTFLAGS.
+const (
+	formatFlagsF = "-+#0 " // a, A, e, E, f, g, G
+	formatFlagsX = "-#0"   // o, x, X
+	formatFlagsI = "-+0 "  // d, i
+	formatFlagsU = "-0"    // u
+	formatFlagsC = "-"     // c, p, s
+)
+
+// getFormat returns the conversion spec at the start of fs, after its '%':
+// flags, width, precision and the conversion, as lstrlib.c's getformat.
+func getFormat(l *lua.State, fs string) string {
+	n := 0
+	for n < len(fs) && strings.IndexByte(formatFlagsF+"123456789.", fs[n]) >= 0 {
+		n++
 	}
-	flags := "-+ #0"
-	for i < len(fs) && strings.ContainsRune(flags, rune(fs[i])) {
-		i++
+	if n++; n >= 32-10 {
+		l.Errorf("invalid format (too long)")
 	}
-	if i >= len(flags) {
-		l.Errorf("invalid format (repeated flags)")
+	if n > len(fs) {
+		n = len(fs)
 	}
-	skipDigit()
-	skipDigit()
-	if fs[i] == '.' {
-		i++
-		skipDigit()
-		skipDigit()
-	}
-	if unicode.IsDigit(rune(fs[i])) {
-		l.Errorf("invalid format (width or precision too long)")
-	}
-	i++
-	return "%" + fs[:i]
+	return "%" + fs[:n]
 }
 
+// checkFormat raises an error unless spec takes only flags, and a width
+// and precision of up to two digits each, as lstrlib.c's checkformat.
+func checkFormat(l *lua.State, spec, flags string, precision bool) {
+	s := spec[1:]
+	for s != "" && strings.IndexByte(flags, s[0]) >= 0 {
+		s = s[1:]
+	}
+	twoDigits := func() {
+		for k := 0; k < 2 && s != "" && '0' <= s[0] && s[0] <= '9'; k++ {
+			s = s[1:]
+		}
+	}
+	if s == "" || s[0] != '0' {
+		twoDigits()
+		if s != "" && s[0] == '.' && precision {
+			s = s[1:]
+			twoDigits()
+		}
+	}
+	if s == "" || !('a' <= s[0] && s[0] <= 'z' || 'A' <= s[0] && s[0] <= 'Z') {
+		l.Errorf("invalid conversion specification: '%s'", spec)
+	}
+}
+
+// formatHelper is string.format, after Lua 5.5's str_format.
 func formatHelper(l *lua.State, fs string, argCount int) string {
 	var b bytes.Buffer
 	for i, arg := 0, 1; i < len(fs); i++ {
 		if fs[i] != '%' {
 			b.WriteByte(fs[i])
-		} else if i++; fs[i] == '%' {
-			b.WriteByte(fs[i])
-		} else {
-			if arg++; arg > argCount {
-				l.ArgumentError(arg, "no value")
+			continue
+		}
+		if i++; i < len(fs) && fs[i] == '%' {
+			b.WriteByte('%')
+			continue
+		}
+		if arg++; arg > argCount {
+			l.ArgumentError(arg, "no value")
+		}
+		spec := getFormat(l, fs[i:])
+		i += len(spec) - 2
+		switch conv := spec[len(spec)-1]; conv {
+		case 'c':
+			checkFormat(l, spec, formatFlagsC, false)
+			c := byte(l.CheckInteger(arg))
+			fmt.Fprintf(&b, spec, 'x')
+			buf := b.Bytes()
+			buf[len(buf)-1] = c // one byte, whatever its value, as C writes it
+		case 'd', 'i', 'u', 'o', 'x', 'X':
+			n := l.CheckInteger(arg)
+			flags := formatFlagsX
+			switch conv {
+			case 'd', 'i':
+				flags = formatFlagsI
+			case 'u':
+				flags = formatFlagsU
 			}
-			f := scanFormat(l, fs[i:])
-			switch i += len(f) - 2; fs[i] {
-			case 'c':
-				// Ensure each character is represented by a single byte, while preserving format modifiers.
-				c := l.CheckInteger(arg)
-				fmt.Fprintf(&b, f, 'x')
-				buf := b.Bytes()
-				buf[len(buf)-1] = byte(c)
-			case 'i': // The fmt package doesn't support %i.
-				f = f[:len(f)-1] + "d"
-				fallthrough
-			case 'd':
-				n := l.CheckNumber(arg)
-				l.ArgumentCheck(math.Floor(n) == n && -math.Pow(2, 63) <= n && n < math.Pow(2, 63), arg, "number has no integer representation")
-				ni := int(n)
-				fmt.Fprintf(&b, f, ni)
-			case 'u': // The fmt package doesn't support %u.
-				f = f[:len(f)-1] + "d"
-				n := l.CheckNumber(arg)
-				l.ArgumentCheck(math.Floor(n) == n && 0.0 <= n && n < math.Pow(2, 64), arg, "not a non-negative number in proper range")
-				ni := uint(n)
-				fmt.Fprintf(&b, f, ni)
-			case 'o', 'x', 'X':
-				n := l.CheckNumber(arg)
-				l.ArgumentCheck(0.0 <= n && n < math.Pow(2, 64), arg, "not a non-negative number in proper range")
-				ni := uint(n)
-				fmt.Fprintf(&b, f, ni)
-			case 'e', 'E', 'f', 'g', 'G':
-				if n := l.CheckNumber(arg); math.IsInf(n, 0) || math.IsNaN(n) {
-					b.WriteString(formatNonFinite(f, n))
-				} else {
-					fmt.Fprintf(&b, f, n)
-				}
-			case 'q':
-				s := l.CheckString(arg)
-				b.WriteByte('"')
-				for i := 0; i < len(s); i++ {
-					switch s[i] {
-					case '"', '\\', '\n':
-						b.WriteByte('\\')
-						b.WriteByte(s[i])
-					default:
-						if 0x20 <= s[i] && s[i] != 0x7f { // ASCII control characters don't correspond to a Unicode range.
-							b.WriteByte(s[i])
-						} else if i+1 < len(s) && unicode.IsDigit(rune(s[i+1])) {
-							fmt.Fprintf(&b, "\\%03d", s[i])
-						} else {
-							fmt.Fprintf(&b, "\\%d", s[i])
-						}
-					}
-				}
-				b.WriteByte('"')
-			case 's':
-				if s, _ := l.ToStringMeta(arg); !strings.ContainsRune(f, '.') && len(s) >= 100 {
-					b.WriteString(s)
-				} else {
-					fmt.Fprintf(&b, f, s)
-				}
-			case 'a', 'A':
-				b.WriteString(formatHexFloat(f, l.CheckNumber(arg)))
+			checkFormat(l, spec, flags, true)
+			switch conv {
+			case 'd', 'i':
+				fmt.Fprintf(&b, spec[:len(spec)-1]+"d", n)
+			case 'u':
+				fmt.Fprintf(&b, spec[:len(spec)-1]+"d", uint64(n))
 			default:
-				l.Errorf("invalid option '%%%c' to 'format'", int(fs[i]))
+				fmt.Fprintf(&b, spec, uint64(n))
 			}
+		case 'a', 'A':
+			checkFormat(l, spec, formatFlagsF, true)
+			b.WriteString(formatHexFloat(spec, l.CheckNumber(arg)))
+		case 'e', 'E', 'f', 'F', 'g', 'G':
+			n := l.CheckNumber(arg)
+			checkFormat(l, spec, formatFlagsF, true)
+			if math.IsInf(n, 0) || math.IsNaN(n) {
+				b.WriteString(formatNonFinite(spec, n))
+			} else if (conv == 'g' || conv == 'G') && !strings.Contains(spec, ".") {
+				fmt.Fprintf(&b, spec[:len(spec)-1]+".6"+string(conv), n) // C's default precision
+			} else {
+				fmt.Fprintf(&b, spec, n)
+			}
+		case 'p':
+			checkFormat(l, spec, formatFlagsC, false)
+			if p := l.ToPointer(arg); p != 0 {
+				fmt.Fprintf(&b, spec[:len(spec)-1]+"s", fmt.Sprintf("%#x", p))
+			} else {
+				fmt.Fprintf(&b, spec[:len(spec)-1]+"s", "(null)")
+			}
+		case 'q':
+			if len(spec) > 2 {
+				l.Errorf("specifier '%%q' cannot have modifiers")
+			}
+			addLiteral(l, &b, arg)
+		case 's':
+			str, _ := l.ToStringMeta(arg)
+			l.Pop(1)
+			if len(spec) == 2 {
+				b.WriteString(str) // no modifiers: the whole string
+				break
+			}
+			l.ArgumentCheck(strings.IndexByte(str, 0) < 0, arg, "string contains zeros")
+			checkFormat(l, spec, formatFlagsC, true)
+			if !strings.Contains(spec, ".") && len(str) >= 100 {
+				b.WriteString(str) // too long to format: kept whole
+			} else {
+				fmt.Fprintf(&b, spec, str)
+			}
+		default:
+			l.Errorf("invalid conversion '%s' to 'format'", spec)
 		}
 	}
 	return b.String()
 }
 
+// addLiteral writes the value at arg as Lua source that reads it back:
+// strings quoted, integers in decimal (minint in hexadecimal), floats in
+// hexadecimal, as lstrlib.c's addliteral does.
+func addLiteral(l *lua.State, b *bytes.Buffer, arg int) {
+	switch l.TypeOf(arg) {
+	case lua.TypeString:
+		s, _ := l.ToString(arg)
+		b.WriteByte('"')
+		for i := 0; i < len(s); i++ {
+			switch c := s[i]; {
+			case c == '"' || c == '\\' || c == '\n':
+				b.WriteByte('\\')
+				b.WriteByte(c)
+			case c < 0x20 || c == 0x7f:
+				if i+1 < len(s) && '0' <= s[i+1] && s[i+1] <= '9' {
+					fmt.Fprintf(b, "\\%03d", c)
+				} else {
+					fmt.Fprintf(b, "\\%d", c)
+				}
+			default:
+				b.WriteByte(c)
+			}
+		}
+		b.WriteByte('"')
+	case lua.TypeNumber:
+		if n, ok := l.ToInteger(arg); ok && l.IsInteger(arg) {
+			if n == math.MinInt64 {
+				fmt.Fprintf(b, "0x%x", uint64(n))
+			} else {
+				fmt.Fprintf(b, "%d", n)
+			}
+			break
+		}
+		switch n, _ := l.ToNumber(arg); {
+		case math.IsInf(n, 1):
+			b.WriteString("1e9999")
+		case math.IsInf(n, -1):
+			b.WriteString("-1e9999")
+		case math.IsNaN(n):
+			b.WriteString("(0/0)")
+		default:
+			b.WriteString(formatHexFloat("%a", n))
+		}
+	case lua.TypeNil, lua.TypeBoolean:
+		s, _ := l.ToStringMeta(arg)
+		l.Pop(1)
+		b.WriteString(s)
+	default:
+		l.ArgumentError(arg, "value has no literal form")
+	}
+}
+
 var stringLibrary = []lua.RegistryFunction{
 	{Name: "byte", Function: func(l *lua.State) int {
 		s := l.CheckString(1)
-		start := relativePosition(l.OptInteger(2, 1), len(s))
-		end := relativePosition(l.OptInteger(3, start), len(s))
+		start := relativePosition(optInt(l, 2, 1), len(s))
+		end := relativePosition(optInt(l, 3, start), len(s))
 		if start < 1 {
 			start = 1
 		}
@@ -155,7 +236,7 @@ var stringLibrary = []lua.RegistryFunction{
 	{Name: "char", Function: func(l *lua.State) int {
 		var b bytes.Buffer
 		for i, n := 1, l.Top(); i <= n; i++ {
-			c := l.CheckInteger(i)
+			c := checkInt(l, i)
 			l.ArgumentCheck(int(byte(c)) == c, i, "value out of range")
 			b.WriteByte(byte(c))
 		}
@@ -183,7 +264,7 @@ var stringLibrary = []lua.RegistryFunction{
 	{Name: "lower", Function: func(l *lua.State) int { l.PushString(changeCase(l.CheckString(1), 'A', 'Z')); return 1 }},
 	{Name: "match", Function: func(l *lua.State) int { return find(l, false) }},
 	{Name: "rep", Function: func(l *lua.State) int {
-		s, n, sep := l.CheckString(1), l.CheckInteger(2), l.OptString(3, "")
+		s, n, sep := l.CheckString(1), checkInt(l, 2), l.OptString(3, "")
 		if n <= 0 {
 			l.PushString("")
 		} else if len(s)+len(sep) < len(s) || len(s)+len(sep) >= math.MaxInt/n {
@@ -210,7 +291,7 @@ var stringLibrary = []lua.RegistryFunction{
 	}},
 	{Name: "sub", Function: func(l *lua.State) int {
 		s := l.CheckString(1)
-		start, end := relativePosition(l.CheckInteger(2), len(s)), relativePosition(l.OptInteger(3, -1), len(s))
+		start, end := relativePosition(checkInt(l, 2), len(s)), relativePosition(optInt(l, 3, -1), len(s))
 		if start < 1 {
 			start = 1
 		}

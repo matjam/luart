@@ -4,27 +4,31 @@ import (
 	"bytes"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 )
 
+// Loading a dumped chunk and dumping it again gives the same bytes.
 func TestUndumpThenDumpReturnsTheSameFunction(t *testing.T) {
-	_, err := exec.LookPath("luac")
-	if err != nil {
-		t.Skipf("testing dump requires luac: %s", err)
+	source := filepath.Join("fixtures", "fib.lua")
+	l := NewState()
+	if err := l.LoadFile(source, ""); err != nil {
+		t.Fatal(err)
 	}
-	source := filepath.Join("../lua-tests", "checktable.lua")
-	binary := filepath.Join(t.TempDir(), "checktable.bin")
-	if err := exec.Command("luac", "-o", binary, source).Run(); err != nil {
-		t.Fatalf("luac failed to compile %s: %s", source, err)
+	var first bytes.Buffer
+	if err := l.Dump(&first); err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(t.TempDir(), "sort.bin")
+	if err := os.WriteFile(binary, first.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
 	}
 	file, err := os.Open(binary)
 	if err != nil {
-		t.Fatal("couldn't open checktable.bin")
+		t.Fatal(err)
 	}
-
-	l := NewState()
+	defer file.Close()
+	l = NewState()
 	if err := l.Load(file, "test", "b"); err != nil {
 		msg, _ := l.ToString(-1)
 		t.Fatal("unexpected error", err, msg)
@@ -50,13 +54,9 @@ func TestUndumpThenDumpReturnsTheSameFunction(t *testing.T) {
 }
 
 func TestDumpThenUndumpReturnsTheSameFunction(t *testing.T) {
-	_, err := exec.LookPath("luac")
-	if err != nil {
-		t.Skipf("testing dump requires luac: %s", err)
-	}
-	source := filepath.Join("../lua-tests", "checktable.lua")
+	source := filepath.Join("fixtures", "fib.lua")
 	l := NewState()
-	err = l.LoadFile(source, "")
+	err := l.LoadFile(source, "")
 	if err != nil {
 		t.Error("unexpected error", err, "with loading file", source)
 	}
