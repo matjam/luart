@@ -1,5 +1,5 @@
 [![ci](https://github.com/matjam/luart/actions/workflows/ci.yml/badge.svg)](https://github.com/matjam/luart/actions/workflows/ci.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/matjam/luart.svg)](https://pkg.go.dev/github.com/matjam/luart)
+[![Go Reference](https://pkg.go.dev/badge/github.com/matjam/luart/lua.svg)](https://pkg.go.dev/github.com/matjam/luart/lua)
 
 # luart
 
@@ -56,8 +56,11 @@ Work so far:
 
 Inherited from go-lua:
 
-- Most core libraries are implemented. The main gaps are regular
-  expressions, coroutines and `string.dump`.
+- Most core libraries are implemented. The main gaps are patterns
+  (`string.match`, `gmatch` and `gsub`), coroutines and `string.dump`.
+  `string.find` without a fourth argument treats a pattern's special
+  characters as plain text (Lua would match the pattern); with a false or
+  nil fourth argument, a pattern with special characters raises an error.
 - Weak tables are not supported. Go's `weak` package (Go 1.24) could make
   them possible.
 
