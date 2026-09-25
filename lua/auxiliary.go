@@ -2,10 +2,12 @@ package lua
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+	"syscall"
 )
 
 func functionName(l *State, d Debug) string {
@@ -498,9 +500,10 @@ func skipComment(r *bufio.Reader) (bool, error) {
 func (l *State) LoadFile(fileName, mode string) error {
 	var f *os.File
 	fileNameIndex := l.Top() + 1
-	fileError := func(what string) error {
+	fileError := func(what string, err error) error {
 		fileName, _ := l.ToString(fileNameIndex)
-		l.PushFString("cannot %s %s", what, fileName[1:])
+		msg, _ := errorText(err)
+		l.PushFString("cannot %s %s: %s", what, fileName[1:], msg)
 		l.Remove(fileNameIndex)
 		return ErrFile
 	}
@@ -511,15 +514,19 @@ func (l *State) LoadFile(fileName, mode string) error {
 		l.PushString("@" + fileName)
 		var err error
 		if f, err = os.Open(fileName); err != nil {
-			return fileError("open")
+			return fileError("open", err)
 		}
 	}
 	r := bufio.NewReader(f)
 	if skipped, err := skipComment(r); err != nil {
 		l.SetTop(fileNameIndex)
-		return fileError("read")
+		return fileError("read", err)
 	} else if skipped {
-		r = bufio.NewReader(io.MultiReader(strings.NewReader("\n"), r))
+		// A text chunk keeps its line numbers by reading the comment's
+		// line as an empty one; a binary chunk starts right after it.
+		if c, err := r.Peek(1); err != nil || c[0] != Signature[0] {
+			r = bufio.NewReader(io.MultiReader(strings.NewReader("\n"), r))
+		}
 	}
 	s, _ := l.ToString(-1)
 	err := l.Load(r, s, mode)
@@ -530,7 +537,7 @@ func (l *State) LoadFile(fileName, mode string) error {
 	case nil, ErrSyntax, ErrMemory: // do nothing
 	default:
 		l.SetTop(fileNameIndex)
-		return fileError("read")
+		return fileError("read", err)
 	}
 	l.Remove(fileNameIndex)
 	return err
@@ -552,6 +559,17 @@ func (l *State) Len(index int) int {
 	panic("unreachable")
 }
 
+// errorText returns err as C's strerror words its errno, and the errno;
+// or, for an error without one, its own text and 0.
+func errorText(err error) (string, int) {
+	var e syscall.Errno
+	if !errors.As(err, &e) {
+		return err.Error(), 0
+	}
+	msg := e.Error()
+	return strings.ToUpper(msg[:1]) + msg[1:], int(e)
+}
+
 // FileResult produces the return values for file-related functions in the standard
 // library (io.open, os.rename, file:seek, etc.).
 func (l *State) FileResult(err error, filename string) int {
@@ -559,13 +577,13 @@ func (l *State) FileResult(err error, filename string) int {
 		l.PushBoolean(true)
 		return 1
 	}
-	l.PushNil()
+	msg, errno := errorText(err)
 	if filename != "" {
-		l.PushString(filename + ": " + err.Error())
-	} else {
-		l.PushString(err.Error())
+		msg = filename + ": " + msg
 	}
-	l.PushInteger(0) // TODO map err to errno
+	l.PushNil()
+	l.PushString(msg)
+	l.PushInteger(errno)
 	return 3
 }
 

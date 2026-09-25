@@ -111,6 +111,25 @@ func TestXpcall(t *testing.T) {
 	`)
 }
 
+// loadfile skips a first line starting with #, before text or a binary
+// chunk, and names the reason it cannot open a file.
+func TestLoadfile(t *testing.T) {
+	run(t, `
+		local name = os.tmpname()
+		local f = io.open(name, "wb")
+		f:write("#!/usr/bin/lua\0\n", string.dump(function() return 20 end))
+		f:close()
+		assert(loadfile(name)() == 20)
+		f = io.open(name, "w")
+		f:write("# comment\nreturn debug.getinfo(1, 'l').currentline")
+		f:close()
+		assert(loadfile(name)() == 2) -- the comment keeps its line
+		os.remove(name)
+		local g, err = loadfile(name)
+		assert(g == nil and err == "cannot open " .. name .. ": No such file or directory", err)
+	`)
+}
+
 // load with a reader function ends the chunk at the first nil or empty
 // piece, as the Lua suite's calls.lua checks.
 func TestLoadReader(t *testing.T) {
