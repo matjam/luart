@@ -62,9 +62,9 @@ func TestLua(t *testing.T) {
 		// {name: "big"},
 		{name: "bitwise"},
 		// {name: "calls"},
-		// {name: "checktable"},
+		// {name: "checktable"}, // needs the C test library (T)
 		{name: "closure"},
-		// {name: "code"},
+		// {name: "code"}, // needs the C test library (T)
 		// {name: "constructs"},
 		// {name: "db"},
 		// {name: "errors"},
@@ -74,14 +74,14 @@ func TestLua(t *testing.T) {
 		{name: "goto"},
 		// {name: "literals"},
 		{name: "locals"},
-		// {name: "main"},
+		// {name: "main"}, // tests the lua executable
 		{name: "math"},
 		// {name: "nextvar"},
-		// {name: "pm"},
+		{name: "pm"},
 		{name: "sort", nonPort: true}, // sort.lua depends on os.clock(), which is not yet implemented on Windows.
 		{name: "strings"},
 		{name: "vararg"},
-		// {name: "verybig"},
+		{name: "verybig"},
 	}
 	for _, v := range tests {
 		if v.nonPort && runtime.GOOS == "windows" {

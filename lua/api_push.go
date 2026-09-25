@@ -8,9 +8,8 @@ import (
 // PushString pushes a string onto the stack.
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_pushstring
-func (l *State) PushString(s string) string { // TODO is it useful to return the argument?
+func (l *State) PushString(s string) {
 	l.apiPush(stringValue(s))
-	return s
 }
 
 // PushFString pushes onto the stack a formatted string and returns that

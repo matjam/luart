@@ -175,7 +175,7 @@ func pushGlobalFunctionName(l *State, f Frame) bool {
 }
 
 func typeError(l *State, argCount int, typeName string) {
-	l.ArgumentError(argCount, l.PushString(typeName+" expected, got "+l.TypeName(argCount)))
+	l.ArgumentError(argCount, l.PushFString("%s expected, got %s", typeName, l.TypeName(argCount)))
 }
 
 func tagError(l *State, argCount int, tag Type) { typeError(l, argCount, tag.String()) }

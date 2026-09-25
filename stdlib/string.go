@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -17,29 +18,6 @@ func relativePosition(pos, length int) int {
 		return 0
 	}
 	return length + pos + 1
-}
-
-func findHelper(l *lua.State, isFind bool) int {
-	s, p := l.CheckString(1), l.CheckString(2)
-	init := relativePosition(l.OptInteger(3, 1), len(s))
-	if init < 1 {
-		init = 1
-	} else if init > len(s)+1 {
-		l.PushNil()
-		return 1
-	}
-	isPlain := l.TypeOf(4) == lua.TypeNone || l.ToBoolean(4)
-	if isFind && (isPlain || !strings.ContainsAny(p, "^$*+?.([%-")) {
-		if start := strings.Index(s[init-1:], p); start >= 0 {
-			l.PushInteger(start + init)
-			l.PushInteger(start + init + len(p) - 1)
-			return 2
-		}
-	} else {
-		l.Errorf("patterns are not supported yet") // TODO implement pattern matching
-	}
-	l.PushNil()
-	return 1
 }
 
 func scanFormat(l *lua.State, fs string) string {
@@ -177,17 +155,26 @@ var stringLibrary = []lua.RegistryFunction{
 		l.PushString(b.String())
 		return 1
 	}},
-	// {"dump", ...},
-	{Name: "find", Function: func(l *lua.State) int { return findHelper(l, true) }},
+	{Name: "dump", Function: func(l *lua.State) int {
+		l.CheckType(1, lua.TypeFunction)
+		l.SetTop(1)
+		var b bytes.Buffer
+		if err := l.Dump(&b); err != nil {
+			l.Errorf("unable to dump given function")
+		}
+		l.PushString(b.String())
+		return 1
+	}},
+	{Name: "find", Function: func(l *lua.State) int { return find(l, true) }},
 	{Name: "format", Function: func(l *lua.State) int {
 		l.PushString(formatHelper(l, l.CheckString(1), l.Top()))
 		return 1
 	}},
-	// {"gmatch", ...},
-	// {"gsub", ...},
+	{Name: "gmatch", Function: gmatch},
+	{Name: "gsub", Function: gsub},
 	{Name: "len", Function: func(l *lua.State) int { l.PushInteger(len(l.CheckString(1))); return 1 }},
-	{Name: "lower", Function: func(l *lua.State) int { l.PushString(strings.ToLower(l.CheckString(1))); return 1 }},
-	// {"match", ...},
+	{Name: "lower", Function: func(l *lua.State) int { l.PushString(changeCase(l.CheckString(1), 'A', 'Z')); return 1 }},
+	{Name: "match", Function: func(l *lua.State) int { return find(l, false) }},
 	{Name: "rep", Function: func(l *lua.State) int {
 		s, n, sep := l.CheckString(1), l.CheckInteger(2), l.OptString(3, "")
 		if n <= 0 {
@@ -209,11 +196,9 @@ var stringLibrary = []lua.RegistryFunction{
 		return 1
 	}},
 	{Name: "reverse", Function: func(l *lua.State) int {
-		r := []rune(l.CheckString(1))
-		for i, j := 0, len(r)-1; i < j; i, j = i+1, j-1 {
-			r[i], r[j] = r[j], r[i]
-		}
-		l.PushString(string(r))
+		b := []byte(l.CheckString(1))
+		slices.Reverse(b)
+		l.PushString(string(b))
 		return 1
 	}},
 	{Name: "sub", Function: func(l *lua.State) int {
@@ -232,7 +217,27 @@ var stringLibrary = []lua.RegistryFunction{
 		}
 		return 1
 	}},
-	{Name: "upper", Function: func(l *lua.State) int { l.PushString(strings.ToUpper(l.CheckString(1))); return 1 }},
+	{Name: "upper", Function: func(l *lua.State) int { l.PushString(changeCase(l.CheckString(1), 'a', 'z')); return 1 }},
+}
+
+// changeCase flips the case of the letters from lo to hi in s. string.lower
+// and string.upper change only ASCII letters, as Lua's do in the C locale,
+// and leave other bytes as they are.
+func changeCase(s string, lo, hi byte) string {
+	i := 0
+	for i < len(s) && (s[i] < lo || hi < s[i]) {
+		i++
+	}
+	if i == len(s) {
+		return s
+	}
+	b := []byte(s)
+	for ; i < len(b); i++ {
+		if lo <= b[i] && b[i] <= hi {
+			b[i] ^= 'a' - 'A'
+		}
+	}
+	return string(b)
 }
 
 // OpenString opens the string library. Usually passed to Require.
