@@ -51,6 +51,10 @@ today, the rules it depends on, and where performance work should go next.
   `ParseNumber` is Lua's string-to-number conversion. The core builds its
   `prototype` from a Proto (`prototypeOf`, compile.go), keeping runtime
   state beside it: the specialised code, field caches and JIT state.
+- `internal/chunk` reads and writes binary chunks as Protos (`Load`,
+  `Dump`). `Load` returns malformed chunks as errors and bounds each
+  allocation, but, like Lua, trusts the code of a well-formed chunk.
+  `protoOf` (compile.go) converts a prototype back for `Dump`.
 - `stdlib` holds the standard libraries and uses only luart's public API.
   A library that needs something the API cannot do fast gets a public
   method in the core, as table.sort got `State.SortArray`.

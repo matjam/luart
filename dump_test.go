@@ -25,17 +25,9 @@ func TestUndumpThenDumpReturnsTheSameFunction(t *testing.T) {
 	}
 
 	l := NewState()
-	closure, err := l.undump(file, "test")
-	if err != nil {
-		offset, _ := file.Seek(0, 1)
-		t.Error("unexpected error", err, "at file offset", offset)
-	}
-	if closure == nil {
-		t.Error("closure was nil")
-	}
-	p := closure.prototype
-	if p == nil {
-		t.Fatal("prototype was nil")
+	if err := l.Load(file, "test", "b"); err != nil {
+		msg, _ := l.ToString(-1)
+		t.Fatal("unexpected error", err, msg)
 	}
 
 	var out bytes.Buffer
@@ -76,17 +68,10 @@ func TestDumpThenUndumpReturnsTheSameFunction(t *testing.T) {
 		t.Error("unexpected error", err, "with testing dump")
 	}
 
-	closure, err := l.undump(&out, "test")
-	if err != nil {
-		t.Error("unexpected error", err)
+	if err := l.Load(&out, "test", "b"); err != nil {
+		t.Fatal("unexpected error", err)
 	}
-	if closure == nil {
-		t.Fatal("closure was nil")
-	}
-	undumpedPrototype := closure.prototype
-	if undumpedPrototype == nil {
-		t.Fatal("prototype was nil")
-	}
+	undumpedPrototype := l.stack[l.top-1].luaClosure().prototype
 
 	// comparePrototypes compares constants with rawEqual; reflect.DeepEqual
 	// would compare string constants by address.

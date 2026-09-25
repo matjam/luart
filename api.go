@@ -2,6 +2,8 @@ package luart
 
 import (
 	"errors"
+
+	"github.com/matjam/luart/internal/chunk"
 )
 
 // MultipleReturns is the argument for argCount or resultCount in ProtectedCall and Call.
@@ -104,7 +106,7 @@ const (
 )
 
 // Signature is the mark for precompiled code ('<esc>Lua').
-const Signature = "\033Lua"
+const Signature = chunk.Signature
 
 // MinStack is the minimum Lua stack available to a Go function.
 const MinStack = 20

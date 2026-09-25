@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/matjam/luart/internal/bytecode"
+	"github.com/matjam/luart/internal/chunk"
 	"github.com/matjam/luart/internal/compiler"
 )
 
@@ -89,7 +90,7 @@ func protectedParser(l *State, r io.Reader, name, chunkMode string) error {
 		} else if c == Signature[0] {
 			l.checkMode(chunkMode, "binary")
 			b.UnreadByte()
-			closure, _ = l.undump(b, name) // TODO handle err
+			closure = l.undump(b, name)
 		} else {
 			l.checkMode(chunkMode, "text")
 			b.UnreadByte()
@@ -102,4 +103,48 @@ func protectedParser(l *State, r io.Reader, name, chunkMode string) error {
 	}, l.top, l.errorFunction)
 	l.nonYieldableCallCount--
 	return err
+}
+
+// undump loads the binary chunk read from r and pushes a closure of its
+// main function, raising a syntax error with the loader's message on
+// failure.
+func (l *State) undump(r io.Reader, name string) *luaClosure {
+	bp, err := chunk.Load(r, name)
+	if err != nil {
+		l.push(stringValue(err.Error()))
+		l.throw(ErrSyntax)
+	}
+	p := prototypeOf(bp)
+	c := l.newLuaClosure(&p)
+	l.push(objectValue(c))
+	return c
+}
+
+// protoOf is the compiled function p runs: the inverse of prototypeOf.
+func protoOf(p *prototype) *bytecode.Proto {
+	bp := &bytecode.Proto{
+		Code:            p.Code,
+		LineInfo:        p.LineInfo,
+		LocalVariables:  p.LocalVariables,
+		UpValues:        p.UpValues,
+		Source:          p.Source,
+		LineDefined:     p.LineDefined,
+		LastLineDefined: p.LastLineDefined,
+		ParameterCount:  p.ParameterCount,
+		MaxStackSize:    p.MaxStackSize,
+		IsVarArg:        p.IsVarArg,
+	}
+	if len(p.Constants) > 0 {
+		bp.Constants = make([]any, len(p.Constants))
+		for i, k := range p.Constants {
+			bp.Constants[i] = k.toAny()
+		}
+	}
+	if len(p.Prototypes) > 0 {
+		bp.Prototypes = make([]*bytecode.Proto, len(p.Prototypes))
+		for i := range p.Prototypes {
+			bp.Prototypes[i] = protoOf(&p.Prototypes[i])
+		}
+	}
+	return bp
 }
