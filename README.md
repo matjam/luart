@@ -90,84 +90,30 @@ Differences from C Lua 5.2:
 
 ## Performance
 
-[`bench/`](bench) runs the same Lua source in luart with and without the
-JIT, Shopify/go-lua, C Lua 5.4 and LuaJIT, and checks that they all
-compute the same results. AMD Ryzen 9 9900X3D, linux/amd64, Go 1.27.1,
-medians of 6 runs; [`bench/README.md`](bench/README.md) has the details
-and Apple M1 results.
+[`bench/`](bench) runs the same Lua in luart with and without the JIT,
+Shopify/go-lua, C Lua 5.4 and LuaJIT, and checks that they all compute
+the same results. With the JIT, luart runs the standard benchmarks (Are
+We Fast Yet and three from the Benchmarks Game) faster than C Lua 5.4,
+and everything several times faster than go-lua. Each cell is the
+geometric mean of each benchmark's time divided by C Lua 5.4's or native
+Go's; below 1× is faster. The two machines were measured at different
+commits, which [`bench/README.md`](bench/README.md) gives.
 
-### Standard benchmarks
-
-The 14 benchmarks of [Are We Fast Yet](https://github.com/smarr/are-we-fast-yet)
-and three from the Computer Language Benchmarks Game, compared with C
-Lua 5.4. With the JIT, luart takes 0.78 times as long as C Lua 5.4 on the
-geometric mean: it is faster on 13 of the 17, within 1% on CD, Havlak and
-Json, and 1.1 times as long on binary-trees. go-lua does not finish
-Havlak in ten minutes.
-
-![Each interpreter's time on each standard benchmark divided by C Lua 5.4's](bench/standard-amd64.svg)
-
-<!-- suite-table standard-amd64 -->
-| Benchmark | Lua 5.4 | Luart (JIT) | Luart (no JIT) | go-lua | LuaJIT |
+<!-- suite-table summary -->
+| Geometric mean | Luart (JIT) | Luart (no JIT) | go-lua | Lua 5.4 | LuaJIT |
 |---|---:|---:|---:|---:|---:|
-| Bounce | 0.28 ms | 0.16 ms (0.57×) | 0.53 ms (1.9×) | 2.16 ms (7.6×) | 0.03 ms (0.10×) |
-| CD | 36.9 ms | 37.0 ms (1.0×) | 45.7 ms (1.2×) | 156 ms (4.2×) | 14.3 ms (0.39×) |
-| DeltaBlue | 20.8 ms | 19.9 ms (0.96×) | 32.5 ms (1.6×) | 1414 ms (68×) | 9.55 ms (0.46×) |
-| Havlak | 1727 ms | 1744 ms (1.0×) | 2184 ms (1.3×) | – | 1037 ms (0.60×) |
-| Json | 4.31 ms | 4.32 ms (1.0×) | 7.78 ms (1.8×) | 20.8 ms (4.8×) | 0.91 ms (0.21×) |
-| List | 0.23 ms | 0.17 ms (0.72×) | 0.43 ms (1.9×) | 1.07 ms (4.7×) | 0.07 ms (0.29×) |
-| Mandelbrot | 128 ms | 110 ms (0.85×) | 211 ms (1.6×) | 683 ms (5.3×) | 23.7 ms (0.18×) |
-| NBody | 1.18 ms | 0.70 ms (0.59×) | 2.19 ms (1.9×) | 11.2 ms (9.4×) | 0.08 ms (0.07×) |
-| Permute | 0.39 ms | 0.23 ms (0.61×) | 1.07 ms (2.8×) | 2.44 ms (6.3×) | 0.01 ms (0.04×) |
-| Queens | 0.30 ms | 0.17 ms (0.59×) | 0.64 ms (2.2×) | 1.36 ms (4.6×) | 0.03 ms (0.12×) |
-| Richards | 16.3 ms | 16.0 ms (0.98×) | 27.2 ms (1.7×) | 99.8 ms (6.1×) | 5.65 ms (0.35×) |
-| Sieve | 0.12 ms | 0.09 ms (0.78×) | 0.30 ms (2.5×) | 0.60 ms (5.2×) | 0.02 ms (0.15×) |
-| Storage | 0.81 ms | 0.61 ms (0.75×) | 0.90 ms (1.1×) | 3.17 ms (3.9×) | 0.33 ms (0.41×) |
-| Towers | 0.75 ms | 0.48 ms (0.64×) | 1.54 ms (2.0×) | 4.17 ms (5.6×) | 0.09 ms (0.12×) |
-| binary-trees | 118 ms | 130 ms (1.1×) | 160 ms (1.3×) | 218 ms (1.8×) | 34.9 ms (0.29×) |
-| fannkuch-redux | 69.2 ms | 63.5 ms (0.92×) | 182 ms (2.6×) | 318 ms (4.6×) | 18.0 ms (0.26×) |
-| spectral-norm | 35.7 ms | 20.6 ms (0.58×) | 65.9 ms (1.8×) | 169 ms (4.7×) | 1.29 ms (0.04×) |
-| **geometric mean** |  | **0.78×** | **1.8×** | **5.9×** | **0.18×** |
+| Standard benchmarks against C Lua 5.4, AMD Ryzen 9 9900X3D | **0.78×** | 1.8× | 5.9× | 1× | 0.18× |
+| Standard benchmarks against C Lua 5.4, Apple M1 Pro | **0.75×** | 1.5× | 4.8× | 1× | 0.15× |
+| Embedding workloads against native Go, AMD Ryzen 9 9900X3D | **5.8×** | 12× | 54× | 8.3× | 2.4× |
+| Embedding workloads against native Go, Apple M1 Pro | **6.9×** | 13× | 53× | 9.4× | 2.5× |
 <!-- /suite-table -->
 
-### Embedding workloads
+![Each interpreter's time on each standard benchmark divided by C Lua 5.4's, on AMD Ryzen 9 9900X3D](bench/standard-amd64.svg)
 
-Eleven workloads chosen for what an embedded Lua does, each also written
-in native Go, which the interpreters are compared with.
-
-![Each interpreter's time on each workload divided by native Go's](bench/suite-amd64.svg)
-
-<!-- suite-table amd64 -->
-| Workload | Native Go | Luart (JIT) | Luart (no JIT) | go-lua | Lua 5.4 | LuaJIT |
-|---|---:|---:|---:|---:|---:|---:|
-| fib(25), recursive calls | 0.21 ms | 1.58 ms (7.4×) | 5.66 ms (27×) | 9.16 ms (43×) | 2.34 ms (11×) | 0.28 ms (1.3×) |
-| numeric loop, 1M iterations | 0.79 ms | 0.95 ms (1.2×) | 9.22 ms (12×) | 185 ms (235×) | 4.52 ms (5.7×) | 0.78 ms (0.99×) |
-| array fill and sum, 100k | 0.47 ms | 1.03 ms (2.2×) | 2.59 ms (5.5×) | 5.92 ms (12×) | 0.77 ms (1.6×) | 0.20 ms (0.42×) |
-| records, 10k tables | 0.09 ms | 0.62 ms (6.9×) | 0.88 ms (9.8×) | 2.82 ms (31×) | 0.87 ms (9.7×) | 0.28 ms (3.1×) |
-| closures, 100k | 0.22 ms | 4.74 ms (21×) | 5.31 ms (24×) | 9.65 ms (43×) | 6.75 ms (30×) | 3.44 ms (15×) |
-| sort 10k with comparator | 1.29 ms | 3.59 ms (2.8×) | 3.71 ms (2.9×) | 11.1 ms (8.6×) | 3.28 ms (2.5×) | 3.36 ms (2.6×) |
-| string build, 10k pieces | 0.37 ms | 0.56 ms (1.5×) | 0.69 ms (1.9×) | 78.8 ms (212×) | 0.95 ms (2.5×) | 0.37 ms (0.99×) |
-| string scan, 11k characters | 0.007 ms | 0.57 ms (84×) | 1.51 ms (224×) | 2.76 ms (409×) | 0.71 ms (105×) | 0.06 ms (8.9×) |
-| calls into Go, 100k | 0.22 ms | 1.30 ms (5.8×) | 1.79 ms (8.0×) | 5.43 ms (24×) | 1.09 ms (4.9×) | 0.71 ms (3.2×) |
-| plasma frame | 0.30 ms | 0.75 ms (2.5×) | 1.37 ms (4.6×) | 4.20 ms (14×) | 1.48 ms (5.0×) | 0.54 ms (1.8×) |
-| particles frame | 0.005 ms | 0.08 ms (16×) | 0.26 ms (50×) | 1.25 ms (239×) | 0.14 ms (27×) | 0.03 ms (5.6×) |
-| **geometric mean** |  | **5.8×** | **12×** | **54×** | **8.3×** | **2.4×** |
-<!-- /suite-table -->
-
-- luart allocates nothing on fib, the numeric loop, the string scan,
-  calls into Go, plasma and particles, where go-lua allocates 25,000 to
-  4.9 million times per run. Its remaining allocations are the objects the script creates, one
-  per table, closure or string. [`bench/README.md`](bench/README.md) has
-  the full allocation table.
-- go-lua's numeric loop is slow because its `%` calls `math.Mod`. Its
-  string build is quadratic because its `table.concat` appends with
-  `s += str`.
-- The gap to Go is widest where Go inlines calls, as in particles and fib.
-- Plasma is a 200×100 per-pixel effect with three `math.sin` calls and one
-  call into Go per pixel. Particles moves 2,000 particle tables by a method
-  and draws them.
-- `TestNumericFrameDoesNotAllocate` keeps numeric code and calls into Go
-  allocation-free.
+luart allocates nothing for numbers, booleans or calls, only the tables,
+closures and strings a script creates; go-lua allocates up to millions of
+times a run. [`bench/README.md`](bench/README.md) has every benchmark on
+both machines, allocations, notes and how to reproduce the results.
 
 ## JIT
 
@@ -188,8 +134,9 @@ the environment variable `LUART_JIT=off` does that for every state.
   cannot run, or a Go call, returns to Go and continues in compiled code
   after it, so every script runs correctly.
 - It gains least where a script crosses into Go every few instructions,
-  such as creating closures in a loop or a `table.sort` comparator; see
-  [bench](bench/README.md).
+  such as creating closures in a loop; see [bench](bench/README.md). A
+  function Go calls that returns within a few instructions, such as a
+  `table.sort` comparator, is interpreted, which is faster there.
 - It pauses while a debug hook is set.
 - CI runs the whole test suite with the JIT, with every function compiled
   (`LUART_JIT_TEST=1`) on linux/amd64, linux/arm64 and macOS, and
@@ -198,13 +145,21 @@ the environment variable `LUART_JIT=off` does that for every state.
 ## Usage
 
 ```sh
-go get github.com/matjam/luart
+go get github.com/matjam/luart@latest
 ```
+
+Import `github.com/matjam/luart/lua`, the VM and its API, and
+`github.com/matjam/luart/stdlib`, the standard libraries. A host registers
+Go functions, loads a script, and calls the script's functions, here once
+a frame:
 
 ```go
 package main
 
 import (
+	"fmt"
+	"log"
+
 	"github.com/matjam/luart/lua"
 	"github.com/matjam/luart/stdlib"
 )
@@ -212,43 +167,113 @@ import (
 func main() {
 	l := lua.NewState()
 	stdlib.Open(l)
-	if err := l.DoFile("hello.lua"); err != nil {
-		panic(err)
+
+	// A Go function the script can call.
+	l.Register("greet", func(l *lua.State) int {
+		l.PushString("hello, " + l.Arg[string](1))
+		return 1
+	})
+
+	if err := l.DoString(`
+		count = 0
+		function frame(t)
+		  count = count + 1
+		  return greet("frame " .. count), t * 2
+		end`); err != nil {
+		log.Fatal(err)
+	}
+
+	for t := range 3 {
+		l.Global("frame")
+		l.PushNumber(float64(t))
+		if err := l.ProtectedCall(1, 2, 0); err != nil {
+			log.Fatal(err)
+		}
+		message, _ := l.ToString(-2)
+		doubled, _ := l.ToNumber(-1)
+		fmt.Println(message, doubled) // hello, frame 1 0 ...
+		l.Pop(2)
 	}
 }
 ```
 
-Functions over numbers can skip the call frame entirely. The VM calls them
-directly when every argument is a number:
+`Arg[T]` reads an argument as a `float64`, `int`, `string` or `bool`, and
+raises a Lua error when it does not convert. Each example below is
+[tested](lua/example_test.go) and on
+[pkg.go.dev](https://pkg.go.dev/github.com/matjam/luart/lua#pkg-examples).
+
+**Errors.** A Lua error reaches Go as the error `ProtectedCall` returns,
+with the chunk name and line, and the message is left on the stack:
 
 ```go
+// game.lua: function update(dt) local speed; return speed * dt end
+l.Global("update")
+l.PushNumber(0.016)
+if err := l.ProtectedCall(1, 0, 0); err != nil {
+	fmt.Println(err) // runtime error: game.lua:4: attempt to perform arithmetic on local 'speed' (a nil value)
+	l.Pop(1)
+}
+```
+
+**Functions of numbers.** A Go function of `float64`s registered with
+`RegisterNumberFunction` is called without a Go call frame when every
+argument is a number, by the interpreter and by compiled code. It suits
+functions a script calls per pixel or per sample:
+
+```go
+var canvas [width * height]float64
+
 l.RegisterNumberFunction("set", func(x, y, v float64) {
 	canvas[int(y)*width+int(x)] = v
 })
 ```
 
-Go functions can read typed arguments, which raise a Lua error when an
-argument does not convert:
-
-```go
-l.Register("rect", func(l *lua.State) int {
-	x, y, label := l.Arg[float64](1), l.Arg[float64](2), l.Arg[string](3)
-	draw(x, y, label)
-	return 0
-})
-```
-
-Userdata can be read back with its Go type:
+**Objects with methods.** A Go value becomes a Lua object through
+userdata and a metatable whose `__index` table holds its methods, and
+`CheckUserData[T]` reads it back with its Go type:
 
 ```go
 type point struct{ x, y float64 }
 
-l.Register("norm", func(l *lua.State) int {
+l.NewMetaTable("point")
+l.NewTable()
+l.SetFunctions([]lua.RegistryFunction{{Name: "norm", Function: func(l *lua.State) int {
 	p := l.CheckUserData[*point](1, "point")
 	l.PushNumber(math.Hypot(p.x, p.y))
 	return 1
+}}}, 0)
+l.SetField(-2, "__index")
+l.Pop(1)
+
+l.Register("point", func(l *lua.State) int {
+	l.PushUserData(&point{l.Arg[float64](1), l.Arg[float64](2)})
+	l.SetMetaTableNamed("point")
+	return 1
 })
+// Lua: print(point(3, 4):norm()) prints 5
 ```
+
+**Choosing libraries.** `stdlib.Open` opens every standard library. A
+host that should not give scripts files or processes opens only some:
+
+```go
+l := lua.NewState()
+for _, lib := range []lua.RegistryFunction{
+	{Name: "_G", Function: stdlib.OpenBase},
+	{Name: "string", Function: stdlib.OpenString},
+	{Name: "math", Function: stdlib.OpenMath},
+} {
+	l.Require(lib.Name, lib.Function, true)
+	l.Pop(1)
+}
+for _, name := range []string{"dofile", "loadfile"} { // they read files
+	l.PushNil()
+	l.SetGlobal(name)
+}
+```
+
+**Without the JIT.** `lua.NewState(lua.WithoutJIT())` makes a state that
+only interprets; see [JIT](#jit).
 
 ## Development
 

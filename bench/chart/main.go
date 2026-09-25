@@ -5,11 +5,14 @@
 //	go run ./chart -svg suite-amd64.svg suite-results-amd64.txt
 //	go run ./chart -readme README.md,../README.md -name amd64 suite-results-amd64.txt
 //	go run ./chart -suite standard -svg standard-amd64.svg suite-results-amd64.txt
+//	go run ./chart -summary -readme ../README.md -name summary suite-results-amd64.txt suite-results.txt
 //
 // -suite picks the benchmark: "suite", BenchmarkSuite, whose interpreters
 // are compared with native Go, or "standard", BenchmarkStandard, whose are
 // compared with C Lua 5.4. -readme replaces the table between the lines
 // <!-- suite-table NAME --> and <!-- /suite-table --> in each file.
+// -summary makes one table of both benchmarks' geometric means from each
+// of several results files, a row per benchmark and machine.
 //
 // Each timing is the median of the runs in the file.
 package main
@@ -30,6 +33,7 @@ import (
 // A suite is a benchmark function's workloads, in table order, and the
 // interpreter or native code the others are compared with.
 type suite struct {
+	title     string // the benchmark, as the summary names it
 	bench     string // the benchmark function's name after Benchmark
 	workloads []workload
 	base      impl
@@ -40,7 +44,7 @@ type suite struct {
 type workload struct{ name, label string }
 
 var suites = map[string]suite{
-	"suite": {"Suite", []workload{
+	"suite": {"Embedding workloads", "Suite", []workload{
 		{"fib", "fib(25), recursive calls"},
 		{"numeric-loop", "numeric loop, 1M iterations"},
 		{"array-fill-sum", "array fill and sum, 100k"},
@@ -53,7 +57,7 @@ var suites = map[string]suite{
 		{"plasma", "plasma frame"},
 		{"particles", "particles frame"},
 	}, impl{"go", "Native Go", -1}, "Workload", "native Go"},
-	"standard": {"Standard", []workload{
+	"standard": {"Standard benchmarks", "Standard", []workload{
 		{"bounce", "Bounce"},
 		{"cd", "CD"},
 		{"deltablue", "DeltaBlue"},
@@ -256,27 +260,106 @@ func table(w io.Writer, s suite, r *results) {
 	fmt.Fprintln(w, " |")
 }
 
+// summaryOrder is the benchmarks in the summary's row order.
+var summaryOrder = []string{"standard", "suite"}
+
+var coreCount = regexp.MustCompile(`\s+\d+-Core Processor$`)
+
+// machine names the CPU a results file was measured on.
+func (r *results) machine() string {
+	return coreCount.ReplaceAllString(r.cpu, "")
+}
+
+// summary writes each benchmark's geometric means from each of rs, a row
+// per benchmark and machine, and a column per interpreter any of them ran.
+// An interpreter's cell for the benchmark it is the base of is 1×.
+func summary(w io.Writer, rs []*results) {
+	var impls []impl
+	for _, im := range allImpls {
+		for _, r := range rs {
+			if slices.ContainsFunc(summaryOrder, func(name string) bool {
+				s := suites[name]
+				return im == s.base || slices.Contains(r.impls(s), im)
+			}) {
+				impls = append(impls, im)
+				break
+			}
+		}
+	}
+	fmt.Fprint(w, "| Geometric mean")
+	for _, im := range impls {
+		fmt.Fprintf(w, " | %s", im.label)
+	}
+	fmt.Fprintln(w, " |")
+	fmt.Fprintln(w, "|---"+strings.Repeat("|---:", len(impls))+"|")
+	for _, name := range summaryOrder {
+		s := suites[name]
+		for _, r := range rs {
+			fmt.Fprintf(w, "| %s against %s, %s", s.title, s.against, r.machine())
+			for _, im := range impls {
+				switch {
+				case im == s.base:
+					fmt.Fprint(w, " | 1×")
+				case im.bold():
+					fmt.Fprintf(w, " | **%s**", ratio(r.geomean(s, im)))
+				default:
+					fmt.Fprintf(w, " | %s", ratio(r.geomean(s, im)))
+				}
+			}
+			fmt.Fprintln(w, " |")
+		}
+	}
+}
+
+// bold reports whether the summary shows im's results in bold.
+func (im impl) bold() bool { return im.name == "luart-jit" }
+
 func main() {
 	suiteName := flag.String("suite", "suite", `the benchmark: "suite" or "standard"`)
 	tbl := flag.Bool("table", false, "print the Markdown table")
 	svg := flag.String("svg", "", "write the chart to this SVG file")
 	readmes := flag.String("readme", "", "comma-separated Markdown files whose table to replace")
 	name := flag.String("name", "", "the table's name in -readme files")
+	sum := flag.Bool("summary", false, "the summary table of each results file's geometric means")
 	flag.Parse()
 	s, ok := suites[*suiteName]
-	if !ok || flag.NArg() != 1 || !*tbl && *svg == "" && *readmes == "" || *readmes != "" && *name == "" {
+	switch {
+	case *sum && flag.NArg() > 0 && *svg == "" && (*tbl || *readmes != "") && (*readmes == "" || *name != ""):
+	case !ok || *sum || flag.NArg() != 1 || !*tbl && *svg == "" && *readmes == "" || *readmes != "" && *name == "":
 		fmt.Fprintln(os.Stderr, "usage: chart [-suite suite|standard] [-table] [-svg out.svg] [-readme a.md,b.md -name NAME] results.txt")
+		fmt.Fprintln(os.Stderr, "       chart -summary [-table] [-readme a.md,b.md -name NAME] results.txt...")
 		os.Exit(2)
 	}
-	f, err := os.Open(flag.Arg(0))
-	if err != nil {
-		fatal(err)
+	var rs []*results
+	for _, path := range flag.Args() {
+		f, err := os.Open(path)
+		if err != nil {
+			fatal(err)
+		}
+		r, err := parse(f)
+		f.Close()
+		if err != nil {
+			fatal(err)
+		}
+		rs = append(rs, r)
 	}
-	r, err := parse(f)
-	f.Close()
-	if err != nil {
-		fatal(err)
+	if *sum {
+		var t strings.Builder
+		summary(&t, rs)
+		if *tbl {
+			fmt.Print(t.String())
+		}
+		for _, path := range strings.Split(*readmes, ",") {
+			if path == "" {
+				continue
+			}
+			if err := replaceTable(path, *name, t.String()); err != nil {
+				fatal(err)
+			}
+		}
+		return
 	}
+	r := rs[0]
 	if *tbl {
 		table(os.Stdout, s, r)
 	}
