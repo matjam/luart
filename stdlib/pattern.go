@@ -441,24 +441,36 @@ func find(l *lua.State, isFind bool) int {
 	return 1
 }
 
+// gmatch is string.gmatch, after lstrlib.c: its iterator is a Go closure
+// whose upvalues are the subject, the pattern, and the position to go on
+// from.
 func gmatch(l *lua.State) int {
-	s, p := l.CheckString(1), l.CheckString(2)
-	start := 0
-	l.PushGoFunction(func(l *lua.State) int {
-		ms := newMatchState(l, s, p)
-		for src := start; src <= len(s); src++ {
-			ms.reset()
-			if e := ms.match(src, 0); e != -1 {
-				start = e
-				if e == src { // an empty match: move on at least one byte
-					start++
-				}
-				return ms.pushCaptures(src, e)
-			}
-		}
-		return 0
-	})
+	l.CheckString(1)
+	l.CheckString(2)
+	l.SetTop(2)
+	l.PushInteger(0)
+	l.PushGoClosure(gmatchNext, 3)
 	return 1
+}
+
+func gmatchNext(l *lua.State) int {
+	s, _ := l.ToString(lua.UpValueIndex(1))
+	p, _ := l.ToString(lua.UpValueIndex(2))
+	start, _ := l.ToInteger(lua.UpValueIndex(3))
+	ms := newMatchState(l, s, p)
+	for src := start; src <= len(s); src++ {
+		ms.reset()
+		if e := ms.match(src, 0); e != -1 {
+			next := e
+			if e == src { // an empty match: move on at least one byte
+				next++
+			}
+			l.PushInteger(next)
+			l.Replace(lua.UpValueIndex(3))
+			return ms.pushCaptures(src, e)
+		}
+	}
+	return 0
 }
 
 func gsub(l *lua.State) int {
