@@ -30,7 +30,7 @@ func (l *State) CallWithContinuation(argCount, resultCount, context int, continu
 		panic("cannot use continuations inside hooks")
 	}
 	l.checkElementCount(argCount + 1)
-	if apiCheck && l.shouldYield {
+	if apiCheck && l.status != ThreadOK {
 		panic("cannot do calls on non-normal thread")
 	}
 	l.checkResults(argCount, resultCount)
@@ -126,7 +126,7 @@ func (l *State) ProtectedCallWithContinuation(argCount, resultCount, errorFuncti
 		panic("cannot use continuations inside hooks")
 	}
 	l.checkElementCount(argCount + 1)
-	if apiCheck && l.shouldYield {
+	if apiCheck && l.status != ThreadOK {
 		panic("cannot do calls on non-normal thread")
 	}
 	l.checkResults(argCount, resultCount)

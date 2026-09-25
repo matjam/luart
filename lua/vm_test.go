@@ -57,9 +57,10 @@ func TestLua(t *testing.T) {
 	tests := []struct {
 		name    string
 		nonPort bool
+		wrapped bool // runs in a coroutine, yielding 'b' and returning 'a', as all.lua runs it
 	}{
 		{name: "attrib", nonPort: true},
-		// {name: "big"},
+		{name: "big", wrapped: true},
 		{name: "bitwise"},
 		{name: "calls"},
 		// {name: "checktable"}, // needs the C test library (T)
@@ -72,7 +73,7 @@ func TestLua(t *testing.T) {
 		{name: "files"},
 		// {name: "gc"},
 		{name: "goto"},
-		// {name: "literals"},
+		{name: "literals"},
 		{name: "locals"},
 		// {name: "main"}, // tests the lua executable
 		{name: "math"},
@@ -110,7 +111,14 @@ func TestLua(t *testing.T) {
 		l.Field(-1, "traceback")
 		traceback := l.Top()
 		// t.Logf("%#v", l.ToValue(traceback))
-		if err := l.LoadFile(filepath.Join("../lua-tests", v.name+".lua"), "text"); err != nil {
+		path := filepath.Join("../lua-tests", v.name+".lua")
+		var err error
+		if v.wrapped {
+			err = l.LoadString(fmt.Sprintf("local f = coroutine.wrap(assert(loadfile(%q))); assert(f() == 'b'); assert(f() == 'a')", path))
+		} else {
+			err = l.LoadFile(path, "text")
+		}
+		if err != nil {
 			t.Errorf("'%s' failed: %s", v.name, err.Error())
 		}
 		// l.Call(0, 0)

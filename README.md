@@ -64,14 +64,22 @@ Work so far:
 - Lua patterns (`string.find`, `match`, `gmatch` and `gsub`), ported from
   Lua 5.2's lstrlib.c and checked by the Lua test suite's pm.lua, and
   `string.dump`
+- Coroutines, as C Lua 5.2 implements them: yields across `pcall`,
+  metamethods and iterators, from compiled code too, without a goroutine
+  per coroutine
+- The rest of the standard library go-lua lacked: `io.read` and
+  `io.lines`, `io.popen`, `os.date`, `debug.getinfo`, `getlocal` and
+  `setlocal`, `package.cpath`
 
-Inherited from go-lua:
+Differences from C Lua 5.2:
 
-- The standard libraries are complete apart from the coroutine library.
-  There is only the C locale, and C modules cannot load: luart has no
+- There is only the C locale, and C modules cannot load: luart has no
   dynamic libraries.
-- Weak tables are not supported. Go's `weak` package (Go 1.24) could make
-  them possible.
+- Weak tables are not supported yet.
+- Debug information calls Go functions `Go`, not `C`, unless
+  `LUART_GO_AS_C=1` is set.
+- `collectgarbage` cannot stop or tune Go's collector, which serves the
+  whole process; it runs a collection and reports the Go heap.
 
 ## Performance
 
