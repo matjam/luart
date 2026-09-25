@@ -334,7 +334,7 @@ func (f *function) EncodeConstant(r, constant int) int {
 	if constant <= bytecode.MaxArgBx {
 		return f.encodeABx(bytecode.OpLoadConstant, r, constant)
 	}
-	pc := f.encodeABx(bytecode.OpLoadConstant, r, 0)
+	pc := f.encodeABx(bytecode.OpLoadConstantEx, r, 0)
 	f.encodeExtraArg(constant)
 	return pc
 }
