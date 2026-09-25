@@ -107,6 +107,63 @@ func TestFieldCacheInvalidation(t *testing.T) {
 			assert(get() == nil)
 			rawset(_G, "g", 2)
 			assert(get() == 2)`},
+		{"method two levels up, then overridden between", `
+			local Base = {}
+			function Base.f() return "base" end
+			local Mid = setmetatable({}, {__index = Base})
+			local o = setmetatable({pad = true}, {__index = Mid})
+			local function call() return o.f() end
+			for _ = 1, 3 do assert(call() == "base") end
+			function Mid.f() return "mid" end
+			assert(call() == "mid")`},
+		{"absent along a chain, then present at its end", `
+			local Base = {}
+			local Mid = setmetatable({}, {__index = Base})
+			local o = setmetatable({pad = true}, {__index = Mid})
+			local function get() return o.x end
+			for _ = 1, 3 do assert(get() == nil) end
+			Base.x = 1
+			assert(get() == 1)`},
+		{"absent along a chain, then an __index function at its end", `
+			local Base = {}
+			local Mid = setmetatable({}, {__index = Base})
+			local o = setmetatable({pad = true}, {__index = Mid})
+			local function get() return o.x end
+			for _ = 1, 3 do assert(get() == nil) end
+			setmetatable(Base, {__index = function() return "fn" end})
+			assert(get() == "fn")`},
+		{"absent without a metatable, then one set", `
+			local o = {pad = true}
+			local function get() return o.x end
+			for _ = 1, 3 do assert(get() == nil) end
+			setmetatable(o, {__index = {x = 1}})
+			assert(get() == 1)`},
+		{"a middle __index replaced", `
+			local A, B = {}, {}
+			function A.f() return "a" end
+			function B.f() return "b" end
+			local midmt = {__index = A}
+			local Mid = setmetatable({}, midmt)
+			local o = setmetatable({pad = true}, {__index = Mid})
+			local function call() return o.f() end
+			for _ = 1, 3 do assert(call() == "a") end
+			midmt.__index = B
+			assert(call() == "b")`},
+		{"a metatable per object, two classes at one site", `
+			local Base = {}
+			function Base.kind() return "base" end
+			local A = setmetatable({}, {__index = Base})
+			function A.name() return "a" end
+			local B = setmetatable({}, {__index = Base})
+			function B.name() return "b" end
+			local function new(C) return setmetatable({pad = true}, {__index = C}) end
+			local objs = {new(A), new(B), new(A), new(B)}
+			local function call(o) return o.name() .. o.kind() end
+			for _ = 1, 3 do
+			  for i, o in ipairs(objs) do assert(call(o) == (i % 2 == 1 and "abase" or "bbase")) end
+			end
+			function A.kind() return "A" end
+			assert(call(objs[1]) == "aA" and call(objs[2]) == "bbase")`},
 		{"tag method cache sees fields set through the cache", `
 			local mt = {__index = function() return "fn" end}
 			local o = setmetatable({}, mt)
