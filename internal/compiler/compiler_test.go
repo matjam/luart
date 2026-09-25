@@ -1,9 +1,12 @@
 package compiler
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"testing"
+
+	"github.com/matjam/luart/internal/bytecode"
 )
 
 func TestParseNumber(t *testing.T) {
@@ -70,6 +73,34 @@ func TestParse(t *testing.T) {
 	_, err = Parse(strings.NewReader("return 1"), "=test", 1000)
 	if err == nil || !strings.Contains(err.Error(), "Go levels") {
 		t.Errorf("nesting beyond MaxCallCount: %v", err)
+	}
+}
+
+// A constant whose index does not fit an instruction's Bx loads with
+// LOADKX and the index in the EXTRAARG word after it.
+func TestLoadConstantEx(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("local t = {0")
+	for i := 1; i <= bytecode.MaxArgBx+2; i++ {
+		fmt.Fprintf(&b, ";%d", i)
+	}
+	b.WriteString("}")
+	p, err := Parse(strings.NewReader(b.String()), "=test", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	extra := 0
+	for pc, i := range p.Code {
+		if i.OpCode() != bytecode.OpExtraArg || p.Code[pc-1].OpCode() == bytecode.OpSetList {
+			continue
+		}
+		extra++
+		if op := p.Code[pc-1].OpCode(); op != bytecode.OpLoadConstantEx {
+			t.Fatalf("EXTRAARG %d at %d follows %v, want LOADKX", i.Ax(), pc, op)
+		}
+	}
+	if extra == 0 {
+		t.Fatal("no constant loaded with EXTRAARG")
 	}
 }
 

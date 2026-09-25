@@ -412,8 +412,11 @@ func (l *State) protect(f func()) (err error) {
 	nestedGoCallCount, protectFunction := l.nestedGoCallCount, l.protectFunction
 	l.protectFunction = func() {
 		if e := recover(); e != nil {
-			err = e.(error)
 			l.nestedGoCallCount, l.protectFunction = nestedGoCallCount, protectFunction
+			var ok bool
+			if err, ok = e.(error); !ok {
+				panic(e) // not a Lua error: pass it on unchanged
+			}
 		}
 	}
 	defer l.protectFunction()
