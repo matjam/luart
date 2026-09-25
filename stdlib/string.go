@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/matjam/luart"
+	"github.com/matjam/luart/lua"
 )
 
 func relativePosition(pos, length int) int {
@@ -19,7 +19,7 @@ func relativePosition(pos, length int) int {
 	return length + pos + 1
 }
 
-func findHelper(l *luart.State, isFind bool) int {
+func findHelper(l *lua.State, isFind bool) int {
 	s, p := l.CheckString(1), l.CheckString(2)
 	init := relativePosition(l.OptInteger(3, 1), len(s))
 	if init < 1 {
@@ -28,7 +28,7 @@ func findHelper(l *luart.State, isFind bool) int {
 		l.PushNil()
 		return 1
 	}
-	isPlain := l.TypeOf(4) == luart.TypeNone || l.ToBoolean(4)
+	isPlain := l.TypeOf(4) == lua.TypeNone || l.ToBoolean(4)
 	if isFind && (isPlain || !strings.ContainsAny(p, "^$*+?.([%-")) {
 		if start := strings.Index(s[init-1:], p); start >= 0 {
 			l.PushInteger(start + init)
@@ -42,7 +42,7 @@ func findHelper(l *luart.State, isFind bool) int {
 	return 1
 }
 
-func scanFormat(l *luart.State, fs string) string {
+func scanFormat(l *lua.State, fs string) string {
 	i := 0
 	skipDigit := func() {
 		if unicode.IsDigit(rune(fs[i])) {
@@ -70,7 +70,7 @@ func scanFormat(l *luart.State, fs string) string {
 	return "%" + fs[:i]
 }
 
-func formatHelper(l *luart.State, fs string, argCount int) string {
+func formatHelper(l *lua.State, fs string, argCount int) string {
 	var b bytes.Buffer
 	for i, arg := 0, 1; i < len(fs); i++ {
 		if fs[i] != '%' {
@@ -143,8 +143,8 @@ func formatHelper(l *luart.State, fs string, argCount int) string {
 	return b.String()
 }
 
-var stringLibrary = []luart.RegistryFunction{
-	{Name: "byte", Function: func(l *luart.State) int {
+var stringLibrary = []lua.RegistryFunction{
+	{Name: "byte", Function: func(l *lua.State) int {
 		s := l.CheckString(1)
 		start := relativePosition(l.OptInteger(2, 1), len(s))
 		end := relativePosition(l.OptInteger(3, start), len(s))
@@ -167,7 +167,7 @@ var stringLibrary = []luart.RegistryFunction{
 		}
 		return n
 	}},
-	{Name: "char", Function: func(l *luart.State) int {
+	{Name: "char", Function: func(l *lua.State) int {
 		var b bytes.Buffer
 		for i, n := 1, l.Top(); i <= n; i++ {
 			c := l.CheckInteger(i)
@@ -178,17 +178,17 @@ var stringLibrary = []luart.RegistryFunction{
 		return 1
 	}},
 	// {"dump", ...},
-	{Name: "find", Function: func(l *luart.State) int { return findHelper(l, true) }},
-	{Name: "format", Function: func(l *luart.State) int {
+	{Name: "find", Function: func(l *lua.State) int { return findHelper(l, true) }},
+	{Name: "format", Function: func(l *lua.State) int {
 		l.PushString(formatHelper(l, l.CheckString(1), l.Top()))
 		return 1
 	}},
 	// {"gmatch", ...},
 	// {"gsub", ...},
-	{Name: "len", Function: func(l *luart.State) int { l.PushInteger(len(l.CheckString(1))); return 1 }},
-	{Name: "lower", Function: func(l *luart.State) int { l.PushString(strings.ToLower(l.CheckString(1))); return 1 }},
+	{Name: "len", Function: func(l *lua.State) int { l.PushInteger(len(l.CheckString(1))); return 1 }},
+	{Name: "lower", Function: func(l *lua.State) int { l.PushString(strings.ToLower(l.CheckString(1))); return 1 }},
 	// {"match", ...},
-	{Name: "rep", Function: func(l *luart.State) int {
+	{Name: "rep", Function: func(l *lua.State) int {
 		s, n, sep := l.CheckString(1), l.CheckInteger(2), l.OptString(3, "")
 		if n <= 0 {
 			l.PushString("")
@@ -208,7 +208,7 @@ var stringLibrary = []luart.RegistryFunction{
 		}
 		return 1
 	}},
-	{Name: "reverse", Function: func(l *luart.State) int {
+	{Name: "reverse", Function: func(l *lua.State) int {
 		r := []rune(l.CheckString(1))
 		for i, j := 0, len(r)-1; i < j; i, j = i+1, j-1 {
 			r[i], r[j] = r[j], r[i]
@@ -216,7 +216,7 @@ var stringLibrary = []luart.RegistryFunction{
 		l.PushString(string(r))
 		return 1
 	}},
-	{Name: "sub", Function: func(l *luart.State) int {
+	{Name: "sub", Function: func(l *lua.State) int {
 		s := l.CheckString(1)
 		start, end := relativePosition(l.CheckInteger(2), len(s)), relativePosition(l.OptInteger(3, -1), len(s))
 		if start < 1 {
@@ -232,11 +232,11 @@ var stringLibrary = []luart.RegistryFunction{
 		}
 		return 1
 	}},
-	{Name: "upper", Function: func(l *luart.State) int { l.PushString(strings.ToUpper(l.CheckString(1))); return 1 }},
+	{Name: "upper", Function: func(l *lua.State) int { l.PushString(strings.ToUpper(l.CheckString(1))); return 1 }},
 }
 
 // OpenString opens the string library. Usually passed to Require.
-func OpenString(l *luart.State) int {
+func OpenString(l *lua.State) int {
 	l.NewLibrary(stringLibrary)
 	l.CreateTable(0, 1)
 	l.PushString("")

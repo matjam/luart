@@ -5,10 +5,10 @@ package stdlib
 import (
 	"syscall"
 
-	"github.com/matjam/luart"
+	"github.com/matjam/luart/lua"
 )
 
-func clock(l *luart.State) int {
+func clock(l *lua.State) int {
 	var rusage syscall.Rusage
 	_ = syscall.Getrusage(syscall.RUSAGE_SELF, &rusage) // ignore errors
 	l.PushNumber(float64(rusage.Utime.Sec+rusage.Stime.Sec) + float64(rusage.Utime.Usec+rusage.Stime.Usec)/1000000.0)

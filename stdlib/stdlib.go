@@ -9,12 +9,12 @@
 // a global table or as methods of its objects.
 package stdlib
 
-import "github.com/matjam/luart"
+import "github.com/matjam/luart/lua"
 
 // Open opens all the standard libraries in l, and adds each of preloaded
 // to package.preload under its Name, for require to open on first use.
-func Open(l *luart.State, preloaded ...luart.RegistryFunction) {
-	libs := []luart.RegistryFunction{
+func Open(l *lua.State, preloaded ...lua.RegistryFunction) {
+	libs := []lua.RegistryFunction{
 		{Name: "_G", Function: OpenBase},
 		{Name: "package", Function: OpenPackage},
 		// {"coroutine", CoroutineOpen},
@@ -30,7 +30,7 @@ func Open(l *luart.State, preloaded ...luart.RegistryFunction) {
 		l.Require(lib.Name, lib.Function, true)
 		l.Pop(1)
 	}
-	l.SubTable(luart.RegistryIndex, "_PRELOAD")
+	l.SubTable(lua.RegistryIndex, "_PRELOAD")
 	for _, lib := range preloaded {
 		l.PushGoFunction(lib.Function)
 		l.SetField(-2, lib.Name)

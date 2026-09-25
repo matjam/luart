@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/matjam/luart"
+	"github.com/matjam/luart/lua"
 )
 
-var tableLibrary = []luart.RegistryFunction{
-	{Name: "concat", Function: func(l *luart.State) int {
-		l.CheckType(1, luart.TypeTable)
+var tableLibrary = []lua.RegistryFunction{
+	{Name: "concat", Function: func(l *lua.State) int {
+		l.CheckType(1, lua.TypeTable)
 		sep := l.OptString(2, "")
 		i := l.OptInteger(3, 1)
 		var last int
@@ -38,8 +38,8 @@ var tableLibrary = []luart.RegistryFunction{
 		l.PushString(s.String())
 		return 1
 	}},
-	{Name: "insert", Function: func(l *luart.State) int {
-		l.CheckType(1, luart.TypeTable)
+	{Name: "insert", Function: func(l *lua.State) int {
+		l.CheckType(1, lua.TypeTable)
 		e := l.Len(1) + 1 // First empty element.
 		switch l.Top() {
 		case 2:
@@ -57,7 +57,7 @@ var tableLibrary = []luart.RegistryFunction{
 		}
 		return 0
 	}},
-	{Name: "pack", Function: func(l *luart.State) int {
+	{Name: "pack", Function: func(l *lua.State) int {
 		n := l.Top()
 		l.CreateTable(n, 1)
 		l.PushInteger(n)
@@ -72,8 +72,8 @@ var tableLibrary = []luart.RegistryFunction{
 		}
 		return 1
 	}},
-	{Name: "unpack", Function: func(l *luart.State) int {
-		l.CheckType(1, luart.TypeTable)
+	{Name: "unpack", Function: func(l *lua.State) int {
+		l.CheckType(1, lua.TypeTable)
 		i := l.OptInteger(2, 1)
 		var e int
 		if l.IsNoneOrNil(3) {
@@ -94,8 +94,8 @@ var tableLibrary = []luart.RegistryFunction{
 		}
 		return n
 	}},
-	{Name: "remove", Function: func(l *luart.State) int {
-		l.CheckType(1, luart.TypeTable)
+	{Name: "remove", Function: func(l *lua.State) int {
+		l.CheckType(1, lua.TypeTable)
 		size := l.Len(1)
 		pos := l.OptInteger(2, size)
 		if pos != size {
@@ -109,12 +109,12 @@ var tableLibrary = []luart.RegistryFunction{
 		l.RawSetInt(1, pos) // t[pos] = nil
 		return 1
 	}},
-	{Name: "sort", Function: func(l *luart.State) int {
-		l.CheckType(1, luart.TypeTable)
+	{Name: "sort", Function: func(l *lua.State) int {
+		l.CheckType(1, lua.TypeTable)
 		n := l.Len(1)
 		hasFunction := !l.IsNoneOrNil(2)
 		if hasFunction {
-			l.CheckType(2, luart.TypeFunction)
+			l.CheckType(2, lua.TypeFunction)
 		}
 		l.SetTop(2)
 		comparator := 0
@@ -127,7 +127,7 @@ var tableLibrary = []luart.RegistryFunction{
 }
 
 // OpenTable opens the table library. Usually passed to Require.
-func OpenTable(l *luart.State) int {
+func OpenTable(l *lua.State) int {
 	l.NewLibrary(tableLibrary)
 	return 1
 }

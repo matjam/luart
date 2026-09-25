@@ -7,16 +7,16 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/matjam/luart"
+	"github.com/matjam/luart/lua"
 )
 
 const pathListSeparator = ';'
 
 var defaultPath = "./?.lua" // TODO "${LUA_LDIR}?.lua;${LUA_LDIR}?/init.lua;./?.lua"
 
-func findLoader(l *luart.State, name string) {
+func findLoader(l *lua.State, name string) {
 	var msg string
-	if l.Field(luart.UpValueIndex(1), "searchers"); !l.IsTable(3) {
+	if l.Field(lua.UpValueIndex(1), "searchers"); !l.IsTable(3) {
 		l.Errorf("'package.searchers' must be a table")
 	}
 	for i := 1; ; i++ {
@@ -35,8 +35,8 @@ func findLoader(l *luart.State, name string) {
 	}
 }
 
-func findFile(l *luart.State, name, field, dirSep string) (string, error) {
-	l.Field(luart.UpValueIndex(1), field)
+func findFile(l *lua.State, name, field, dirSep string) (string, error) {
+	l.Field(lua.UpValueIndex(1), field)
 	path, ok := l.ToString(-1)
 	if !ok {
 		l.Errorf("'package.%s' must be a string", field)
@@ -44,7 +44,7 @@ func findFile(l *luart.State, name, field, dirSep string) (string, error) {
 	return searchPath(l, name, path, ".", dirSep)
 }
 
-func checkLoad(l *luart.State, loaded bool, fileName string) int {
+func checkLoad(l *lua.State, loaded bool, fileName string) int {
 	if loaded { // Module loaded successfully?
 		l.PushString(fileName) // Second argument to module.
 		return 2               // Return open function & file name.
@@ -55,7 +55,7 @@ func checkLoad(l *luart.State, loaded bool, fileName string) int {
 	panic("unreachable")
 }
 
-func searcherLua(l *luart.State) int {
+func searcherLua(l *lua.State) int {
 	name := l.CheckString(1)
 	filename, err := findFile(l, name, "path", string(filepath.Separator))
 	if err != nil {
@@ -64,9 +64,9 @@ func searcherLua(l *luart.State) int {
 	return checkLoad(l, l.LoadFile(filename, "") == nil, filename)
 }
 
-func searcherPreload(l *luart.State) int {
+func searcherPreload(l *lua.State) int {
 	name := l.CheckString(1)
-	l.Field(luart.RegistryIndex, "_PRELOAD")
+	l.Field(lua.RegistryIndex, "_PRELOAD")
 	l.Field(-1, name)
 	if l.IsNil(-1) {
 		l.PushString(fmt.Sprintf("\n\tno field package.preload['%s']", name))
@@ -74,8 +74,8 @@ func searcherPreload(l *luart.State) int {
 	return 1
 }
 
-func createSearchersTable(l *luart.State) {
-	searchers := []luart.Function{searcherPreload, searcherLua}
+func createSearchersTable(l *lua.State) {
+	searchers := []lua.Function{searcherPreload, searcherLua}
 	l.CreateTable(len(searchers), 0)
 	for i, s := range searchers {
 		l.PushValue(-2)
@@ -92,7 +92,7 @@ func readable(filename string) bool {
 	return err == nil
 }
 
-func searchPath(l *luart.State, name, path, sep, dirSep string) (string, error) {
+func searchPath(l *lua.State, name, path, sep, dirSep string) (string, error) {
 	var msg string
 	if sep != "" {
 		name = strings.Replace(name, sep, dirSep, -1) // Replace sep by dirSep.
@@ -110,14 +110,14 @@ func searchPath(l *luart.State, name, path, sep, dirSep string) (string, error) 
 	return "", errors.New(msg)
 }
 
-func noEnv(l *luart.State) bool {
-	l.Field(luart.RegistryIndex, "LUA_NOENV")
+func noEnv(l *lua.State) bool {
+	l.Field(lua.RegistryIndex, "LUA_NOENV")
 	b := l.ToBoolean(-1)
 	l.Pop(1)
 	return b
 }
 
-func setPath(l *luart.State, field, env, def string) {
+func setPath(l *lua.State, field, env, def string) {
 	if path := os.Getenv(env); path == "" || noEnv(l) {
 		l.PushString(def)
 	} else {
@@ -129,8 +129,8 @@ func setPath(l *luart.State, field, env, def string) {
 	l.SetField(-2, field)
 }
 
-var packageLibrary = []luart.RegistryFunction{
-	{Name: "loadlib", Function: func(l *luart.State) int {
+var packageLibrary = []lua.RegistryFunction{
+	{Name: "loadlib", Function: func(l *lua.State) int {
 		_ = l.CheckString(1) // path
 		_ = l.CheckString(2) // init
 		l.PushNil()
@@ -138,7 +138,7 @@ var packageLibrary = []luart.RegistryFunction{
 		l.PushString("absent")
 		return 3 // Return nil, error message, and where.
 	}},
-	{Name: "searchpath", Function: func(l *luart.State) int {
+	{Name: "searchpath", Function: func(l *lua.State) int {
 		name := l.CheckString(1)
 		path := l.CheckString(2)
 		sep := l.OptString(3, ".")
@@ -155,23 +155,23 @@ var packageLibrary = []luart.RegistryFunction{
 }
 
 // OpenPackage opens the package library. Usually passed to Require.
-func OpenPackage(l *luart.State) int {
+func OpenPackage(l *lua.State) int {
 	l.NewLibrary(packageLibrary)
 	createSearchersTable(l)
 	l.SetField(-2, "searchers")
 	setPath(l, "path", "LUA_PATH", defaultPath)
 	l.PushString(fmt.Sprintf("%c\n%c\n?\n!\n-\n", filepath.Separator, pathListSeparator))
 	l.SetField(-2, "config")
-	l.SubTable(luart.RegistryIndex, "_LOADED")
+	l.SubTable(lua.RegistryIndex, "_LOADED")
 	l.SetField(-2, "loaded")
-	l.SubTable(luart.RegistryIndex, "_PRELOAD")
+	l.SubTable(lua.RegistryIndex, "_PRELOAD")
 	l.SetField(-2, "preload")
 	l.PushGlobalTable()
 	l.PushValue(-2)
-	l.SetFunctions([]luart.RegistryFunction{{Name: "require", Function: func(l *luart.State) int {
+	l.SetFunctions([]lua.RegistryFunction{{Name: "require", Function: func(l *lua.State) int {
 		name := l.CheckString(1)
 		l.SetTop(1)
-		l.Field(luart.RegistryIndex, "_LOADED")
+		l.Field(lua.RegistryIndex, "_LOADED")
 		l.Field(2, name)
 		if l.ToBoolean(-1) {
 			return 1

@@ -24,7 +24,7 @@ modernisation.
 |---|---|
 | Lua version | 5.2, compatible with `luac` 5.2 binary chunks |
 | Go | 1.27.1 or later, `CGO_ENABLED=0` |
-| API | Methods on `*luart.State`, following Lua's C API and auxiliary library; package `luart` at `github.com/matjam/luart` |
+| API | Methods on `*lua.State`, following Lua's C API and auxiliary library, in `github.com/matjam/luart/lua`; standard libraries in `github.com/matjam/luart/stdlib` |
 
 Work so far:
 
@@ -104,8 +104,8 @@ also has Apple M1 results.
 
 ## JIT
 
-`luart.NewState()` compiles hot Lua functions to machine code.
-`luart.NewState(luart.WithoutJIT())` makes a state that only interprets, and
+`lua.NewState()` compiles hot Lua functions to machine code.
+`lua.NewState(lua.WithoutJIT())` makes a state that only interprets, and
 the environment variable `LUART_JIT=off` does that for every state.
 
 - Platforms: linux and darwin on arm64 and amd64. Elsewhere, Windows
@@ -138,12 +138,12 @@ go get github.com/matjam/luart
 package main
 
 import (
-	"github.com/matjam/luart"
+	"github.com/matjam/luart/lua"
 	"github.com/matjam/luart/stdlib"
 )
 
 func main() {
-	l := luart.NewState()
+	l := lua.NewState()
 	stdlib.Open(l)
 	if err := l.DoFile("hello.lua"); err != nil {
 		panic(err)
@@ -164,7 +164,7 @@ Go functions can read typed arguments, which raise a Lua error when an
 argument does not convert:
 
 ```go
-l.Register("rect", func(l *luart.State) int {
+l.Register("rect", func(l *lua.State) int {
 	x, y, label := l.Arg[float64](1), l.Arg[float64](2), l.Arg[string](3)
 	draw(x, y, label)
 	return 0
@@ -176,7 +176,7 @@ Userdata can be read back with its Go type:
 ```go
 type point struct{ x, y float64 }
 
-l.Register("norm", func(l *luart.State) int {
+l.Register("norm", func(l *lua.State) int {
 	p := l.CheckUserData[*point](1, "point")
 	l.PushNumber(math.Hypot(p.x, p.y))
 	return 1

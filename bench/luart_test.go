@@ -3,15 +3,15 @@ package luabench
 import (
 	"testing"
 
-	"github.com/matjam/luart"
+	"github.com/matjam/luart/lua"
 	"github.com/matjam/luart/stdlib"
 )
 
-func newLuart(b *testing.B, src string, options ...luart.Option) *luart.State {
+func newLuart(b *testing.B, src string, options ...lua.Option) *lua.State {
 	b.Helper()
-	l := luart.NewState(options...)
+	l := lua.NewState(options...)
 	stdlib.Open(l)
-	l.Register("set", func(l *luart.State) int {
+	l.Register("set", func(l *lua.State) int {
 		x, _ := l.ToNumber(1)
 		y, _ := l.ToNumber(2)
 		v, _ := l.ToNumber(3)
@@ -24,7 +24,7 @@ func newLuart(b *testing.B, src string, options ...luart.Option) *luart.State {
 	return l
 }
 
-func runLuartFrames(b *testing.B, l *luart.State) {
+func runLuartFrames(b *testing.B, l *lua.State) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		l.Global("frame")
