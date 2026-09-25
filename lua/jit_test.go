@@ -54,9 +54,9 @@ func runBoth(t *testing.T, src string) (jit, interp string, lj *State) {
 // runBothWith is runBoth with setup run on each state first.
 func runBothWith(t *testing.T, src string, setup func(*State)) (jit, interp string, lj *State) {
 	t.Helper()
-	saved := jitThreshold
-	jitThreshold = 0
-	defer func() { jitThreshold = saved }()
+	saved, savedRun := jitThreshold, jitMinRun
+	jitThreshold, jitMinRun = 0, 0
+	defer func() { jitThreshold, jitMinRun = saved, savedRun }()
 	result := func(l *State) string {
 		if err := l.DoString(src); err != nil {
 			t.Fatal(err)
@@ -602,9 +602,9 @@ func TestJITTrigMatchesGo(t *testing.T) {
 			xs = append(xs, math.Ldexp(r.Float64()*2-1, r.IntN(60)-30))
 		}
 	}
-	saved := jitThreshold
-	jitThreshold = 0
-	defer func() { jitThreshold = saved }()
+	saved, savedRun := jitThreshold, jitMinRun
+	jitThreshold, jitMinRun = 0, 0
+	defer func() { jitThreshold, jitMinRun = saved, savedRun }()
 	l := NewState()
 	openLibraries(l)
 	var bad int
@@ -820,6 +820,47 @@ func TestJITRuns(t *testing.T) {
 	_, _, lj := runBoth(t, `function run() local a = 1; local b = a + 2; return b * 3 end`)
 	if lj.jitRuns == 0 {
 		t.Fatal("compiled code never ran")
+	}
+}
+
+// A function that returns after a few instructions, such as a sort
+// comparator Go calls, is interpreted even when compiled: entering compiled
+// code and returning from it to Go costs more than the instructions.
+func TestJITShortFunctionsCalledFromGo(t *testing.T) {
+	skipWithoutJIT(t)
+	saved, savedRun := jitThreshold, jitMinRun
+	jitThreshold, jitMinRun = 0, defaultJITMinRun
+	defer func() { jitThreshold, jitMinRun = saved, savedRun }()
+	for _, tt := range []struct {
+		name, src string
+		enters    bool
+	}{
+		{"comparator", `f = function(a, b) return a < b end`, false},
+		{"two instructions", `f = function(a, b) local c = a + b; return c * 2 end`, false},
+		{"four instructions", `f = function(a, b) local c = a + b; c = c * 2; return c - 1, a end`, true},
+		{"loop", `f = function(a, b) for i = 1, 2 do a = a + b end return a end`, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			l := NewState()
+			openLibraries(l)
+			if err := l.DoString(tt.src); err != nil {
+				t.Fatal(err)
+			}
+			for range 3 {
+				l.Global("f")
+				l.PushNumber(1)
+				l.PushNumber(2)
+				l.Call(2, 1)
+				l.Pop(1)
+			}
+			l.Global("f")
+			if l.ToValue(-1).(*luaClosure).prototype.jit == nil {
+				t.Fatal("f was not compiled")
+			}
+			if entered := l.jitRuns > 0; entered != tt.enters {
+				t.Fatalf("compiled code ran %d times, want entered %v", l.jitRuns, tt.enters)
+			}
+		})
 	}
 }
 

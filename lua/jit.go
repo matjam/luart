@@ -90,6 +90,8 @@ type jitCode struct {
 	base    uintptr // address of the code
 	entry   uintptr // address of pc 0's code
 	kernels int     // numeric loop kernels compiled, for tests
+
+	returnsSoon bool // Go calling it interprets it; see returnsSoon
 }
 
 // The interpreter reaches compiled code through instructions patched into
@@ -185,8 +187,12 @@ func (l *State) countJIT(p *prototype) {
 	if err != nil {
 		return
 	}
-	p.jit = &jitCode{mem: mem, offsets: offsets, base: mem.Addr(0), entry: mem.Addr(int(offsets[0])), kernels: kernels}
+	soon := returnsSoon(p.Code)
+	p.jit = &jitCode{mem: mem, offsets: offsets, base: mem.Addr(0), entry: mem.Addr(int(offsets[0])), kernels: kernels, returnsSoon: soon}
 	for _, ip := range entries {
+		if ip == 0 && soon { // compiled callers call it natively
+			continue
+		}
 		p.exec[ip] = patched(p.exec[ip], opJITEnter)
 	}
 }
@@ -198,8 +204,11 @@ const maxInlineCompare = 32
 // jitMinRun is how many instructions compiled code must run from an entry
 // before its first unconditional exit for entering it to pay: a round trip
 // between the interpreter and compiled code costs about as much as
-// interpreting a few instructions.
-const jitMinRun = 4
+// interpreting a few instructions. Tests set it to zero, so compiled code
+// is entered wherever it can run.
+var jitMinRun = defaultJITMinRun
+
+const defaultJITMinRun = 4
 
 // jitEntries lists the pcs where the interpreter should hand over to
 // compiled code: function entry, loop latches, jump targets, and the
@@ -257,6 +266,36 @@ func worthEntering(code []bytecode.Instruction, always []bool, ip int) bool {
 		}
 		if run++; run >= jitMinRun || op == bytecode.OpForLoop || op == bytecode.OpJump && code[ip].SBx() < 0 {
 			return true
+		}
+	}
+	return false
+}
+
+// returnsSoon reports whether code run from pc 0 reaches a RETURN before
+// jitMinRun instructions, without a loop. Go or the interpreter calling
+// such a function, a sort comparator for example, interprets it: its RETURN
+// goes back to Go or to interpreted code, and the round trip into compiled
+// code costs more than the instructions. Compiled callers still call it
+// natively. It counts along the path that runs: a test and the JMP
+// it consumes are one instruction, and a LOADBOOL that skips skips.
+func returnsSoon(code []bytecode.Instruction) bool {
+	for run, ip := 0, 0; ip < len(code); ip++ {
+		i := code[ip]
+		switch op := i.OpCode(); {
+		case isExtraArg(code, ip):
+		case isConsumed(code, ip):
+			if op == bytecode.OpJump && i.SBx() < 0 { // a repeat loop's latch
+				return false
+			}
+		case op == bytecode.OpReturn || op == bytecode.OpTailCall:
+			return run < jitMinRun
+		default:
+			if run++; run >= jitMinRun || op == bytecode.OpForLoop || op == bytecode.OpJump && i.SBx() < 0 {
+				return false
+			}
+			if op == bytecode.OpLoadBool && i.C() != 0 {
+				ip++
+			}
 		}
 	}
 	return false
@@ -388,11 +427,12 @@ func (l *State) runJIT(ci *callInfo, ip pc, bottom *callInfo) bool {
 }
 
 // callJIT runs the Lua function that preCall has just entered for l.call,
-// if it is compiled. It reports whether the function has returned;
-// otherwise the interpreter goes on from the savedPC of l.callInfo.
+// if it is compiled and does not return too soon to be worth entering. It
+// reports whether the function has returned; otherwise the interpreter goes
+// on from the savedPC of l.callInfo.
 func (l *State) callJIT() bool {
 	ci := l.callInfo
-	if ci.closure.prototype.jit == nil || l.hookMask != 0 {
+	if jc := ci.closure.prototype.jit; jc == nil || jc.returnsSoon || l.hookMask != 0 {
 		return false
 	}
 	return l.runJIT(ci, 0, ci)
