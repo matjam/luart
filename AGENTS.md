@@ -16,7 +16,8 @@ today, the rules it depends on, and where performance work should go next.
     again with `LUART_JIT_TEST=1`, which compiles every function on first
     use; again with `LUART_JIT=off`, which only interprets; and
     `-race -run JIT`.
-  - `cd bench && LUART_JIT_TEST=1 go test -run TestSuiteAgrees .`
+  - `cd bench && LUART_JIT_TEST=1 go test -run 'TestSuiteAgrees|TestStandardAgrees' .`,
+    and with `-tags clua54` or `-tags luajit` where those are installed.
 - On an Apple silicon Mac, `GOARCH=amd64 go test ./...` runs the amd64 JIT
   under Rosetta. A `GOAMD64=v3` binary cannot run there; CI covers it on
   linux/amd64.
@@ -271,13 +272,24 @@ nothing compiles.
 
 bench/README.md has the current tables and charts, generated from the raw
 results: AMD Ryzen 9 9900X3D (linux/amd64), and Apple M1 Pro (arm64) as
-of commit 664f09d.
+of commit 664f09d. On the standard benchmarks (Are We Fast Yet and three
+from the Benchmarks Game) luart with the JIT takes 0.78 times as long as
+C Lua 5.4, and 1.8 times without it.
 
 To find where a workload leaves compiled code, count exits: log
 `p.jitOrig[ip]` and `l.jitCtx.reason` after each `enterJIT` in `runJIT`
-for one call of the workload. An exit every iteration costs 10 ns or more;
-that is how `GETTABUP` with an array index was found to exit on each of
-particles' 2,000 iterations.
+for one call of the workload. For field instructions, log the state of
+`p.fields[ip]` too (own slot, `__index` table, chain length), which says
+why the cache missed. An exit every iteration costs 10 ns or more; that
+is how `GETTABUP` with an array index was found to exit on each of
+particles' 2,000 iterations, and how every Are We Fast Yet class method
+was found to miss the cache.
+
+An interpreted result that moves by 10–25% after a change the
+interpreter does not run is almost always `executeSwitch` moving: Json
+and the string build swing that much with its address alone. Rebuild
+both binaries with `-ldflags=-funcalign=128`, which moves it again, before
+believing it.
 
 The JIT gains least where a script crosses between compiled code and Go
 every few instructions. A bare `call.Call` round trip costs about 2 ns
@@ -296,12 +308,16 @@ compares the callee against each intrinsic in turn (`sin` is fifth).
 
 Measured on the 9900X3D with the JIT on (bench/README.md):
 
-- Crossings between compiled code and Go are close to their floor. A
-  call into Go costs about 12.5 ns, of which about 4.5 ns is compiled
-  code around it, and the rest is the API's Go frame and the round trip.
-  Within a workload, the only exits left on every iteration are calls
-  into Go, allocations (`CLOSURE`, `NEWTABLE`) and the sort comparator's
-  return to Go.
+- Exits are most of what is left. A call into Go costs about 12.5 ns, of
+  which about 4.5 ns is compiled code around it, and the rest is the
+  API's Go frame and the round trip. The other exits left on every
+  iteration are allocations (`NEWTABLE`, `CLOSURE`), TAILCALL (every
+  `return setmetatable(obj, mt)` constructor), GETTABLE and SETTABLE with
+  keys that are not constant strings or array indices, LEN of a table,
+  CONCAT, and the sort comparator's return to Go. Havlak exits 24 million
+  times an iteration, most of them at NEWTABLE, CALL and TAILCALL.
+- binary-trees, the one standard benchmark still slower than C Lua 5.4,
+  is allocation: a NEWTABLE exit and Go's allocator for every node.
 - Plasma takes about 37 ns a pixel against Go's 15: about 12 ns for the
   call to `set`, about 6 ns for each of three `sin`s (Go's `math.Sin` is
   about 4), and the rest in ordinary compiled code, which keeps every Lua
@@ -312,48 +328,69 @@ Measured on the 9900X3D with the JIT on (bench/README.md):
 - Closures and records are limited by allocation, one object per
   iteration, as Lua requires.
 
-### Done in this round
+### Done in the last rounds
 
-- Calls into Go: `jitExitCallGo` and `jitExitCallNumber`, and a driver
-  path that makes the call from what the exit leaves in the context (16.6
-  to 12.5 ns). `numberFunction.call` takes float64 arguments, not an
-  array: an array went through memory, and its 16-byte copies of 8-byte
-  stores stalled on store forwarding.
-- Go calling compiled Lua: `callJIT` and `jitReturnToGo`; `table.sort`
-  on the table and stack directly (sort 5.6 to 3.6 ms).
-- `sin` and `cos` constants from memory (−12% on `sin`-heavy loops).
-- Array indexing of tables in upvalues (particles −15%).
+Measured against the standard benchmarks, which found most of them:
+
+- Loop heads count toward compiling (#70): a function run once with a
+  hot `while` loop never compiled before (Mandelbrot −53%).
+- `__index` chains in the field cache (#71), own fields holding nil and
+  a second chain level in compiled reads (#74): class hierarchies built
+  from metatables, as Are We Fast Yet's are, missed the cache at almost
+  every method call (Richards −35%, List −38%, DeltaBlue −17%).
+- `==` for every kind of value in compiled code (#72): comparisons with
+  nil, strings and objects exited (Json −25%, Richards −15%).
+- Field stores of nil, and into nil slots of tables whose metatable lacks
+  `__newindex` (#73; Towers −28%).
+- String length and string methods in compiled code (#76; Json −22%), and
+  the API's argument fast paths (#77; string scan −14%).
+- Before these: calls into Go through `jitExitCallGo` and
+  `jitExitCallNumber` (16.6 to 12.5 ns), Go calling compiled Lua
+  (`callJIT`, `jitReturnToGo`; sort 5.6 to 3.6 ms), `sin` and `cos`
+  constants from memory, and array indexing of tables in upvalues.
 
 ### Next
 
 In order of expected payoff for real-time scripts such as visualisers:
 
-1. **Kernels with calls.** Let a kernel call an intrinsic, guarding the
+1. **Fewer, cheaper exits.** The exit itself is the cost: handling
+   TAILCALL in `runJIT` instead of the interpreter measured no gain.
+   Compiling a TAILCALL to a compiled Lua function as the frame
+   replacement the interpreter does, and a CALL of `setmetatable` as an
+   intrinsic, would remove most of the TAILCALL exits; allocating tables
+   and closures from compiled code would remove the rest.
+2. **Kernels with calls.** Let a kernel call an intrinsic, guarding the
    callee once at loop entry (nothing in a kernel can change the upvalue
    or global it comes from), and call a Go or number function by writing
    the kernel's registers back, exiting, and re-entering after the call.
    Plasma's inner loop would then keep its numbers in registers apart
    from the call to `set`; its body without `set` measured 23 ns a pixel
    as ordinary code and 1.4 ns as a kernel without `sin`.
-2. **Registers across ordinary code.** Keep numbers in FP registers
+3. **Registers across ordinary code.** Keep numbers in FP registers
    across straight-line code between exits, not only in kernels, with
    type checks at the first use. This is the lever for fib, records and
    particles.
-3. **The comparator's return to Go.** Compiled code could run the RETURN
+4. **The comparator's return to Go.** Compiled code could run the RETURN
    of the frame `callJIT` entered itself, with a call status bit on that
    frame cleared when the interpreter takes over. Replacing
    `jitReturnToGo`'s `postCall` with an inline copy measured no gain; the
    remaining cost of each comparison is spread across `call`, `preCall`,
    `pushLuaFrame` and `enterJIT`.
-4. **Closures and GC.** Shrink `luaClosure`, or create closures in
+5. **Closures and GC.** Shrink `luaClosure`, or create closures in
    compiled code from a pre-allocated pool.
-5. **More native instructions:** TFORCALL/TFORLOOP with fast paths for
+6. **More native instructions:** TFORCALL/TFORLOOP with fast paths for
    `ipairs` and `pairs` over array parts; CONCAT into a reusable buffer;
-   SETLIST; vararg and tail calls.
-6. **The barrier and budget in registers on amd64**, where they live in
+   SETLIST; vararg; LEN of a table; GETTABLE and SETTABLE with string keys
+   in registers.
+7. **The barrier and budget in registers on amd64**, where they live in
    the context: unmeasured.
+8. **The interpreter's placement.** Interpreted Json and string building
+   vary by 20% with the address of `executeSwitch` alone; a layout that
+   is good wherever the linker puts it would help every build without the
+   JIT, Windows included.
 
 Measured and not worth it for now: loop-invariant global loads (plasma
-runs the same with `set` global or local), and putting `sin` and `cos`
+runs the same with `set` global or local), putting `sin` and `cos`
 first in the intrinsic dispatch (0.9% on plasma, at a cost to every other
-intrinsic).
+intrinsic), and running TAILCALL in `runJIT` rather than the interpreter
+(no change: the exit is the cost).
