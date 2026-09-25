@@ -191,6 +191,10 @@ func (l *State) countJIT(p *prototype) {
 	}
 }
 
+// maxInlineCompare is the longest string compiled == compares itself;
+// it exits for longer ones, which Go compares faster.
+const maxInlineCompare = 32
+
 // jitMinRun is how many instructions compiled code must run from an entry
 // before its first unconditional exit for entering it to pay: a round trip
 // between the interpreter and compiled code costs about as much as

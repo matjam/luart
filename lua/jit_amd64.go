@@ -208,6 +208,19 @@ func (c *amd64Compiler) constant(k int) (operand, bool) {
 	return operand{rConst, uint32(k) * valueSize}, true
 }
 
+// isNumberConstant reports whether an RK field is a number constant.
+func (c *amd64Compiler) isNumberConstant(field int) bool {
+	return bytecode.IsConstant(field) && c.p.Constants[bytecode.ConstantIndex(field)].isNumber()
+}
+
+// rk returns the operand for an RK field.
+func (c *amd64Compiler) rk(field int) (operand, bool) {
+	if !bytecode.IsConstant(field) {
+		return reg(field), true
+	}
+	return c.constant(bytecode.ConstantIndex(field))
+}
+
 // rkNumber returns the operand for an RK field that must be a number, and
 // false for a constant that is not one.
 func (c *amd64Compiler) rkNumber(field int) (operand, bool) {
@@ -377,6 +390,121 @@ func (c *amd64Compiler) compare(op bytecode.OpCode, jump bool, x, y XReg, yes, n
 	a.Jmp(no)
 }
 
+// equal compiles EQ, whose operands may be any values. Numbers compare as
+// floats. Other values are equal when both words are, and when they are
+// not can be equal only as strings of the same length, whose bytes it
+// compares up to maxInlineCompare, or through __eq, which only two tables or two userdata try: it exits
+// for those, unless the first table's metatable is known to lack __eq.
+func (c *amd64Compiler) equal(ip int, i bytecode.Instruction) {
+	a := &c.a
+	target, ok := c.jumpAfter(ip)
+	b, okB := c.rk(i.B())
+	cc, okC := c.rk(i.C())
+	if !ok || !okB || !okC {
+		c.exitAlways(ip)
+		return
+	}
+	// The JMP runs when the comparison's result equals A.
+	jump := i.A() != 0
+	yes, no := c.pcs[target], c.pcs[ip+2]
+	back := a.NewLabel()
+	if target <= ip {
+		yes = back
+	}
+	eq, ne := yes, no
+	if !jump {
+		eq, ne = no, yes
+	}
+	if kb, kc := c.isNumberConstant(i.B()), c.isNumberConstant(i.C()); kb || kc {
+		// Against a number, only another number can be equal.
+		if !kb {
+			a.Load(rP, b.base, b.off+offP)
+			a.Cmp(rP, rNumber)
+			a.J(NE, ne)
+		} else if !kc {
+			a.Load(rP, cc.base, cc.off+offP)
+			a.Cmp(rP, rNumber)
+			a.J(NE, ne)
+		}
+		a.LoadSD(0, b.base, b.off+offN)
+		a.LoadSD(1, cc.base, cc.off+offN)
+		c.compare(bytecode.OpEqual, jump, 0, 1, yes, no)
+		if target <= ip {
+			a.Bind(back)
+			c.backEdge(target)
+		}
+		return
+	}
+	exit := c.exit(ip)
+	notNumber, differ := a.NewLabel(), a.NewLabel()
+	a.Load(rP, b.base, b.off+offP)
+	a.Load(rTmp, cc.base, cc.off+offP)
+	a.Cmp(rP, rNumber)
+	a.J(NE, notNumber)
+	a.Cmp(rTmp, rNumber)
+	a.J(NE, ne)
+	a.LoadSD(0, b.base, b.off+offN)
+	a.LoadSD(1, cc.base, cc.off+offN)
+	c.compare(bytecode.OpEqual, jump, 0, 1, yes, no)
+	a.Bind(notNumber)
+	a.Load(rN, b.base, b.off+offN)
+	a.Load(rTmp2, cc.base, cc.off+offN)
+	a.Cmp(rP, rTmp)
+	a.J(NE, differ)
+	a.Cmp(rN, rTmp2)
+	a.J(E, eq)
+	a.Jmp(ne) // one address, other bits: true and false, or strings' lengths
+	a.Bind(differ)
+	a.Cmp(rTmp, rNumber)
+	a.J(E, ne)
+	a.Mov(rIdx, rN)
+	a.Shr(rIdx, kindShift)
+	a.Mov(rT, rTmp2)
+	a.Shr(rT, kindShift)
+	a.Cmp(rIdx, rT)
+	a.J(NE, ne) // different kinds
+	strs, tables := a.NewLabel(), a.NewLabel()
+	a.CmpImm(rIdx, int32(vkString))
+	a.J(E, strs)
+	a.CmpImm(rIdx, int32(vkTable))
+	a.J(E, tables)
+	a.CmpImm(rIdx, int32(vkUserData))
+	a.J(E, exit)
+	a.Jmp(ne) // other objects are equal only at one address
+	// Strings: compare the bytes of short ones; Go compares long ones.
+	a.Bind(strs)
+	a.Cmp(rN, rTmp2)
+	a.J(NE, ne) // lengths differ
+	a.Mov(rIdx, rN)
+	a.MovImm(rT, tagOf(vkString))
+	a.Sub(rIdx, rT) // the length, at least 1: the empty string has one address
+	a.CmpImm(rIdx, maxInlineCompare)
+	a.J(A, exit)
+	loop := a.NewLabel()
+	a.Bind(loop)
+	a.Load8(rT, rP, 0)
+	a.Load8(rT2, rTmp, 0)
+	a.Cmp(rT, rT2)
+	a.J(NE, ne)
+	a.AddImm(rP, 1)
+	a.AddImm(rTmp, 1)
+	a.SubImm(rIdx, 1)
+	a.J(NE, loop)
+	a.Jmp(eq)
+	a.Bind(tables)
+	a.Load(rT, rP, offTMeta)
+	a.Test(rT, rT)
+	a.J(E, ne)
+	a.Load8(rIdx, rT, offTFlags)
+	a.Bt(rIdx, uint8(tmEq))
+	a.J(B, ne) // the metatable has no __eq
+	a.Jmp(exit)
+	if target <= ip {
+		a.Bind(back)
+		c.backEdge(target)
+	}
+}
+
 // signMask loads the sign bit into x.
 func (c *amd64Compiler) signMask(x XReg) {
 	c.a.MovImm(rTmp, 1<<63)
@@ -491,7 +619,9 @@ func (c *amd64Compiler) instruction(ip int) int {
 			break
 		}
 		c.jumpTo(ip, ip+1+orig.SBx())
-	case bytecode.OpEqual, bytecode.OpLessThan, bytecode.OpLessOrEqual:
+	case bytecode.OpEqual:
+		c.equal(ip, orig)
+	case bytecode.OpLessThan, bytecode.OpLessOrEqual:
 		target, ok := c.jumpAfter(ip)
 		b, okB := c.rkNumber(orig.B())
 		cc, okC := c.rkNumber(orig.C())
