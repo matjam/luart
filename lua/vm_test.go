@@ -68,7 +68,7 @@ func TestLua(t *testing.T) {
 		// {name: "code"}, // needs the C test library (T)
 		{name: "constructs"},
 		// {name: "db"},
-		// {name: "errors"},
+		{name: "errors"},
 		{name: "events"},
 		{name: "files"},
 		// {name: "gc"},

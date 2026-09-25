@@ -217,7 +217,7 @@ func (l *State) protectedCall(f func(), oldTop, errorFunc int) error {
 		l.close(oldTop)
 		l.setErrorObject(err, oldTop)
 		l.callInfo, l.allowHook, l.nonYieldableCallCount = callInfo, allowHook, nonYieldableCallCount
-		// TODO l.shrinkStack()
+		l.shrinkStack()
 	}
 	l.errorFunction = errorFunction
 	return err

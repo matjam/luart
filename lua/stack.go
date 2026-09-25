@@ -465,7 +465,11 @@ func (l *State) checkStack(n int) {
 func (l *State) reallocStack(newSize int) {
 	l.assert(newSize <= maxStack || newSize == errorStackSize)
 	l.assert(l.stackLast == len(l.stack)-extraStack)
-	l.stack = append(l.stack, make([]value, newSize-len(l.stack))...)
+	if newSize < len(l.stack) { // shrinking: what is above is not in use
+		l.stack = append(make([]value, 0, newSize), l.stack[:newSize]...)
+	} else {
+		l.stack = append(l.stack, make([]value, newSize-len(l.stack))...)
+	}
 	l.stackLast = len(l.stack) - extraStack
 	l.callInfo.next = nil
 	for ci := l.callInfo; ci != nil; ci = ci.previous {
@@ -475,6 +479,21 @@ func (l *State) reallocStack(newSize int) {
 		} else if ci.luaCallInfo != nil {
 			ci.frame = nil // stale; drop the old stack
 		}
+	}
+}
+
+// shrinkStack gives back the stack an error left unused, after ldo.c's
+// luaD_shrinkstack: in particular the extra room a stack overflow grows it
+// by, so that the next overflow is an overflow again.
+func (l *State) shrinkStack() {
+	inUse := l.top
+	for ci := l.callInfo; ci != nil; ci = ci.previous {
+		inUse = max(inUse, ci.top)
+	}
+	inUse++
+	goodSize := min(inUse+inUse/8+2*extraStack, maxStack)
+	if inUse <= maxStack && goodSize < len(l.stack) {
+		l.reallocStack(goodSize)
 	}
 }
 

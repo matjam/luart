@@ -198,6 +198,7 @@ func (l *State) recover(err error) bool {
 	l.callInfo = ci
 	l.allowHook = ci.oldAllowHook
 	l.nonYieldableCallCount = 0 // yieldable again
+	l.shrinkStack()
 	l.errorFunction = ci.oldErrorFunction
 	ci.setCallStatus(callStatusError)
 	ci.shouldYield, ci.error = false, err
