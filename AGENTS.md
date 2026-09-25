@@ -33,10 +33,10 @@ today, the rules it depends on, and where performance work should go next.
   core complex, pin A/B runs to one (`taskset -c 0-5` on the 9900X3D).
   Every performance PR includes a full run of `bench/suite_test.go`, saved
   as the results file for its machine (`bench/suite-results-amd64.txt`,
-  or `bench/suite-results.txt` for Apple M1). `cd bench && go run ./chart
-  -svg suite-amd64.svg -readme README.md,../README.md -name amd64
-  suite-results-amd64.txt` redraws the chart and rewrites the READMEs'
-  tables from it (bench/README.md, Reproducing).
+  or `bench/suite-results.txt` for Apple M1). `bench/chart` redraws that
+  machine's charts and rewrites its tables in bench/README.md, and
+  `-summary` rewrites the root README's table of geometric means from
+  both files (bench/README.md, Reproducing).
 
 ## Packages
 

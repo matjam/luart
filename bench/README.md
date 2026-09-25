@@ -188,6 +188,11 @@ run of each suite workload.
 
 ## Notes
 
+- Plasma is a 200×100 per-pixel effect with three `math.sin` calls and one
+  call into Go per pixel. Particles moves 2,000 particle tables by a method
+  and draws them.
+- `TestNumericFrameDoesNotAllocate` keeps numeric code and calls into Go
+  allocation-free.
 - Numbers, booleans and calls allocate nothing in luart. The remaining
   allocations are the Lua objects the script creates, one per table,
   closure or string.
@@ -240,8 +245,8 @@ then each C interpreter, into one file:
 CGO_ENABLED=0 go test -run x -bench . -benchmem -count 6 -timeout 3h -ldflags=-funcalign=64 > suite-results-amd64.txt
 go test -tags clua54 -run x -bench '.*/.*/lua54$' -benchmem -count 6 -timeout 3h >> suite-results-amd64.txt
 go test -tags luajit -run x -bench '.*/.*/luajit$' -benchmem -count 6 -timeout 3h >> suite-results-amd64.txt
-go run ./chart -svg suite-amd64.svg -readme README.md,../README.md -name amd64 suite-results-amd64.txt
-go run ./chart -suite standard -svg standard-amd64.svg -readme README.md,../README.md -name standard-amd64 suite-results-amd64.txt
+go run ./chart -svg suite-amd64.svg -readme README.md -name amd64 suite-results-amd64.txt
+go run ./chart -suite standard -svg standard-amd64.svg -readme README.md -name standard-amd64 suite-results-amd64.txt
 ```
 
 From the median of each benchmark in the file, `-svg` redraws the chart
@@ -253,4 +258,11 @@ file, charts and tables for the machine. On Apple M1 the file is
 ```sh
 go run ./chart -svg suite-arm64-m1.svg -readme README.md -name arm64-m1 suite-results.txt
 go run ./chart -suite standard -svg standard-arm64-m1.svg -readme README.md -name standard-arm64-m1 suite-results.txt
+```
+
+After either machine's run, `-summary` rewrites the root README's table
+of geometric means from both files, a row per benchmark and machine:
+
+```sh
+go run ./chart -summary -readme ../README.md -name summary suite-results-amd64.txt suite-results.txt
 ```
