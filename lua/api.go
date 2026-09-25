@@ -147,6 +147,11 @@ type Debug struct {
 
 	// What is the string "Lua" if the function is a Lua function, "Go" if it is
 	// a Go function, "main" if it is the main part of a chunk.
+	//
+	// With the environment variable LUART_GO_AS_C=1 when a state is created,
+	// its debug information calls Go functions "C", with the source "=[C]",
+	// as C Lua's does for its C functions, for scripts and tests that expect
+	// that.
 	What string
 
 	// Source is the source of the chunk that created the function. If Source

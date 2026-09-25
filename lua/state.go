@@ -1,5 +1,7 @@
 package lua
 
+import "os"
+
 type pc int
 type callStatus byte
 
@@ -49,7 +51,8 @@ type globalState struct {
 	memoryErrorMessage string
 	rootShape          *shape // shape tree for this state's tables
 	lightBoxes         map[any]*lightUserData
-	jit                bool // compile hot functions; see WithJIT
+	jit                bool   // compile hot functions; see WithoutJIT
+	goName             string // what debug information calls Go functions
 	// seed uint // randomized seed for hashes
 	// upValueHead upValue // head of double-linked list of all open upvalues
 }
@@ -98,6 +101,10 @@ func NewState(options ...Option) *State {
 	g.registry.putAtInt(RegistryIndexGlobals, objectValue(newTable()))
 	copy(g.tagMethodNames[:], eventNames)
 	g.jit = jitDefault && jitSupported && !jitDisabled
+	g.goName = "Go"
+	if os.Getenv("LUART_GO_AS_C") == "1" {
+		g.goName = "C"
+	}
 	for _, o := range options {
 		o(l)
 	}

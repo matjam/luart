@@ -20,6 +20,25 @@ func TestErrorValues(t *testing.T) {
 	`)
 }
 
+// xpcall calls its message handler with the error, and the chunk goes on.
+func TestXpcall(t *testing.T) {
+	run(t, `
+		local calls = 0
+		local ok, v = xpcall(function() error("x") end, function(m) calls = calls + 1; return "h:" .. m end)
+		assert(not ok and v == "h:test:3: x" and calls == 1, v)
+		ok, v = xpcall(function() error("x") end, debug.traceback)
+		assert(not ok and v:find("^test:5: x\nstack traceback:\n"), v)
+		ok, v = xpcall(function(a, b) return a + b end, print, 1, 2)
+		assert(ok and v == 3)
+		local function inner()
+			return select(2, xpcall(error, function(m) return "inner " .. tostring(m) end, "e", 0))
+		end
+		assert(select(2, pcall(inner)) == "inner e")
+		ok = xpcall(error, function() error("again") end)
+		assert(not ok)
+	`)
+}
+
 // load with a reader function ends the chunk at the first nil or empty
 // piece, as the Lua suite's calls.lua checks.
 func TestLoadReader(t *testing.T) {

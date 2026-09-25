@@ -132,7 +132,7 @@ func (l *State) ProtectedCallWithContinuation(argCount, resultCount, errorFuncti
 	l.checkResults(argCount, resultCount)
 	if errorFunction != 0 {
 		apiCheckStackIndex(errorFunction, l.indexToValue(errorFunction))
-		errorFunction = l.AbsIndex(errorFunction)
+		errorFunction = l.callInfo.function + l.AbsIndex(errorFunction) // the stack index errorMessage reads
 	}
 
 	f := l.top - (argCount + 1)
