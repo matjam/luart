@@ -336,6 +336,9 @@ func (l *State) jumpFrom(ci *callInfo, j bytecode.Instruction, ip pc) pc {
 	if a := j.A(); a > 0 {
 		l.close(ci.stackIndex(a - 1))
 	}
+	if j.SBx() < 0 { // a loop's back-edge
+		l.pollInterrupt()
+	}
 	return ip + pc(j.SBx())
 }
 
@@ -703,6 +706,7 @@ func (l *State) executeSwitch() {
 				code, ip = closure.prototype.execCode(), ci.savedPC
 			}
 		case bytecode.OpTailCall:
+			l.pollInterrupt() // a loop of tail calls has no back-edge
 			a, b := i.A(), i.B()
 			if b != 0 {
 				l.top = ci.stackIndex(a + b)
@@ -772,6 +776,7 @@ func (l *State) executeSwitch() {
 			a := i.A()
 			index, limit, step := frame[a+0].f(), frame[a+1].f(), frame[a+2].f()
 			if index += step; (0 < step && index <= limit) || (step <= 0 && limit <= index) {
+				l.pollInterrupt()
 				ip += pc(i.SBx())
 				frame[a+0] = numberValue(index) // update internal index...
 				frame[a+3] = numberValue(index) // ... and external index
@@ -802,6 +807,7 @@ func (l *State) executeSwitch() {
 			fallthrough
 		case bytecode.OpTForLoop:
 			if a := i.A(); !frame[a+1].isNil() { // continue loop?
+				l.pollInterrupt()
 				frame[a] = frame[a+1] // save control variable
 				ip += pc(i.SBx())     // jump back
 			}

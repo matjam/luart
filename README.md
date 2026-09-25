@@ -103,9 +103,9 @@ commits, which [`bench/README.md`](bench/README.md) gives.
 | Geometric mean | Luart (JIT) | Luart (no JIT) | go-lua | Lua 5.4 | LuaJIT |
 |---|---:|---:|---:|---:|---:|
 | Standard benchmarks against C Lua 5.4, AMD Ryzen 9 9900X3D | **0.78×** | 1.8× | 5.9× | 1× | 0.18× |
-| Standard benchmarks against C Lua 5.4, Apple M1 Pro | **0.75×** | 1.5× | 4.8× | 1× | 0.15× |
+| Standard benchmarks against C Lua 5.4, Apple M1 Pro | **0.75×** | 1.5× | 4.8× | 1× | 0.20× |
 | Embedding workloads against native Go, AMD Ryzen 9 9900X3D | **5.8×** | 12× | 54× | 8.3× | 2.4× |
-| Embedding workloads against native Go, Apple M1 Pro | **6.9×** | 13× | 53× | 9.4× | 2.5× |
+| Embedding workloads against native Go, Apple M1 Pro | **6.9×** | 13× | 51× | 9.6× | 2.6× |
 <!-- /suite-table -->
 
 ![Each interpreter's time on each standard benchmark divided by C Lua 5.4's, on AMD Ryzen 9 9900X3D](bench/standard-amd64.svg)
@@ -270,6 +270,15 @@ for _, name := range []string{"dofile", "loadfile"} { // they read files
 	l.PushNil()
 	l.SetGlobal(name)
 }
+```
+
+**Stopping a runaway script.** `Interrupt` may be called from any
+goroutine. The running code stops with the error `interrupted!` at its
+next loop iteration or tail call, as the standalone `lua` does on Ctrl-C:
+
+```go
+time.AfterFunc(100*time.Millisecond, l.Interrupt)
+err := l.DoString(`while true do end`) // runtime error: [string "while true do end"]:1: interrupted!
 ```
 
 **Without the JIT.** `lua.NewState(lua.WithoutJIT())` makes a state that

@@ -79,6 +79,7 @@ var writeBarrier struct {
 const (
 	jitExitInstruction = iota // the interpreter must run the instruction at exitPC
 	jitExitBudget             // the back-edge budget ran out
+	jitExitInterrupt          // enterJIT found an interrupt instead of entering
 	jitExitCallGo             // the CALL at exitPC calls a Go function or Go closure
 	jitExitCallNumber         // the CALL at exitPC calls a number function
 )
@@ -361,7 +362,7 @@ func (l *State) runJIT(ci *callInfo, ip pc, bottom *callInfo) bool {
 		if off < 0 {
 			break
 		}
-		l.enterJIT(ci, c, p, jc, off)
+		l.enterJIT(ci, c, p, jc, off, ip)
 		// Compiled calls and returns move between frames. A frame compiled
 		// code returned from and another call reused can be ci again,
 		// running another function.
@@ -372,7 +373,15 @@ func (l *State) runJIT(ci *callInfo, ip pc, bottom *callInfo) bool {
 		ip = pc(l.jitCtx.exitPC)
 		switch l.jitCtx.reason {
 		case jitExitBudget:
+			if l.global.interrupt.Load() {
+				ci.savedPC = ip + 1 // where the error reports
+				l.interrupted()
+			}
 			runtime.Gosched()
+			continue
+		case jitExitInterrupt:
+			ci.savedPC = ip + 1
+			l.interrupted()
 			continue
 		case jitExitCallGo:
 			l.jitCallGoFunction(ci, p.jitOrig[ip], ip)
@@ -538,10 +547,19 @@ func (l *State) jitStep(ci *callInfo, i bytecode.Instruction, ip pc) {
 	}
 }
 
-// enterJIT runs ci's compiled code from native offset off until it exits,
-// leaving the exit's pc and reason in l.jitCtx.
-func (l *State) enterJIT(ci *callInfo, c *luaClosure, p *prototype, jc *jitCode, off int32) {
+// enterJIT runs ci's compiled code from native offset off, pc ip, until it
+// exits, leaving the exit's pc and reason in l.jitCtx.
+//
+// Every 1024th entry it checks for an interrupt first, and reports one as
+// jitExitInterrupt at ip. The budget alone would not find it: it is
+// refilled on every entry, so a loop that leaves compiled code on each
+// iteration never runs out.
+func (l *State) enterJIT(ci *callInfo, c *luaClosure, p *prototype, jc *jitCode, off int32, ip pc) {
 	ctx := &l.jitCtx
+	if l.jitRuns++; l.jitRuns%1024 == 0 && l.global.interrupt.Load() {
+		ctx.exitPC, ctx.reason = uint64(ip), jitExitInterrupt
+		return
+	}
 	// Compiled code reads constants and upvalues only when the function
 	// has them, so an empty slice's data pointer, whatever it is, does.
 	frame := ci.frame
@@ -557,7 +575,6 @@ func (l *State) enterJIT(ci *callInfo, c *luaClosure, p *prototype, jc *jitCode,
 	ctx.budget = jitBudget
 	ctx.state = unsafe.Pointer(l)
 	ctx.reason = call.Call(jc.base, unsafe.Pointer(ctx))
-	l.jitRuns++
 	runtime.KeepAlive(frame)
 	runtime.KeepAlive(c)
 }

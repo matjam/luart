@@ -109,18 +109,18 @@ Go's.
 <!-- suite-table arm64-m1 -->
 | Workload | Native Go | Luart (JIT) | Luart (no JIT) | go-lua | Lua 5.4 | LuaJIT |
 |---|---:|---:|---:|---:|---:|---:|
-| fib(25), recursive calls | 0.25 ms | 2.76 ms (11×) | 8.22 ms (32×) | 14.5 ms (57×) | 4.13 ms (16×) | 0.48 ms (1.9×) |
-| numeric loop, 1M iterations | 1.19 ms | 1.81 ms (1.5×) | 14.0 ms (12×) | 297 ms (250×) | 11.4 ms (9.5×) | 1.05 ms (0.88×) |
-| array fill and sum, 100k | 0.58 ms | 1.64 ms (2.8×) | 4.11 ms (7.0×) | 9.03 ms (15×) | 1.21 ms (2.1×) | 0.40 ms (0.68×) |
-| records, 10k tables | 0.13 ms | 1.03 ms (7.9×) | 1.36 ms (10×) | 4.55 ms (35×) | 1.32 ms (10×) | 0.42 ms (3.2×) |
-| closures, 100k | 0.35 ms | 9.52 ms (27×) | 8.31 ms (24×) | 14.5 ms (41×) | 9.27 ms (26×) | 5.32 ms (15×) |
-| sort 10k with comparator | 1.97 ms | 5.81 ms (3.0×) | 5.66 ms (2.9×) | 14.6 ms (7.4×) | 4.97 ms (2.5×) | 3.97 ms (2.0×) |
-| string build, 10k pieces | 0.59 ms | 0.88 ms (1.5×) | 1.07 ms (1.8×) | 109 ms (187×) | 1.74 ms (3.0×) | 0.48 ms (0.82×) |
-| string scan, 11k characters | 0.02 ms | 0.86 ms (42×) | 2.31 ms (112×) | 3.47 ms (168×) | 1.09 ms (53×) | 0.10 ms (4.9×) |
-| calls into Go, 100k | 0.35 ms | 2.19 ms (6.2×) | 2.82 ms (8.0×) | 7.88 ms (22×) | 1.84 ms (5.2×) | 1.16 ms (3.3×) |
-| plasma frame | 0.30 ms | 1.45 ms (4.8×) | 2.13 ms (7.0×) | 5.93 ms (20×) | 2.10 ms (6.9×) | 0.53 ms (1.7×) |
-| particles frame | 0.006 ms | 0.19 ms (32×) | 0.38 ms (63×) | 1.65 ms (277×) | 0.26 ms (44×) | 0.06 ms (10×) |
-| **geometric mean** |  | **6.9×** | **13×** | **53×** | **9.4×** | **2.5×** |
+| fib(25), recursive calls | 0.26 ms | 2.80 ms (11×) | 8.34 ms (32×) | 14.2 ms (55×) | 4.13 ms (16×) | 0.51 ms (2.0×) |
+| numeric loop, 1M iterations | 1.18 ms | 1.79 ms (1.5×) | 14.6 ms (12×) | 291 ms (247×) | 11.5 ms (9.7×) | 1.06 ms (0.89×) |
+| array fill and sum, 100k | 0.60 ms | 1.63 ms (2.7×) | 4.39 ms (7.3×) | 8.89 ms (15×) | 1.22 ms (2.0×) | 0.39 ms (0.65×) |
+| records, 10k tables | 0.13 ms | 1.08 ms (8.4×) | 1.39 ms (11×) | 4.27 ms (33×) | 1.33 ms (10×) | 0.42 ms (3.2×) |
+| closures, 100k | 0.35 ms | 9.19 ms (26×) | 8.24 ms (23×) | 13.8 ms (39×) | 9.51 ms (27×) | 5.41 ms (15×) |
+| sort 10k with comparator | 1.94 ms | 5.77 ms (3.0×) | 5.65 ms (2.9×) | 14.0 ms (7.2×) | 5.03 ms (2.6×) | 4.09 ms (2.1×) |
+| string build, 10k pieces | 0.57 ms | 0.85 ms (1.5×) | 1.06 ms (1.8×) | 99.6 ms (174×) | 1.75 ms (3.1×) | 0.50 ms (0.88×) |
+| string scan, 11k characters | 0.02 ms | 0.85 ms (42×) | 2.28 ms (113×) | 3.40 ms (168×) | 1.14 ms (57×) | 0.10 ms (5.1×) |
+| calls into Go, 100k | 0.35 ms | 2.12 ms (6.1×) | 2.83 ms (8.1×) | 7.83 ms (23×) | 1.82 ms (5.2×) | 1.17 ms (3.4×) |
+| plasma frame | 0.30 ms | 1.46 ms (4.8×) | 2.12 ms (7.1×) | 5.87 ms (19×) | 2.08 ms (6.9×) | 0.54 ms (1.8×) |
+| particles frame | 0.006 ms | 0.18 ms (30×) | 0.38 ms (61×) | 1.63 ms (265×) | 0.26 ms (43×) | 0.06 ms (9.7×) |
+| **geometric mean** |  | **6.9×** | **13×** | **51×** | **9.6×** | **2.6×** |
 <!-- /suite-table -->
 
 - Sort with a comparator runs about as fast with the JIT as without it.
@@ -139,24 +139,24 @@ Each cell is the median time, and in brackets that time divided by C Lua
 <!-- suite-table standard-arm64-m1 -->
 | Benchmark | Lua 5.4 | Luart (JIT) | Luart (no JIT) | go-lua | LuaJIT |
 |---|---:|---:|---:|---:|---:|
-| Bounce | 0.49 ms | 0.34 ms (0.69×) | 0.79 ms (1.6×) | 2.91 ms (5.9×) | 0.09 ms (0.18×) |
-| CD | 56.6 ms | 57.3 ms (1.0×) | 64.4 ms (1.1×) | 239 ms (4.2×) | 23.5 ms (0.41×) |
-| DeltaBlue | 34.8 ms | 32.3 ms (0.93×) | 48.7 ms (1.4×) | 2428 ms (70×) | 14.7 ms (0.42×) |
-| Havlak | 3051 ms | 2811 ms (0.92×) | 3198 ms (1.0×) | – | 1745 ms (0.57×) |
-| Json | 7.17 ms | 6.29 ms (0.88×) | 10.7 ms (1.5×) | 28.1 ms (3.9×) | 1.22 ms (0.17×) |
-| List | 0.42 ms | 0.29 ms (0.69×) | 0.65 ms (1.5×) | 1.52 ms (3.6×) | 0.08 ms (0.18×) |
-| Mandelbrot | 286 ms | 179 ms (0.62×) | 356 ms (1.2×) | 1202 ms (4.2×) | 40.5 ms (0.14×) |
-| NBody | 2.58 ms | 1.46 ms (0.57×) | 3.41 ms (1.3×) | 15.1 ms (5.8×) | 0.13 ms (0.05×) |
-| Permute | 0.77 ms | 0.48 ms (0.62×) | 1.46 ms (1.9×) | 3.49 ms (4.5×) | 0.02 ms (0.03×) |
-| Queens | 0.54 ms | 0.29 ms (0.53×) | 0.90 ms (1.7×) | 1.99 ms (3.7×) | 0.05 ms (0.09×) |
-| Richards | 29.1 ms | 24.9 ms (0.85×) | 39.0 ms (1.3×) | 134 ms (4.6×) | 6.46 ms (0.22×) |
-| Sieve | 0.18 ms | 0.14 ms (0.80×) | 0.46 ms (2.5×) | 0.89 ms (5.0×) | 0.02 ms (0.11×) |
-| Storage | 1.45 ms | 1.04 ms (0.72×) | 1.34 ms (0.93×) | 4.37 ms (3.0×) | 0.47 ms (0.33×) |
-| Towers | 1.29 ms | 0.99 ms (0.77×) | 2.14 ms (1.7×) | 6.05 ms (4.7×) | 0.08 ms (0.06×) |
-| binary-trees | 188 ms | 216 ms (1.1×) | 242 ms (1.3×) | 335 ms (1.8×) | 48.9 ms (0.26×) |
-| fannkuch-redux | 133 ms | 111 ms (0.83×) | 264 ms (2.0×) | 464 ms (3.5×) | 16.9 ms (0.13×) |
-| spectral-norm | 62.7 ms | 33.0 ms (0.53×) | 93.3 ms (1.5×) | 254 ms (4.0×) | 1.98 ms (0.03×) |
-| **geometric mean** |  | **0.75×** | **1.5×** | **4.8×** | **0.15×** |
+| Bounce | 0.51 ms | 0.35 ms (0.69×) | 0.88 ms (1.7×) | 3.00 ms (5.9×) | 0.09 ms (0.18×) |
+| CD | 57.6 ms | 58.5 ms (1.0×) | 65.7 ms (1.1×) | 236 ms (4.1×) | 329 ms (5.7×) |
+| DeltaBlue | 34.9 ms | 32.1 ms (0.92×) | 48.0 ms (1.4×) | 2505 ms (72×) | 15.3 ms (0.44×) |
+| Havlak | 3042 ms | 2768 ms (0.91×) | 3195 ms (1.1×) | – | 1812 ms (0.60×) |
+| Json | 7.26 ms | 6.33 ms (0.87×) | 10.6 ms (1.5×) | 27.7 ms (3.8×) | 19.3 ms (2.7×) |
+| List | 0.41 ms | 0.29 ms (0.70×) | 0.67 ms (1.6×) | 1.53 ms (3.7×) | 0.08 ms (0.19×) |
+| Mandelbrot | 291 ms | 182 ms (0.62×) | 369 ms (1.3×) | 1190 ms (4.1×) | 41.2 ms (0.14×) |
+| NBody | 2.57 ms | 1.51 ms (0.59×) | 3.51 ms (1.4×) | 15.4 ms (6.0×) | 0.13 ms (0.05×) |
+| Permute | 0.78 ms | 0.48 ms (0.62×) | 1.50 ms (1.9×) | 3.54 ms (4.6×) | 0.03 ms (0.04×) |
+| Queens | 0.54 ms | 0.29 ms (0.54×) | 0.92 ms (1.7×) | 2.05 ms (3.8×) | 0.05 ms (0.10×) |
+| Richards | 29.4 ms | 23.5 ms (0.80×) | 41.1 ms (1.4×) | 137 ms (4.6×) | 6.64 ms (0.23×) |
+| Sieve | 0.18 ms | 0.16 ms (0.87×) | 0.47 ms (2.6×) | 0.96 ms (5.3×) | 0.02 ms (0.11×) |
+| Storage | 1.48 ms | 1.07 ms (0.72×) | 1.36 ms (0.92×) | 4.46 ms (3.0×) | 0.49 ms (0.33×) |
+| Towers | 1.31 ms | 1.05 ms (0.80×) | 2.20 ms (1.7×) | 6.04 ms (4.6×) | 0.08 ms (0.06×) |
+| binary-trees | 191 ms | 223 ms (1.2×) | 245 ms (1.3×) | 327 ms (1.7×) | 51.3 ms (0.27×) |
+| fannkuch-redux | 135 ms | 97.6 ms (0.72×) | 272 ms (2.0×) | 471 ms (3.5×) | 16.9 ms (0.12×) |
+| spectral-norm | 63.7 ms | 33.7 ms (0.53×) | 97.5 ms (1.5×) | 257 ms (4.0×) | 2.00 ms (0.03×) |
+| **geometric mean** |  | **0.75×** | **1.5×** | **4.8×** | **0.20×** |
 <!-- /suite-table -->
 
 - luart with the JIT takes 0.75 times as long as C Lua 5.4 on the

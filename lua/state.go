@@ -2,6 +2,7 @@ package lua
 
 import (
 	"os"
+	"sync/atomic"
 )
 
 type pc int
@@ -41,6 +42,7 @@ type State struct {
 	protectFunction       func()
 	jitCtx                jitContext // shared with generated code while it runs
 	jitRuns               uint64     // entries into compiled code, for tests
+	interruptPoll         int32      // loop iterations until the next interrupt check
 	jitBarrierRuns        uint64     // entries while the write barrier was on, for tests
 }
 
@@ -53,8 +55,9 @@ type globalState struct {
 	memoryErrorMessage string
 	rootShape          *shape // shape tree for this state's tables
 	lightBoxes         map[any]*lightUserData
-	jit                bool   // compile hot functions; see WithoutJIT
-	goName             string // what debug information calls Go functions
+	jit                bool        // compile hot functions; see WithoutJIT
+	interrupt          atomic.Bool // set by Interrupt, from any goroutine
+	goName             string      // what debug information calls Go functions
 
 	// Lua collections; see gc.go.
 	finalizable           []value // objects with __gc, in the order they were marked

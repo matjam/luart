@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"time"
 
 	"github.com/matjam/luart/lua"
 	"github.com/matjam/luart/stdlib"
@@ -122,6 +123,18 @@ func ExampleState_CheckUserData() {
 		log.Fatal(err)
 	}
 	// Output: 5
+}
+
+// Interrupt, from another goroutine, stops a script that runs too long.
+func ExampleState_Interrupt() {
+	l := lua.NewState()
+	stdlib.Open(l)
+	time.AfterFunc(10*time.Millisecond, l.Interrupt)
+	if err := l.DoString(`while true do end`); err != nil {
+		fmt.Println(err)
+		l.Pop(1)
+	}
+	// Output: runtime error: [string "while true do end"]:1: interrupted!
 }
 
 // A host can open only the libraries a script should have. Here the script
