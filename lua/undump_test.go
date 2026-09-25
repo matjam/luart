@@ -13,7 +13,7 @@ func TestUndump(t *testing.T) {
 		t.Skipf("testing undump requires luac: %s", err)
 	}
 	source := filepath.Join("../lua-tests", "checktable.lua")
-	binary := filepath.Join("../lua-tests", "checktable.bin")
+	binary := filepath.Join(t.TempDir(), "checktable.bin")
 	if err := exec.Command("luac", "-o", binary, source).Run(); err != nil {
 		t.Fatalf("luac failed to compile %s: %s", source, err)
 	}

@@ -120,7 +120,7 @@ func OpenMath(l *lua.State) int {
 		l.PushNumberFunction(f.f)
 		l.SetField(-2, f.name)
 	}
-	l.PushNumber(3.1415926535897932384626433832795) // TODO use math.Pi instead? Values differ.
+	l.PushNumber(math.Pi)
 	l.SetField(-2, "pi")
 	l.PushNumber(math.MaxFloat64)
 	l.SetField(-2, "huge")

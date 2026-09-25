@@ -73,7 +73,7 @@ func protectedTestParser(l *State, t *testing.T, source string) {
 		}
 	}()
 	t.Log("Compiling " + source)
-	binary := strings.TrimSuffix(source, ".lua") + ".bin"
+	binary := filepath.Join(t.TempDir(), strings.TrimSuffix(filepath.Base(source), ".lua")+".bin")
 	if err := exec.Command("luac", "-o", binary, source).Run(); err != nil {
 		t.Fatalf("luac failed to compile %s: %s", source, err)
 	}

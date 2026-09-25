@@ -349,7 +349,9 @@ func (l *State) postCall(firstResult int) bool {
 	}
 	result, wanted, i := ci.function, ci.resultCount, 0
 	l.callInfo = ci.previous // back to caller
-	// TODO this is obscure - I don't fully understand the control flow, but it works
+	// Move the results down to the function's slot, then pad with nil to
+	// the count wanted. With MultipleReturns (-1), i never reaches 0, so
+	// every result moves and nothing is padded.
 	for i = wanted; i != 0 && firstResult < l.top; i-- {
 		l.stack[result] = l.stack[firstResult]
 		result++
