@@ -69,6 +69,28 @@ func TestConversions(t *testing.T) {
 	})
 }
 
+func TestIntegerArithmetic(t *testing.T) {
+	var a Asm
+	a.Add(5, 6, 7)      // add x5, x6, x7
+	a.Mul(5, 6, 7)      // mul x5, x6, x7
+	a.Sdiv(5, 6, 7)     // sdiv x5, x6, x7
+	a.Udiv(5, 6, 7)     // udiv x5, x6, x7
+	a.Msub(5, 6, 7, 8)  // msub x5, x6, x7, x8
+	a.Neg(5, 6)         // neg x5, x6
+	a.And(5, 6, 7)      // and x5, x6, x7
+	a.Orr(5, 6, 7)      // orr x5, x6, x7
+	a.Eor(5, 6, 7)      // eor x5, x6, x7
+	a.Lslv(5, 6, 7)     // lsl x5, x6, x7
+	a.Lsrv(5, 6, 7)     // lsr x5, x6, x7
+	a.Mvn(5, 6)         // mvn x5, x6
+	a.Csel(5, 6, 7, LT) // csel x5, x6, x7, lt
+	check(t, &a, []uint32{
+		0x8b0700c5, 0x9b077cc5, 0x9ac70cc5, 0x9ac708c5, 0x9b07a0c5, 0xcb0603e5,
+		0x8a0700c5, 0xaa0700c5, 0xca0700c5, 0x9ac720c5, 0x9ac724c5, 0xaa2603e5,
+		0x9a87b0c5,
+	})
+}
+
 func TestBranches(t *testing.T) {
 	var a Asm
 	fwd, back := a.NewLabel(), a.NewLabel()

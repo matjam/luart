@@ -273,11 +273,16 @@ nothing compiles.
   - The encoders in internal/jit/arm64 and internal/jit/amd64 are checked
     against clang's output.
 - **Coverage:**
-  - Compiled code handles floats only for now: an integer operand, and
-    `%`, exit to the interpreter, and a numeric for loop compiles only on
-    floats. Integers in compiled code are the next JIT work.
   - Moves, constants, arithmetic, comparisons, branches and numeric for
-    loops. `<` and `<=` compare numbers; `==` compares any values, and
+    loops, on integers and floats. Two integers take the integer path (the
+    integer sentinel is `rInteger` on arm64 and `p - rNumber == 1` on
+    amd64, which has no register to spare); a float operand converts the
+    other (`loadFloat`). Integer `%`, `//` and the bitwise operators
+    compile (jit_*_integer.go); a zero divisor, float `%` (fmod), a
+    bitwise float operand, and `<` between a float and an integer beyond
+    2^53 exit to Go. Integer for loops count down in the limit's register,
+    as `forPrep` sets them up; a float limit with an integer start exits
+    at FORPREP. `<` and `<=` compare numbers; `==` compares any values, and
     exits only for two userdata, two tables whose first metatable is not
     known to lack `__eq`, or equal-length strings longer than
     `maxInlineCompare`.
@@ -292,7 +297,8 @@ nothing compiles.
     functions.
   - `math.sqrt`, `sin` and `cos` inline. (`floor`, `ceil` and `abs`
     return integers now, and wait for integers in compiled code.)
-- **Kernels:** an innermost float for loop whose body is only moves,
+- **Kernels:** (floats only so far; an integer loop runs as ordinary
+  compiled code) an innermost float for loop whose body is only moves,
   float constants, arithmetic other than `%` and float comparisons keeps every Lua
   register it uses in an FP register for the whole loop (`emitKernel`).
 

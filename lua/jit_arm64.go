@@ -19,6 +19,7 @@ const (
 	rBarrier Reg = 5  // nonzero while the GC write barrier is on
 	rBool    Reg = 6  // boolPtr(), the p of every boolean
 	rUpVals  Reg = 7  // &closure.upValues[0]
+	rInteger Reg = 8  // integerPtr(), the p of every integer
 	rP       Reg = 12 // a value's p, while it is copied
 	rN       Reg = 13 // a value's second word, while it is copied
 	rTmp     Reg = 9
@@ -119,6 +120,7 @@ func (c *arm64Compiler) prologue() {
 	a.Ldr(rBarrier, rCtx, offBarrier)
 	a.Ldr(rUpVals, rCtx, offUpValues)
 	a.MovImm(rNumber, uint64(uintptr(numberPtr())))
+	a.AddImm(rInteger, rNumber, 1)
 	a.MovImm(rBool, uint64(uintptr(boolPtr())))
 	a.Ldr(rTmp, rCtx, offTarget)
 	a.Br(rTmp)
@@ -258,8 +260,7 @@ func (c *arm64Compiler) length(ip int, i bytecode.Instruction) {
 	a.Sub(rN, rN, rTmp)
 	c.guardStore(dst, noReg, ip)
 	a.Str(rN, dst.base, dst.off+offN)
-	a.AddImm(rTmp, rNumber, 1) // integerPtr, the next byte
-	a.Str(rTmp, dst.base, dst.off+offP)
+	a.Str(rInteger, dst.base, dst.off+offP)
 }
 
 // rk returns the operand for an RK field.
@@ -402,17 +403,80 @@ func (c *arm64Compiler) equal(ip int, i bytecode.Instruction) {
 	}
 }
 
-// rkNumber returns the operand for an RK field that must be a number, and
-// false for a constant that is not one.
-func (c *arm64Compiler) rkNumber(field int) (operand, bool) {
+// rkArith returns the operand for an RK field of arithmetic, with the
+// number type of a constant, and false for a constant that is not a
+// number.
+func (c *arm64Compiler) rkArith(field int) (operand, numKind, bool) {
 	if !bytecode.IsConstant(field) {
-		return reg(field), true
+		return reg(field), kindAny, true
 	}
 	k := bytecode.ConstantIndex(field)
-	if !c.p.Constants[k].isFloat() {
-		return operand{}, false
+	kind := constKind(c.p.Constants[k])
+	if kind == kindAny {
+		return operand{}, kindAny, false
 	}
-	return c.constant(k)
+	o, ok := c.constant(k)
+	return o, kind, ok
+}
+
+// branchUnlessInteger branches to l unless the number at o, of type kind,
+// is an integer. It uses rTmp.
+func (c *arm64Compiler) branchUnlessInteger(o operand, kind numKind, l Label) {
+	switch kind {
+	case kindFloat:
+		c.a.B(l)
+	case kindAny:
+		c.a.Ldr(rTmp, o.base, o.off+offP)
+		c.a.Cmp(rTmp, rInteger)
+		c.a.BCond(NE, l)
+	}
+}
+
+// loadFloat loads the number at o, of type kind, into d as a float,
+// converting an integer, and exits at ip for anything else. With exact
+// set it exits for an integer the conversion would round, so that a
+// comparison of the floats compares the numbers. It uses rTmp.
+func (c *arm64Compiler) loadFloat(d FReg, o operand, kind numKind, exact bool, ip int) {
+	a := &c.a
+	switch kind {
+	case kindFloat:
+		a.LdrD(d, o.base, o.off+offN)
+		return
+	case kindInt:
+		if exact && !exactFloat(c.p.Constants[o.off/valueSize].i()) {
+			a.B(c.exit(ip))
+			return
+		}
+		a.Ldr(rTmp, o.base, o.off+offN)
+		a.Scvtf(d, rTmp)
+		return
+	}
+	isFloat, done := a.NewLabel(), a.NewLabel()
+	a.Ldr(rTmp, o.base, o.off+offP)
+	a.Cmp(rTmp, rNumber)
+	a.BCond(EQ, isFloat)
+	a.Cmp(rTmp, rInteger)
+	a.BCond(NE, c.exit(ip))
+	a.Ldr(rTmp, o.base, o.off+offN)
+	if exact { // rTmp + 2^53 <= 2^54, unsigned
+		a.MovImm(rTmp2, 1<<53)
+		a.Add(rTmp2, rTmp, rTmp2)
+		a.MovImm(rP, 1<<54)
+		a.Cmp(rTmp2, rP)
+		a.BCond(HI, c.exit(ip))
+	}
+	a.Scvtf(d, rTmp)
+	a.B(done)
+	a.Bind(isFloat)
+	a.LdrD(d, o.base, o.off+offN)
+	a.Bind(done)
+}
+
+// storeInteger writes the integer in r to dst. Its guardStore must come
+// first.
+func (c *arm64Compiler) storeInteger(dst operand, r Reg) {
+	c.a.Str(r, dst.base, dst.off+offN)
+	c.a.Str(rInteger, dst.base, dst.off+offP)
 }
 
 // branchNumber branches to l when p, a value's first word, is a number's:
@@ -437,12 +501,14 @@ func (c *arm64Compiler) guardNumber(o operand, ip int) {
 }
 
 // guardScalar exits at ip unless p, a value's first word, is nil, a number
-// or a boolean: a value without a heap pointer.
+// or a boolean: a value without a heap pointer. It uses rTmp, so p must be
+// another register.
 func (c *arm64Compiler) guardScalar(p Reg, ip int) {
 	ok := c.a.NewLabel()
 	c.a.Cbz(p, ok)
-	c.a.Cmp(p, rNumber)
-	c.a.BCond(EQ, ok)
+	c.a.Sub(rTmp, p, rNumber) // a float or an integer
+	c.a.CmpImm(rTmp, 1)
+	c.a.BCond(LS, ok)
 	c.a.Cmp(p, rBool)
 	c.a.BCond(NE, c.exit(ip))
 	c.a.Bind(ok)
@@ -567,19 +633,37 @@ func (c *arm64Compiler) instruction(ip int) int {
 		c.upValueAddr(orig.B())
 		c.copyValue(operand{rAddr, 0}, reg(orig.A()), ip)
 	case bytecode.OpAdd, bytecode.OpSub, bytecode.OpMul, bytecode.OpDiv:
-		// % is left to Go, which computes it as Lua 5.4 does, with fmod.
-		b, okB := c.rkNumber(orig.B())
-		cc, okC := c.rkNumber(orig.C())
+		// Two integers give an integer, wrapping around, except for /; a
+		// float operand makes both floats. % is left to Go, which computes
+		// it as Lua 5.4 does, with fmod.
+		b, kb, okB := c.rkArith(orig.B())
+		cc, kc, okC := c.rkArith(orig.C())
 		if !okB || !okC {
 			c.exitAlways(ip)
 			break
 		}
 		dst := reg(orig.A())
-		c.guardNumber(b, ip)
-		c.guardNumber(cc, ip)
 		c.guardStore(dst, noReg, ip)
-		a.LdrD(0, b.base, b.off+offN)
-		a.LdrD(1, cc.base, cc.off+offN)
+		floats, done := a.NewLabel(), a.NewLabel()
+		if op != bytecode.OpDiv && kb != kindFloat && kc != kindFloat {
+			c.branchUnlessInteger(b, kb, floats)
+			c.branchUnlessInteger(cc, kc, floats)
+			a.Ldr(rP, b.base, b.off+offN)
+			a.Ldr(rN, cc.base, cc.off+offN)
+			switch op {
+			case bytecode.OpAdd:
+				a.Add(rN, rP, rN)
+			case bytecode.OpSub:
+				a.Sub(rN, rP, rN)
+			case bytecode.OpMul:
+				a.Mul(rN, rP, rN)
+			}
+			c.storeInteger(dst, rN)
+			a.B(done)
+		}
+		a.Bind(floats)
+		c.loadFloat(0, b, kb, false, ip)
+		c.loadFloat(1, cc, kc, false, ip)
 		switch op {
 		case bytecode.OpAdd:
 			a.Fadd(0, 0, 1)
@@ -591,13 +675,28 @@ func (c *arm64Compiler) instruction(ip int) int {
 			a.Fdiv(0, 0, 1)
 		}
 		c.storeNumber(dst, 0)
+		a.Bind(done)
+	case bytecode.OpMod, bytecode.OpIDiv:
+		c.divide(ip, op, orig)
+	case bytecode.OpBitwise:
+		c.bitwise(ip, orig, bytecode.ArithOp(c.p.Code[ip+1].Ax()))
+		return 1 // the operator's word is not an instruction
 	case bytecode.OpUnaryMinus:
 		src, dst := reg(orig.B()), reg(orig.A())
-		c.guardNumber(src, ip)
 		c.guardStore(dst, noReg, ip)
+		floats, done := a.NewLabel(), a.NewLabel()
+		c.branchUnlessInteger(src, kindAny, floats)
+		a.Ldr(rN, src.base, src.off+offN)
+		a.Neg(rN, rN)
+		c.storeInteger(dst, rN)
+		a.B(done)
+		a.Bind(floats)
+		a.Cmp(rTmp, rNumber)
+		a.BCond(NE, c.exit(ip))
 		a.LdrD(0, src.base, src.off+offN)
 		a.Fneg(0, 0)
 		c.storeNumber(dst, 0)
+		a.Bind(done)
 	case bytecode.OpNot:
 		src, dst := reg(orig.B()), reg(orig.A())
 		c.guardStore(dst, noReg, ip)
@@ -624,16 +723,35 @@ func (c *arm64Compiler) instruction(ip int) int {
 		c.equal(ip, orig)
 	case bytecode.OpLessThan, bytecode.OpLessOrEqual:
 		target, ok := c.jumpAfter(ip)
-		b, okB := c.rkNumber(orig.B())
-		cc, okC := c.rkNumber(orig.C())
+		b, kb, okB := c.rkArith(orig.B())
+		cc, kc, okC := c.rkArith(orig.C())
 		if !ok || !okB || !okC {
 			c.exitAlways(ip)
 			break
 		}
-		c.guardNumber(b, ip)
-		c.guardNumber(cc, ip)
-		a.LdrD(0, b.base, b.off+offN)
-		a.LdrD(1, cc.base, cc.off+offN)
+		// Two integers compare as integers; otherwise both as floats,
+		// which is exact while an integer converts exactly, and Go
+		// compares the rest.
+		floats := a.NewLabel()
+		if kb != kindFloat && kc != kindFloat {
+			c.branchUnlessInteger(b, kb, floats)
+			c.branchUnlessInteger(cc, kc, floats)
+			a.Ldr(rP, b.base, b.off+offN)
+			a.Ldr(rN, cc.base, cc.off+offN)
+			a.Cmp(rP, rN)
+			when := LT
+			if op == bytecode.OpLessOrEqual {
+				when = LE
+			}
+			if orig.A() == 0 {
+				when = negate(when)
+			}
+			c.branchTo(when, ip, target)
+			a.B(c.pcs[ip+2])
+		}
+		a.Bind(floats)
+		c.loadFloat(0, b, kb, true, ip)
+		c.loadFloat(1, cc, kc, true, ip)
 		a.Fcmp(0, 1)
 		// The JMP runs when the comparison's result equals A.
 		when := MI
@@ -678,10 +796,42 @@ func (c *arm64Compiler) instruction(ip int) int {
 		c.copyValue(dst, src, ip)
 		a.B(c.pcs[target])
 	case bytecode.OpForPrep:
-		// A float loop, as forPrep runs it: the body next with the control
-		// variable set, or past the FORLOOP when the loop runs no times.
-		// Integer loops, a zero step and other values exit.
+		// As forPrep runs it: the body next with the control variable set,
+		// or past the FORLOOP when the loop runs no times. An integer loop
+		// with an integer limit keeps the count of iterations left in the
+		// limit's register; a float loop needs three floats. A zero step
+		// and anything else exit.
 		init, limit, step, ext := reg(orig.A()), reg(orig.A()+1), reg(orig.A()+2), reg(orig.A()+3)
+		c.guardStore(limit, noReg, ip)
+		c.guardStore(ext, noReg, ip)
+		floatLoop, body, skip := a.NewLabel(), a.NewLabel(), a.NewLabel()
+		c.branchUnlessInteger(init, kindAny, floatLoop)
+		c.branchUnlessInteger(step, kindAny, floatLoop)
+		c.branchUnlessInteger(limit, kindAny, c.exit(ip)) // Go clips a float limit
+		a.Ldr(rP, init.base, init.off+offN)
+		a.Ldr(rN, limit.base, limit.off+offN)
+		a.Ldr(rIdx, step.base, step.off+offN)
+		a.Cbz(rIdx, c.exit(ip)) // 'for' step is zero
+		down, count := a.NewLabel(), a.NewLabel()
+		a.Tbnz(rIdx, 63, down)
+		a.Cmp(rP, rN)
+		a.BCond(GT, skip)
+		a.Sub(rLen, rN, rP) // (limit - init) / step, unsigned
+		a.Udiv(rLen, rLen, rIdx)
+		a.B(count)
+		a.Bind(down)
+		a.Cmp(rP, rN)
+		a.BCond(LT, skip)
+		a.Sub(rLen, rP, rN) // (init - limit) / -step, unsigned
+		a.AddImm(rIdx, rIdx, 1)
+		a.Neg(rIdx, rIdx) // -(step+1) + 1, which cannot overflow
+		a.AddImm(rIdx, rIdx, 1)
+		a.Udiv(rLen, rLen, rIdx)
+		a.Bind(count)
+		c.storeInteger(limit, rLen)
+		c.storeInteger(ext, rP)
+		a.B(c.pcs[ip+1])
+		a.Bind(floatLoop)
 		c.guardNumber(init, ip)
 		c.guardNumber(limit, ip)
 		c.guardNumber(step, ip)
@@ -691,7 +841,7 @@ func (c *arm64Compiler) instruction(ip int) int {
 		a.FmovToF(3, ZR)
 		a.Fcmp(2, 3)
 		a.BCond(EQ, c.exit(ip)) // 'for' step is zero
-		positive, body, skip := a.NewLabel(), a.NewLabel(), a.NewLabel()
+		positive := a.NewLabel()
 		a.BCond(GT, positive)
 		a.Fcmp(0, 1) // step < 0 or NaN: no times if init < limit
 		a.BCond(MI, skip)
@@ -700,17 +850,31 @@ func (c *arm64Compiler) instruction(ip int) int {
 		a.Fcmp(1, 0)
 		a.BCond(MI, skip)
 		a.Bind(body)
-		c.guardStore(ext, noReg, ip)
 		c.storeNumber(ext, 0)
 		a.B(c.pcs[ip+1])
 		a.Bind(skip)
 		a.B(c.pcs[ip+2+orig.SBx()])
 	case bytecode.OpForLoop:
-		// A float loop's registers are floats, which Lua code cannot change;
-		// an integer loop, whose step is an integer, exits.
+		// The loop's own registers hold what FORPREP put there, which Lua
+		// code cannot change: an integer step means an integer loop, which
+		// counts down in the limit's register.
 		idx, limit, step, ext := reg(orig.A()), reg(orig.A()+1), reg(orig.A()+2), reg(orig.A()+3)
-		c.guardNumber(step, ip)
 		target := ip + 1 + orig.SBx()
+		c.guardStore(ext, noReg, ip)
+		floatLoop := a.NewLabel()
+		c.branchUnlessInteger(step, kindAny, floatLoop)
+		a.Ldr(rN, limit.base, limit.off+offN)
+		a.Cbz(rN, c.pcs[ip+1]) // no iterations left
+		a.SubImm(rN, rN, 1)
+		a.Ldr(rP, idx.base, idx.off+offN)
+		a.Ldr(rIdx, step.base, step.off+offN)
+		a.Add(rP, rP, rIdx)
+		a.Str(rN, limit.base, limit.off+offN)
+		a.Str(rP, idx.base, idx.off+offN)
+		c.storeInteger(ext, rP)
+		c.backEdge(target)
+		a.Bind(floatLoop)
+		c.guardNumber(step, ip)
 		take, positive, done := a.NewLabel(), a.NewLabel(), a.NewLabel()
 		a.LdrD(0, idx.base, idx.off+offN)
 		a.LdrD(1, limit.base, limit.off+offN)
@@ -730,7 +894,6 @@ func (c *arm64Compiler) instruction(ip int) int {
 		a.BCond(LS, take)
 		a.B(c.pcs[ip+1])
 		a.Bind(take)
-		c.guardStore(ext, noReg, ip)
 		a.StrD(0, idx.base, idx.off+offN)
 		c.storeNumber(ext, 0)
 		c.backEdge(target)
@@ -783,6 +946,14 @@ func negate(c Cond) Cond {
 		return HI // greater or unordered
 	case HI:
 		return LS
+	case LT: // integer orderings
+		return GE
+	case GE:
+		return LT
+	case LE:
+		return GT
+	case GT:
+		return LE
 	}
 	panic("negate: unexpected condition")
 }

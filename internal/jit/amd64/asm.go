@@ -247,6 +247,36 @@ func (a *Asm) Sub(rd, rs Reg) { a.opRR([]byte{opSub.rr}, uint8(rs), uint8(rd)) }
 // Cmp compares rd with rs, setting flags for rd - rs.
 func (a *Asm) Cmp(rd, rs Reg) { a.opRR([]byte{opCmp.rr}, uint8(rs), uint8(rd)) }
 
+// Imul computes rd *= rs, keeping the low 64 bits.
+func (a *Asm) Imul(rd, rs Reg) { a.opRR([]byte{0x0f, 0xaf}, uint8(rd), uint8(rs)) }
+
+// Neg computes rd = -rd.
+func (a *Asm) Neg(rd Reg) { a.opRR([]byte{0xf7}, 3, uint8(rd)) }
+
+// Div divides RDX:RAX by rs, unsigned, leaving the quotient in RAX and
+// the remainder in RDX.
+func (a *Asm) Div(rs Reg) { a.opRR([]byte{0xf7}, 6, uint8(rs)) }
+
+// Idiv divides RDX:RAX by rs, signed, leaving the quotient, rounded
+// toward zero, in RAX and the remainder in RDX. It traps on a zero
+// divisor and on overflow.
+func (a *Asm) Idiv(rs Reg) { a.opRR([]byte{0xf7}, 7, uint8(rs)) }
+
+// Cqo sign-extends RAX into RDX.
+func (a *Asm) Cqo() { a.byte(0x48, 0x99) }
+
+// And, Or and Xor compute rd &= rs, rd |= rs and rd ^= rs.
+func (a *Asm) And(rd, rs Reg) { a.opRR([]byte{0x21}, uint8(rs), uint8(rd)) }
+func (a *Asm) Or(rd, rs Reg)  { a.opRR([]byte{0x09}, uint8(rs), uint8(rd)) }
+func (a *Asm) Xor(rd, rs Reg) { a.opRR([]byte{0x31}, uint8(rs), uint8(rd)) }
+
+// Not computes rd = ^rd.
+func (a *Asm) Not(rd Reg) { a.opRR([]byte{0xf7}, 2, uint8(rd)) }
+
+// ShlCL and ShrCL shift rd left or right, logically, by CL mod 64.
+func (a *Asm) ShlCL(rd Reg) { a.opRR([]byte{0xd3}, 4, uint8(rd)) }
+func (a *Asm) ShrCL(rd Reg) { a.opRR([]byte{0xd3}, 5, uint8(rd)) }
+
 // Test sets flags for rd & rs.
 func (a *Asm) Test(rd, rs Reg) { a.opRR([]byte{0x85}, uint8(rs), uint8(rd)) }
 

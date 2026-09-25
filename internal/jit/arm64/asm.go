@@ -207,6 +207,42 @@ func (a *Asm) Lsr(rd, rn Reg, shift uint32) {
 // Sub computes rd = rn - rm.
 func (a *Asm) Sub(rd, rn, rm Reg) { a.emit(0xcb000000 | rm.u()<<16 | rn.u()<<5 | rd.u()) }
 
+// Add computes rd = rn + rm.
+func (a *Asm) Add(rd, rn, rm Reg) { a.emit(0x8b000000 | rm.u()<<16 | rn.u()<<5 | rd.u()) }
+
+// Neg computes rd = -rm.
+func (a *Asm) Neg(rd, rm Reg) { a.Sub(rd, ZR, rm) }
+
+// Mul computes rd = rn * rm, keeping the low 64 bits.
+func (a *Asm) Mul(rd, rn, rm Reg) { a.emit(0x9b007c00 | rm.u()<<16 | rn.u()<<5 | rd.u()) }
+
+// Msub computes rd = ra - rn*rm.
+func (a *Asm) Msub(rd, rn, rm, ra Reg) {
+	a.emit(0x9b008000 | rm.u()<<16 | ra.u()<<10 | rn.u()<<5 | rd.u())
+}
+
+// Sdiv and Udiv compute rd = rn / rm, signed and unsigned, rounding toward
+// zero. Dividing by zero gives zero.
+func (a *Asm) Sdiv(rd, rn, rm Reg) { a.emit(0x9ac00c00 | rm.u()<<16 | rn.u()<<5 | rd.u()) }
+func (a *Asm) Udiv(rd, rn, rm Reg) { a.emit(0x9ac00800 | rm.u()<<16 | rn.u()<<5 | rd.u()) }
+
+// And, Orr and Eor compute rd = rn & rm, rn | rm and rn ^ rm.
+func (a *Asm) And(rd, rn, rm Reg) { a.emit(0x8a000000 | rm.u()<<16 | rn.u()<<5 | rd.u()) }
+func (a *Asm) Orr(rd, rn, rm Reg) { a.emit(0xaa000000 | rm.u()<<16 | rn.u()<<5 | rd.u()) }
+func (a *Asm) Eor(rd, rn, rm Reg) { a.emit(0xca000000 | rm.u()<<16 | rn.u()<<5 | rd.u()) }
+
+// Mvn computes rd = ^rm.
+func (a *Asm) Mvn(rd, rm Reg) { a.emit(0xaa2003e0 | rm.u()<<16 | rd.u()) }
+
+// Lslv and Lsrv shift rn left or right, logically, by rm mod 64.
+func (a *Asm) Lslv(rd, rn, rm Reg) { a.emit(0x9ac02000 | rm.u()<<16 | rn.u()<<5 | rd.u()) }
+func (a *Asm) Lsrv(rd, rn, rm Reg) { a.emit(0x9ac02400 | rm.u()<<16 | rn.u()<<5 | rd.u()) }
+
+// Csel computes rd = rn if c holds, else rm.
+func (a *Asm) Csel(rd, rn, rm Reg, c Cond) {
+	a.emit(0x9a800000 | rm.u()<<16 | uint32(c)<<12 | rn.u()<<5 | rd.u())
+}
+
 // Strb stores the low byte of rt at rn+off.
 func (a *Asm) Strb(rt, rn Reg, off uint32) {
 	a.emit(0x39000000 | checkImm12(off)<<10 | rn.u()<<5 | rt.u())

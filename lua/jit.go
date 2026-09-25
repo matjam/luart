@@ -328,7 +328,7 @@ func isExtraArg(code []bytecode.Instruction, ip int) bool {
 		return false
 	}
 	switch prev := code[ip-1]; prev.OpCode() {
-	case bytecode.OpLoadConstantEx:
+	case bytecode.OpLoadConstantEx, bytecode.OpBitwise:
 		return true
 	case bytecode.OpSetList:
 		return prev.C() == 0

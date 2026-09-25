@@ -311,20 +311,34 @@ func (c *arm64Compiler) setField(ip int, i bytecode.Instruction, up bool) {
 }
 
 // arrayIndex puts the zero-based array index for the number key RK(field)
-// in rIdx, exiting at ip unless it is an integer. It reports false for a
+// in rIdx: an integer, or a float with an integer value, as the table
+// normalises it; anything else exits at ip. It reports false for a
 // constant key that is not a number.
 func (c *arm64Compiler) arrayIndex(field, ip int) bool {
 	a := &c.a
-	k, ok := c.rkNumber(field)
+	k, kind, ok := c.rkArith(field)
 	if !ok {
 		return false
 	}
-	c.guardNumber(k, ip)
-	a.LdrD(0, k.base, k.off+offN)
-	a.Fcvtzs(rIdx, 0)
-	a.Scvtf(1, rIdx)
-	a.Fcmp(0, 1)
-	a.BCond(NE, c.exit(ip))
+	floatKey, done := a.NewLabel(), a.NewLabel()
+	c.branchUnlessInteger(k, kind, floatKey)
+	a.Ldr(rIdx, k.base, k.off+offN)
+	a.B(done)
+	a.Bind(floatKey)
+	if kind == kindInt {
+		a.B(done) // never reached
+	} else {
+		if kind == kindAny {
+			a.Cmp(rTmp, rNumber)
+			a.BCond(NE, c.exit(ip))
+		}
+		a.LdrD(0, k.base, k.off+offN)
+		a.Fcvtzs(rIdx, 0)
+		a.Scvtf(1, rIdx)
+		a.Fcmp(0, 1)
+		a.BCond(NE, c.exit(ip))
+	}
+	a.Bind(done)
 	a.SubImm(rIdx, rIdx, 1)
 	return true
 }
@@ -449,8 +463,7 @@ func (c *arm64Compiler) intrinsic(ip int, i bytecode.Instruction, notGo Label) {
 	a.Ldr(rT, rT, offGFNumber)
 	a.Cbz(rT, c.goCallExit(ip))
 	a.Ldr(rT, rT, offNFUnary)
-	c.guardNumber(arg, ip)
-	a.LdrD(0, arg.base, arg.off+offN)
+	c.loadFloat(0, arg, kindAny, false, ip) // an integer converts, as for a number function
 	done := a.NewLabel()
 	for _, in := range intrinsics {
 		next := a.NewLabel()
