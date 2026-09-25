@@ -96,7 +96,8 @@ type jitCode struct {
 // a prototype's exec code, so a state without the JIT runs unchanged code
 // and pays nothing. prototype.jitOrig keeps the unpatched instructions.
 //
-// Until p is compiled, opJITCount sits at its entry and at each FORLOOP.
+// Until p is compiled, opJITCount sits at its entry and its loops' heads
+// and latches (see patchJITCounters).
 // Once it is hot and compiled, those revert and opJITEnter goes at each
 // pc the compiler lists as an entry: function entry, loop latches, jump
 // targets, and the instruction after each exit, so the interpreter hands
@@ -110,13 +111,30 @@ func markJIT(p *prototype) {
 	}
 }
 
-// patchJITCounters puts opJITCount at p's entry and loop latches. It runs
-// when p's exec code is built.
+// patchJITCounters puts opJITCount at p's entry, numeric for loops'
+// latches, and the heads of other loops: the targets of backward jumps,
+// which while and repeat loops end with, and of TFORLOOP. A function that
+// runs once with a hot while loop compiles as one called often does. It
+// runs when p's exec code is built.
 func (p *prototype) patchJITCounters() {
 	p.jitOrig = append([]bytecode.Instruction(nil), p.exec...)
-	for ip, i := range p.jitOrig {
-		if ip == 0 || p.Code[ip].OpCode() == bytecode.OpForLoop && !isExtraArg(p.Code, ip) {
-			p.exec[ip] = patched(i, opJITCount)
+	count := func(ip int) {
+		if !isConsumed(p.Code, ip) {
+			p.exec[ip] = patched(p.jitOrig[ip], opJITCount)
+		}
+	}
+	count(0)
+	for ip, i := range p.Code {
+		if isExtraArg(p.Code, ip) {
+			continue
+		}
+		switch i.OpCode() {
+		case bytecode.OpForLoop:
+			count(ip)
+		case bytecode.OpJump, bytecode.OpTForLoop:
+			if i.SBx() < 0 {
+				count(ip + 1 + i.SBx())
+			}
 		}
 	}
 }

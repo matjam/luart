@@ -608,6 +608,30 @@ func TestJITUnderGC(t *testing.T) {
 	}
 }
 
+// A function called once compiles when a loop in it is hot, whatever the
+// kind of loop.
+func TestJITCompilesHotLoops(t *testing.T) {
+	skipWithoutJIT(t)
+	loops := map[string]string{
+		"numeric for": `for i = 1, 5000 do s = s + i end`,
+		"while":       `local i = 0; while i < 5000 do i = i + 1; s = s + i end`,
+		"repeat":      `local i = 0; repeat i = i + 1; s = s + i until i >= 5000`,
+		"generic for": `for c in string.gmatch(string.rep("a", 5000), "a") do local n = #c; s = s + n * 2 - n + 1 - 1 end`,
+	}
+	for name, loop := range loops {
+		t.Run(name, func(t *testing.T) {
+			l := NewState()
+			openLibraries(l)
+			if err := l.DoString(`local function f() local s = 0; ` + loop + `; return s end; return f()`); err != nil {
+				t.Fatal(err)
+			}
+			if l.jitRuns == 0 {
+				t.Fatal("the loop never ran compiled")
+			}
+		})
+	}
+}
+
 func TestJITRuns(t *testing.T) {
 	skipWithoutJIT(t)
 	_, _, lj := runBoth(t, `function run() local a = 1; local b = a + 2; return b * 3 end`)
