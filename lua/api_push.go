@@ -37,8 +37,17 @@ func (l *State) PushFString(format string, args ...any) string {
 				l.push(stringValue(args[i].(string)))
 			}
 			i++
-		case 'c':
-			l.push(stringValue(string(args[i].(rune))))
+		case 'c': // one byte, as C's %c writes an int
+			var c int
+			switch a := args[i].(type) {
+			case int:
+				c = a
+			case rune:
+				c = int(a)
+			case byte:
+				c = int(a)
+			}
+			l.push(stringValue(string([]byte{byte(c)})))
 			i++
 		case 'd':
 			l.push(numberValue(float64(args[i].(int))))
