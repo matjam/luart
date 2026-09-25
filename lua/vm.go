@@ -245,14 +245,14 @@ func (l *State) traceExecution() {
 		}
 	}
 	l.oldPC = callInfo.savedPC
-	if l.shouldYield {
+	if l.status == ThreadYield { // did the hook yield?
 		if countHook {
-			l.hookCount = 1
+			l.hookCount = 1 // undo decrement to zero
 		}
-		callInfo.savedPC--
+		callInfo.savedPC-- // undo increment: resuming runs the instruction again
 		callInfo.setCallStatus(callStatusHookYielded)
-		callInfo.function = l.top - 1
-		panic("Not implemented - use goroutines to emulate yield")
+		callInfo.function = l.top - 1 // protect stack below results
+		l.throw(errYield)
 	}
 }
 

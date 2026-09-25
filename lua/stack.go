@@ -108,6 +108,7 @@ type callInfo struct {
 	callStatus                 callStatus
 	*luaCallInfo
 	*goCallInfo
+	extra int // a yield's function, or a yieldable pcall's old top
 }
 
 type luaCallInfo struct {
@@ -118,10 +119,10 @@ type luaCallInfo struct {
 }
 
 type goCallInfo struct {
-	context, extra, oldErrorFunction int
-	continuation                     Function
-	oldAllowHook, shouldYield        bool
-	error                            error
+	context, oldErrorFunction int
+	continuation              Function
+	oldAllowHook, shouldYield bool  // shouldYield: resumed after a yield, not an error
+	error                     error // the error a yieldable pcall recovered from
 }
 
 func (ci *callInfo) setCallStatus(flag callStatus)     { ci.callStatus |= flag }

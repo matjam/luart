@@ -19,7 +19,7 @@ const (
 // A State is an opaque structure representing per thread Lua state.
 type State struct {
 	error                 error
-	shouldYield           bool
+	status                ThreadStatus
 	top                   int // first free slot in the stack
 	global                *globalState
 	callInfo              *callInfo // call info for current function

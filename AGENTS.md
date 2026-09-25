@@ -86,6 +86,41 @@ today, the rules it depends on, and where performance work should go next.
 - Number functions (number_function.go, `PushNumberFunction[F]`) are Go
   functions of float64s that CALL invokes without a Go frame.
 
+## Coroutines
+
+Coroutines work as C Lua 5.2's do (coroutine.go ports ldo.c's
+`lua_resume`, `lua_yieldk`, `unroll` and `recover`, and lvm.c's
+`luaV_finishOp`).
+
+- **How a yield works.** A yield panics with `errYield`, unwinding the Go
+  stack back to `Resume`'s `protect`. The coroutine's Lua frames stay on
+  its own stack.
+- **How a resume works.** `unroll` runs the frames on. A Go function
+  continues through the continuation it gave `CallWithContinuation` or
+  `ProtectedCallWithContinuation`. A Lua frame first finishes its
+  interrupted instruction (`finishOp`), then `execute` carries on.
+- **Errors inside a yieldable pcall** reach `Resume` like any error.
+  `recover` then finds the pcall's frame and runs its continuation with the
+  error status.
+- **Why not goroutines.** A goroutine per coroutine would be simpler, but a
+  switch would cost a scheduler hand-off, and a suspended coroutine that
+  became garbage would leak its goroutine. This way a coroutine is only a
+  stack, a switch is a panic and a recover, and the semantics are 5.2's:
+  yields across pcall, metamethods and iterators, and "attempt to yield
+  across a C-call boundary" for a Go function without a continuation, such
+  as table.sort's comparator.
+
+Rules any instruction that can call Lua must keep, in the interpreter and
+in `jitStep`:
+
+- `ci.savedPC` is past the instruction when it makes the call.
+- A metamethod's result is on the top of the stack when it returns, as
+  `callTagMethod` leaves it. `finishOp` moves it to its register.
+- `finishOp` reads `prototype.Code`, the original bytecode. The specialised
+  and patched copies must keep every instruction's position.
+- SELF stores self in RA+1 after the lookup, not before as C does.
+  `finishOp` stores it for a lookup a yield interrupted.
+
 ## JIT
 
 On by default; `NewState(WithoutJIT())` or `LUART_JIT=off` turns it off.
