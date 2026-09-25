@@ -1,6 +1,6 @@
 //go:build !windows
 
-package lua
+package luart
 
 import (
 	"syscall"

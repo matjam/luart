@@ -1,4 +1,4 @@
-package lua
+package luart
 
 // Global pushes onto the stack the value of the global name.
 //

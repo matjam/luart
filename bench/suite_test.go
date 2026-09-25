@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	shopify "github.com/Shopify/go-lua"
-	luart "github.com/matjam/luart"
+	"github.com/matjam/luart"
 )
 
 // A workload is one unit of work, written once in Lua (as a global function

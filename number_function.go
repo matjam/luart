@@ -1,4 +1,4 @@
-package lua
+package luart
 
 // NumberFunction lists the plain Go function types that PushNumberFunction
 // accepts: up to four float64 arguments, returning one float64 or nothing.

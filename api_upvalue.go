@@ -1,4 +1,4 @@
-package lua
+package luart
 
 // UpValue returns the name of the upvalue at index away from function,
 // where index cannot be greater than the number of upvalues.

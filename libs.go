@@ -1,4 +1,4 @@
-package lua
+package luart
 
 // OpenLibraries opens all standard libraries. Alternatively, the host program
 // can open them individually by using Require to call BaseOpen (for the basic

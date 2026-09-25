@@ -1,4 +1,4 @@
-package lua
+package luart
 
 // Opcodes that exist only in a prototype's exec code. They follow the Lua 5.2
 // opcodes and fit the 6-bit opcode field. Each is an arithmetic instruction

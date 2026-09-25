@@ -1,7 +1,7 @@
 // Skip these test since they have different results based on the CPU architecture.
 //go:build skip
 
-package lua
+package luart
 
 // Test assumptions about how Go works
 

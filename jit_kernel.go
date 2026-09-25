@@ -1,6 +1,6 @@
 //go:build (darwin || linux) && (arm64 || amd64)
 
-package lua
+package luart
 
 // Numeric loop kernels.
 //
