@@ -74,6 +74,25 @@ func TestErrorMessages(t *testing.T) {
 	`)
 }
 
+// After a stack overflow the stack shrinks back, so the next overflow is
+// a stack overflow too, not an error in error handling.
+func TestRepeatedStackOverflow(t *testing.T) {
+	run(t, `
+		local function y() y() end
+		for i = 1, 3 do
+			local ok, e = pcall(y)
+			assert(not ok and e:find("stack overflow", 1, true), i .. ": " .. tostring(e))
+		end
+		local co = coroutine.wrap(function()
+			local ok, e = pcall(y)
+			coroutine.yield(e)
+			ok, e = pcall(y)
+			return e
+		end)
+		assert(co():find("stack overflow", 1, true) and co():find("stack overflow", 1, true))
+	`)
+}
+
 // error raises any value, not only strings.
 func TestErrorValues(t *testing.T) {
 	run(t, `
