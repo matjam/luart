@@ -90,6 +90,7 @@ type exprDesc struct {
 	info      int
 	t, f      int // patch lists for 'exit when true/false'
 	value     bytecode.Number
+	readOnly  string // the name of a const global this is, which cannot be assigned
 }
 
 type assignmentTarget struct {
@@ -106,8 +107,27 @@ type label struct {
 type block struct {
 	previous              *block
 	firstLabel, firstGoto int
+	firstGlobal           int // the function's global declarations before the block
 	activeVariableCount   int
 	hasUpValue, isLoop    bool
+}
+
+// A globalDeclaration is a Lua 5.5 global declaration in scope: of name,
+// or of every name (global *) when name is "". It takes no register;
+// position, the active local variables when it was made, orders it among
+// them, as lparser.c keeps both in one list.
+type globalDeclaration struct {
+	name     string
+	constant bool
+	position int
+}
+
+// A globalScope collects the global declarations a name's lookup passes,
+// innermost first, as lparser.c's searchvar does with var->u.info.
+type globalScope struct {
+	found      *globalDeclaration // a declaration of the name, which ends the lookup
+	collective *globalDeclaration // the innermost global * passed
+	named      bool               // another name's declaration was passed before any global *: the implicit one is void
 }
 
 type function struct {
@@ -120,6 +140,7 @@ type function struct {
 	freeRegisterCount   int
 	activeVariableCount int
 	firstLocal          int
+	globals             []globalDeclaration
 }
 
 func (f *function) OpenFunction(line int) {
@@ -140,7 +161,7 @@ func (f *function) CloseFunction() exprDesc {
 
 func (f *function) EnterBlock(isLoop bool) {
 	// TODO www.lua.org uses a trick here to stack allocate the block, and chain blocks in the stack
-	f.block = &block{previous: f.block, firstLabel: len(f.p.activeLabels), firstGoto: len(f.p.pendingGotos), activeVariableCount: f.activeVariableCount, isLoop: isLoop}
+	f.block = &block{previous: f.block, firstLabel: len(f.p.activeLabels), firstGoto: len(f.p.pendingGotos), firstGlobal: len(f.globals), activeVariableCount: f.activeVariableCount, isLoop: isLoop}
 	f.assert(f.freeRegisterCount == f.activeVariableCount)
 }
 
@@ -253,6 +274,7 @@ func (f *function) LeaveBlock() {
 	}
 	f.block = b.previous
 	f.removeLocalVariables(b.activeVariableCount)
+	f.globals = f.globals[:b.firstGlobal]
 	f.assert(b.activeVariableCount == f.activeVariableCount)
 	f.freeRegisterCount = f.activeVariableCount
 	f.p.activeLabels = f.p.activeLabels[:b.firstLabel]
@@ -1072,7 +1094,11 @@ func (f *function) makeUpValue(name string, e exprDesc) int {
 	return len(f.f.UpValues) - 1
 }
 
-func singleVariableHelper(f *function, name string, base bool) (e exprDesc, found bool) {
+// singleVariableHelper finds the local variable or upvalue name, in f or
+// the functions it is nested in, recording in scope the global
+// declarations it passes on the way. It stops, not found, at a
+// declaration of name.
+func singleVariableHelper(f *function, name string, base bool, scope *globalScope) (e exprDesc, found bool) {
 	owningBlock := func(b *block, level int) *block {
 		for b.activeVariableCount > level {
 			b = b.previous
@@ -1080,8 +1106,22 @@ func singleVariableHelper(f *function, name string, base bool) (e exprDesc, foun
 		return b
 	}
 	find := func() (int, bool) {
-		for i := f.activeVariableCount - 1; i >= 0; i-- {
-			if name == f.LocalVariable(i).Name {
+		j := len(f.globals) - 1
+		for i := f.activeVariableCount - 1; i >= -1; i-- {
+			for ; j >= 0 && f.globals[j].position > i; j-- { // declared after local i
+				switch g := &f.globals[j]; {
+				case g.name == "":
+					if scope.collective == nil {
+						scope.collective = g
+					}
+				case g.name == name:
+					scope.found = g
+					return 0, false
+				case scope.collective == nil:
+					scope.named = true
+				}
+			}
+			if i >= 0 && name == f.LocalVariable(i).Name {
 				return i, true
 			}
 		}
@@ -1105,23 +1145,76 @@ func singleVariableHelper(f *function, name string, base bool) (e exprDesc, foun
 		}
 		return
 	}
+	if scope.found != nil {
+		return
+	}
 	if v, found = findUpValue(); found {
 		return makeExpression(kindUpValue, v), true
 	}
-	if e, found = singleVariableHelper(f.previous, name, false); !found {
+	if e, found = singleVariableHelper(f.previous, name, false, scope); !found {
 		return
 	}
 	return makeExpression(kindUpValue, f.makeUpValue(name, e)), true
 }
 
-func (f *function) SingleVariable(name string) (e exprDesc) {
-	var found bool
-	if e, found = singleVariableHelper(f, name, true); !found {
-		e, found = singleVariableHelper(f, "_ENV", true)
-		f.assert(found && (e.kind == kindLocal || e.kind == kindUpValue))
-		e = f.Indexed(e, f.EncodeString(name))
+// SingleVariable returns the variable name: a local, an upvalue, or a
+// global, _ENV.name, which Lua 5.5's global declarations may make
+// read-only or, where only other names are declared, an error.
+func (f *function) SingleVariable(name string) exprDesc {
+	var scope globalScope
+	if e, found := singleVariableHelper(f, name, true, &scope); found {
+		return e
 	}
-	return
+	var d *globalDeclaration
+	switch {
+	case scope.found != nil:
+		d = scope.found
+	case scope.collective != nil:
+		d = scope.collective
+	case scope.named:
+		f.semanticError(fmt.Sprintf("variable '%s' not declared", name))
+	}
+	e := f.Global(name)
+	if d != nil && d.constant {
+		e.readOnly = name
+	}
+	return e
+}
+
+// Global returns _ENV.name, whatever declarations are in scope.
+func (f *function) Global(name string) exprDesc {
+	env, found := singleVariableHelper(f, "_ENV", true, &globalScope{})
+	if !found {
+		f.semanticError(fmt.Sprintf("_ENV is global when accessing variable '%s'", name))
+	}
+	return f.Indexed(env, f.EncodeString(name))
+}
+
+// DeclareGlobal brings a declaration of name (every name if "") into
+// scope.
+func (f *function) DeclareGlobal(name string, constant bool) {
+	f.globals = append(f.globals, globalDeclaration{name: name, constant: constant, position: f.activeVariableCount})
+}
+
+// CheckReadOnly raises Lua 5.5's error for an assignment to v, a const
+// global.
+func (f *function) CheckReadOnly(v exprDesc) {
+	if v.readOnly != "" {
+		f.semanticError(fmt.Sprintf("attempt to assign to const variable '%s'", v.readOnly))
+	}
+}
+
+// CheckGlobalUndefined emits ERRNNIL for global v, a global name: the
+// code raises "global 'name' already defined" unless it is nil.
+func (f *function) CheckGlobalUndefined(v exprDesc, name string, line int) {
+	e := f.ExpressionToAnyRegister(v)
+	k := f.stringConstant(name) + 1
+	if k > bytecode.MaxArgBx {
+		k = 0
+	}
+	f.encodeABx(bytecode.OpErrNNil, e.info, k)
+	f.FixLine(line)
+	f.freeExpression(e)
 }
 
 func (f *function) OpenConstructor() (pc int, t exprDesc) {

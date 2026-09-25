@@ -1,6 +1,6 @@
 // Package chunk reads and writes luart's binary chunks, the precompiled
 // functions string.dump returns. The format is Lua 5.2's with integer
-// constants added, marked as version 0x55 and format 1 (luart's). C Lua's
+// constants added, marked as version 0x55 and format 2 (luart's). C Lua's
 // chunks, of any version, do not load: luart runs its own instruction set.
 package chunk
 
@@ -37,7 +37,7 @@ var header struct {
 func init() {
 	copy(header.Signature[:], Signature)
 	header.Version = 0x55
-	header.Format = 1
+	header.Format = 2
 	if endianness() == binary.LittleEndian {
 		header.Endianness = 1
 	} else {

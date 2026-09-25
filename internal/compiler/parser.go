@@ -337,7 +337,9 @@ func (p *parser) index() exprDesc {
 }
 
 func (p *parser) assignment(t *assignmentTarget, variableCount int) {
-	if p.checkCondition(t.isVariable(), "syntax error"); p.testNext(',') {
+	p.checkCondition(t.isVariable(), "syntax error")
+	p.function.CheckReadOnly(t.exprDesc)
+	if p.testNext(',') {
 		e := p.suffixedExpression()
 		if e.kind != kindIndexed {
 			p.function.CheckConflict(t, e)
@@ -577,6 +579,7 @@ func (p *parser) functionName() (e exprDesc, isMethod bool) {
 func (p *parser) functionStatement(line int) {
 	p.next()
 	v, m := p.functionName()
+	p.function.CheckReadOnly(v)
 	p.function.StoreVariable(v, p.body(m, line))
 	p.function.FixLine(line)
 }
@@ -601,6 +604,84 @@ func (p *parser) localStatement() {
 		p.function.AdjustAssignment(v, 0, e)
 	}
 	p.function.AdjustLocalVariables(v)
+}
+
+// attribute reads an optional attribute, <const> or <close>, reporting
+// which, or def without one.
+func (p *parser) attribute(def string) string {
+	if !p.testNext('<') {
+		return def
+	}
+	name := p.checkName()
+	p.checkNext('>')
+	if name != "const" && name != "close" {
+		p.function.semanticError(fmt.Sprintf("unknown attribute '%s'", name))
+	}
+	return name
+}
+
+// globalAttribute reads an optional attribute of a global declaration,
+// reporting whether it declares constants.
+func (p *parser) globalAttribute(constant bool) bool {
+	switch p.attribute("") {
+	case "const":
+		return true
+	case "close":
+		p.function.semanticError("global variables cannot be to-be-closed")
+	}
+	return constant
+}
+
+// globalStatement compiles Lua 5.5's global declarations:
+//
+//	global function NAME body
+//	global [attrib] '*'
+//	global [attrib] NAME [attrib] {',' NAME [attrib]} ['=' explist]
+//
+// An initialised global must be nil when the declaration runs.
+func (p *parser) globalStatement(line int) {
+	f := p.function
+	p.next() // skip 'global'
+	if p.testNext(tkFunction) {
+		name := p.checkName()
+		f.DeclareGlobal(name, false) // in scope in its own body
+		v := f.Global(name)
+		b := p.body(false, p.lineNumber)
+		f.CheckGlobalUndefined(f.Global(name), name, line)
+		f.StoreVariable(v, b)
+		f.FixLine(line) // the definition happens on its first line
+		return
+	}
+	constant := p.globalAttribute(false)
+	if p.testNext('*') {
+		f.DeclareGlobal("", constant)
+		return
+	}
+	type declaration struct {
+		name     string
+		constant bool
+	}
+	var names []declaration
+	for first := true; first || p.testNext(','); first = false {
+		name := p.checkName()
+		names = append(names, declaration{name, p.globalAttribute(constant)})
+	}
+	if p.testNext('=') {
+		// The names are not in scope in their initial values.
+		targets := make([]exprDesc, len(names))
+		for i, d := range names {
+			targets[i] = f.Global(d.name)
+		}
+		e, n := p.expressionList()
+		f.AdjustAssignment(len(names), n, e)
+		for i := len(names) - 1; i >= 0; i-- {
+			f.CheckGlobalUndefined(f.Global(names[i].name), names[i].name, line)
+			f.StoreVariable(targets[i], makeExpression(kindNonRelocatable, f.freeRegisterCount-1))
+		}
+	}
+	for _, d := range names {
+		f.DeclareGlobal(d.name, d.constant)
+	}
 }
 
 func (p *parser) expressionStatement() {
@@ -656,6 +737,16 @@ func (p *parser) statement() {
 		p.returnStatement()
 	case tkBreak, tkGoto:
 		p.gotoStatement(p.function.Jump())
+	case tkName:
+		// global is a keyword only where a declaration follows, as C
+		// Lua's default LUA_COMPAT_GLOBAL has it.
+		if p.s == "global" {
+			if la := p.lookAhead(); la == '<' || la == tkName || la == '*' || la == tkFunction {
+				p.globalStatement(line)
+				break
+			}
+		}
+		p.expressionStatement()
 	default:
 		p.expressionStatement()
 	}
