@@ -47,6 +47,23 @@ func TestDebugLocals(t *testing.T) {
 	`)
 }
 
+// A Lua hook for returns runs when a Lua function returns to Go, as the
+// hook itself does.
+func TestDebugReturnHook(t *testing.T) {
+	run(t, `
+		local events = {}
+		debug.sethook(function(e)
+			local f, m, c = debug.gethook()
+			assert(m == "crl" and c == 0)
+			events[e] = (events[e] or 0) + 1
+		end, "crl")
+		local x = 1
+		x = x + 1
+		debug.sethook()
+		assert(events.call > 0 and events["return"] > 0 and events.line > 0)
+	`)
+}
+
 // debug.debug runs lines from stdin until "cont", writing errors to
 // stderr.
 func TestDebugDebug(t *testing.T) {

@@ -64,8 +64,10 @@ func (l *State) Hook() Hook { return l.hooker }
 // HookMask returns the current hook mask.
 func (l *State) HookMask() byte { return l.hookMask }
 
-// HookCount returns the current hook count.
-func (l *State) HookCount() int { return l.hookCount }
+// HookCount returns the hook count SetHook set.
+//
+// http://www.lua.org/manual/5.2/manual.html#lua_gethookcount
+func (l *State) HookCount() int { return l.baseHookCount }
 
 // Frame gets information about the interpreter runtime stack.
 //
