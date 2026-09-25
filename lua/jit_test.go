@@ -224,6 +224,52 @@ func TestJITTablesAndCalls(t *testing.T) {
 		{"deep recursion", `local function d(n) if n == 0 then return 0 end return 1 + d(n - 1) end; function run() return d(5000) end`},
 		{"closures in loops", `function run() local s = 0; for i = 1, 20 do local f = function(x) return x + i end; s = s + f(1) end; return s end`},
 		{"tail calls", `local function t(n, acc) if n == 0 then return acc end return t(n - 1, acc + n) end; function run() return t(100, 0) end`},
+		{"methods two classes up", `
+			local Base = {}
+			function Base.get(o) return o.v end
+			local Mid = setmetatable({name = "mid"}, {__index = Base})
+			local function new(v) return setmetatable({v = v}, {__index = Mid}) end
+			function run()
+			  local s = 0
+			  for i = 1, 30 do
+			    local o = new(i)
+			    s = s + o:get()
+			    if i == 10 then function Mid.get(o) return -o.v end end
+			    if i == 20 then Mid.get = nil; function Base.get(o) return 2 * o.v end end
+			  end
+			  return s
+			end`},
+		{"a class two up replaced by one of another layout", `
+			local Base = {}
+			function Base.get(o) return o.v end
+			local Other = {pad = function() return "pad" end}
+			function Other.get(o) return -o.v end
+			local midmt = {__index = Base}
+			local Mid = setmetatable({name = "mid"}, midmt)
+			local function new(v) return setmetatable({v = v}, {__index = Mid}) end
+			function run()
+			  local s = 0
+			  for i = 1, 30 do
+			    s = s + new(i):get()
+			    if i == 15 then midmt.__index = Other end
+			  end
+			  return s
+			end`},
+		{"own nil fields fall back to the class", `
+			local C = {x = "class"}
+			local function new() local o = setmetatable({x = 1}, {__index = C}); o.x = nil; return o end
+			function run()
+			  local out = {}
+			  for i = 1, 20 do
+			    local o = new()
+			    out[#out + 1] = tostring(o.x)
+			    if i % 3 == 0 then o.x = i; out[#out + 1] = tostring(o.x) end
+			    if i == 10 then C.x = nil end
+			  end
+			  local bare = {x = 1}; bare.x = nil
+			  for i = 1, 3 do out[#out + 1] = tostring(bare.x) end
+			  return table.concat(out, ",")
+			end`},
 		{"tail calls to Go", `
 			local C = {}
 			local function new(x) return setmetatable({x = x}, {__index = C}) end

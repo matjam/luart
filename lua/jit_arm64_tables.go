@@ -69,10 +69,10 @@ func (c *arm64Compiler) element(obj Reg, off uint32, idx, out Reg, ip int) {
 	a.AddShifted(out, rLen, idx, 4)
 }
 
-// cachedSlot puts in rSlot the address of the slot the fieldCache of the
-// instruction at ip names for the table in rT: its own slot, or its
-// metatable's __index table's, as getField would read.
-func (c *arm64Compiler) cachedSlot(ip int, withIndex bool) {
+// cachedShape checks that the table in rT has the shape the fieldCache of
+// the instruction at ip names, which it leaves in rCache, and puts the
+// cache's own slot in rIdx.
+func (c *arm64Compiler) cachedShape(ip int) {
 	a := &c.a
 	a.MovImm(rCache, uint64(uintptr(unsafe.Pointer(&c.p.fields[ip]))))
 	a.Ldr(rIdx, rT, offTShape)
@@ -81,16 +81,30 @@ func (c *arm64Compiler) cachedSlot(ip int, withIndex bool) {
 	a.Cmp(rIdx, rLen)
 	a.BCond(NE, c.exit(ip))
 	a.LdrW(rIdx, rCache, offCSlot)
-	if !withIndex {
-		a.Tbnz(rIdx, 31, c.exit(ip))
-		c.element(rT, offTSlots, rIdx, rSlot, ip)
-		return
-	}
-	own, done := a.NewLabel(), a.NewLabel()
+}
+
+// cachedSlot puts in rSlot the address of the table in rT's own slot the
+// fieldCache of the instruction at ip names, exiting if it names none.
+func (c *arm64Compiler) cachedSlot(ip int) {
+	c.cachedShape(ip)
+	c.a.Tbnz(rIdx, 31, c.exit(ip))
+	c.element(rT, offTSlots, rIdx, rSlot, ip)
+}
+
+// readField loads into rP and rN the field of the table in rT that the
+// fieldCache of the instruction at ip names: its own, or when that is
+// absent or nil, the one in its metatable's __index table or in the table
+// after that. It exits for anything else, and for a nil found through the
+// metatable, after which Go goes on looking.
+func (c *arm64Compiler) readField(ip int) {
+	a := &c.a
+	c.cachedShape(ip)
+	own, haveMeta, chain, load, done := a.NewLabel(), a.NewLabel(), a.NewLabel(), a.NewLabel(), a.NewLabel()
 	a.Tbz(rIdx, 31, own)
 	// fromIndex: the metatable's shape, then its __index table's.
 	a.Ldr(rT2, rT, offTMeta)
 	a.Cbz(rT2, c.exit(ip))
+	a.Bind(haveMeta)
 	a.Ldr(rIdx, rT2, offTShape)
 	a.Ldr(rLen, rCache, offCMtShape)
 	a.Cmp(rIdx, rLen)
@@ -104,20 +118,53 @@ func (c *arm64Compiler) cachedSlot(ip int, withIndex bool) {
 	a.Cmp(rIdx, rLen)
 	a.BCond(NE, c.exit(ip))
 	a.LdrW(rIdx, rCache, offCIdxSlot)
-	a.Tbnz(rIdx, 31, c.exit(ip))
+	a.Tbnz(rIdx, 31, chain)
 	c.element(rT2, offTSlots, rIdx, rSlot, ip)
+	a.B(load)
+	// One more __index table, as a method two classes up needs; longer
+	// chains, and keys no table has, exit.
+	a.Bind(chain)
+	a.Ldr(rTmp, rCache, offCChain)
+	a.Cbz(rTmp, c.exit(ip))
+	a.Ldr(rTmp2, rTmp, offChLevels+offSliceLen)
+	a.CmpImm(rTmp2, 1)
+	a.BCond(NE, c.exit(ip))
+	a.LdrW(rN, rTmp, offChSlot)
+	a.Tbnz(rN, 31, c.exit(ip))
+	a.Ldr(rCache, rTmp, offChLevels) // &levels[0]
+	a.Ldr(rIdx, rT2, offTMeta)
+	a.Cbz(rIdx, c.exit(ip))
+	a.Ldr(rP, rIdx, offTShape)
+	a.Ldr(rTmp, rCache, offLvMtShape)
+	a.Cmp(rP, rTmp)
+	a.BCond(NE, c.exit(ip))
+	a.LdrW(rP, rCache, offLvMtSlot)
+	c.element(rIdx, offTSlots, rP, rSlot, ip)
+	c.objectOf(operand{rSlot, 0}, vkTable, rT2, ip)
+	a.Ldr(rP, rT2, offTShape)
+	a.Ldr(rTmp, rCache, offLvIndex)
+	a.Cmp(rP, rTmp)
+	a.BCond(NE, c.exit(ip))
+	c.element(rT2, offTSlots, rN, rSlot, ip)
+	a.Bind(load)
+	c.load(operand{rSlot, 0})
+	a.Cbz(rP, c.exit(ip))
 	a.B(done)
 	a.Bind(own)
 	c.element(rT, offTSlots, rIdx, rSlot, ip)
+	c.load(operand{rSlot, 0})
+	a.Cbnz(rP, done)
+	// An own field holding nil: nil without a metatable, or the metatable's.
+	a.Ldr(rT2, rT, offTMeta)
+	a.Cbnz(rT2, haveMeta)
+	a.Mov(rN, ZR)
 	a.Bind(done)
 }
 
 // getField stores the field of the table in rT that the instruction at ip
 // caches to dst, exiting unless the cache hits.
 func (c *arm64Compiler) getField(ip int, dst operand) {
-	c.cachedSlot(ip, true)
-	c.load(operand{rSlot, 0})
-	c.absentIsNil(ip)
+	c.readField(ip)
 	c.guardStore(dst, rP, ip)
 	c.store(dst)
 }
@@ -140,9 +187,7 @@ func (c *arm64Compiler) selfField(ip int, i bytecode.Instruction) {
 	a := &c.a
 	fn, self := reg(i.A()), reg(i.A()+1)
 	c.tableOf(reg(i.B()), ip)
-	c.cachedSlot(ip, true)
-	c.load(operand{rSlot, 0})
-	c.absentIsNil(ip)
+	c.readField(ip)
 	c.guardStore(fn, rP, ip)
 	c.guardStore(self, rT, ip)
 	c.store(fn)
@@ -184,7 +229,7 @@ func (c *arm64Compiler) setField(ip int, i bytecode.Instruction, up bool) {
 		t = operand{rAddr, 0}
 	}
 	c.tableOf(t, ip)
-	c.cachedSlot(ip, false)
+	c.cachedSlot(ip)
 	slot := operand{rSlot, 0}
 	// An absent key: setField stores it only in a table with a shared
 	// shape and without a metatable, or one known to lack __newindex. A
