@@ -7,6 +7,12 @@ import (
 	"github.com/matjam/luart/internal/bytecode"
 )
 
+// arith computes op, OpAdd to OpUnaryMinus, on numbers. The Operators
+// are in the same order as the arithmetic op codes.
+func arith(op Operator, v1, v2 float64) float64 {
+	return bytecode.Arith(bytecode.OpAdd+bytecode.OpCode(op-OpAdd), v1, v2)
+}
+
 func (l *State) arith(rb, rc value, op tm) value {
 	if b, ok := l.toNumber(rb); ok {
 		if c, ok := l.toNumber(rc); ok {
@@ -384,8 +390,8 @@ func (l *State) executeSwitch() {
 			frame = ci.frame
 		case bytecode.OpNewTable:
 			a := i.A()
-			b, c := float8(i.B()), float8(i.C())
-			frame[a] = objectValue(newTableAt(&closure.prototype.fields[ip-1], intFromFloat8(b), intFromFloat8(c)))
+			b, c := bytecode.IntFromFloat8(i.B()), bytecode.IntFromFloat8(i.C())
+			frame[a] = objectValue(newTableAt(&closure.prototype.fields[ip-1], b, c))
 			clear(frame[a+1:])
 		case bytecode.OpSelf:
 			a, t := i.A(), frame[i.B()]

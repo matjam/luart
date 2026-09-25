@@ -1,10 +1,8 @@
-package luart
+package compiler
 
 import (
-	"bufio"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/matjam/luart/internal/bytecode"
 )
@@ -46,10 +44,10 @@ func (p *parser) checkNext(t rune) {
 
 func (p *parser) checkNameAsExpression() exprDesc { return p.function.EncodeString(p.checkName()) }
 func (p *parser) singleVariable() exprDesc        { return p.function.SingleVariable(p.checkName()) }
-func (p *parser) leaveLevel()                     { p.l.nestedGoCallCount-- }
+func (p *parser) leaveLevel()                     { p.depth-- }
 func (p *parser) enterLevel() {
-	p.l.nestedGoCallCount++
-	p.checkLimit(p.l.nestedGoCallCount, maxCallCount, "Go levels")
+	p.depth++
+	p.checkLimit(p.depth, bytecode.MaxCallCount, "Go levels")
 }
 
 func (p *parser) expressionList() (e exprDesc, n int) {
@@ -119,7 +117,7 @@ func (p *parser) functionArguments(f exprDesc, line int) exprDesc {
 	default:
 		p.syntaxError("function arguments expected")
 	}
-	base, parameterCount := f.info, MultipleReturns
+	base, parameterCount := f.info, bytecode.MultipleReturns
 	if !args.hasMultipleReturns() {
 		if args.kind != kindVoid {
 			args = p.function.ExpressionToNextRegister(args)
@@ -324,7 +322,7 @@ func (p *parser) assignment(t *assignmentTarget, variableCount int) {
 		if e.kind != kindIndexed {
 			p.function.CheckConflict(t, e)
 		}
-		p.checkLimit(variableCount+p.l.nestedGoCallCount, maxCallCount, "Go levels")
+		p.checkLimit(variableCount+p.depth, bytecode.MaxCallCount, "Go levels")
 		p.assignment(&assignmentTarget{previous: t, exprDesc: e}, variableCount+1)
 	} else {
 		p.checkNext('=')
@@ -566,7 +564,7 @@ func (p *parser) functionStatement(line int) {
 func (p *parser) localFunction() {
 	p.function.MakeLocalVariable(p.checkName())
 	p.function.AdjustLocalVariables(1)
-	p.function.LocalVariable(p.body(false, p.lineNumber).info).StartPC = pc(len(p.function.f.Code))
+	p.function.LocalVariable(p.body(false, p.lineNumber).info).StartPC = len(p.function.f.Code)
 }
 
 func (p *parser) localStatement() {
@@ -646,54 +644,38 @@ func (p *parser) statement() {
 	p.leaveLevel()
 }
 
+// A syntaxError is a compile error's message, carried by a panic from
+// where the scanner or parser finds it to Parse or ParseNumber.
+type syntaxError string
+
+func (e syntaxError) Error() string { return string(e) }
+
+// Parse compiles the Lua source read from r, whose chunk name is name, to
+// its main function. depth is the number of nested Go calls already
+// running: parsing counts its nesting against the same limit,
+// bytecode.MaxCallCount. A syntax error comes back as an error with Lua's
+// message.
+func Parse(r io.ByteReader, name string, depth int) (proto *bytecode.Proto, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			se, ok := e.(syntaxError)
+			if !ok {
+				panic(e)
+			}
+			proto, err = nil, se
+		}
+	}()
+	p := &parser{r: r, lineNumber: 1, lastLine: 1, lookAheadToken: token{t: tkEOS}, depth: depth, source: name}
+	f := &function{f: &bytecode.Proto{Source: name, MaxStackSize: 2, IsVarArg: true}, constantLookup: make(map[any]int), p: p, jumpPC: noJump}
+	p.function = f
+	p.mainFunction()
+	return f.f, nil
+}
+
 func (p *parser) mainFunction() {
 	p.function.OpenMainFunction()
 	p.next()
 	p.statementList()
 	p.check(tkEOS)
 	p.function = p.function.CloseMainFunction()
-}
-
-func (l *State) parse(r io.ByteReader, name string) *luaClosure {
-	p := &parser{r: r, lineNumber: 1, lastLine: 1, lookAheadToken: token{t: tkEOS}, l: l, source: name}
-	f := &function{f: &prototype{Source: name, MaxStackSize: 2, IsVarArg: true}, constantLookup: make(map[any]int), p: p, jumpPC: noJump}
-	p.function = f
-	p.mainFunction()
-	// TODO assertions about parser state
-	c := l.newLuaClosure(f.f)
-	l.push(objectValue(c))
-	return c
-}
-
-func (l *State) checkMode(mode, x string) {
-	if mode != "" && !strings.Contains(mode, x[:1]) {
-		l.push(stringValue(fmt.Sprintf("attempt to load a %s chunk (mode is '%s')", x, mode)))
-		l.throw(ErrSyntax)
-	}
-}
-
-func protectedParser(l *State, r io.Reader, name, chunkMode string) error {
-	l.nonYieldableCallCount++
-	err := l.protectedCall(func() {
-		var closure *luaClosure
-		b := bufio.NewReader(r)
-		if c, err := b.ReadByte(); err != nil {
-			l.checkMode(chunkMode, "text")
-			closure = l.parse(b, name)
-		} else if c == Signature[0] {
-			l.checkMode(chunkMode, "binary")
-			b.UnreadByte()
-			closure, _ = l.undump(b, name) // TODO handle err
-		} else {
-			l.checkMode(chunkMode, "text")
-			b.UnreadByte()
-			closure = l.parse(b, name)
-		}
-		l.assert(closure.upValueCount() == len(closure.prototype.UpValues))
-		for i := range closure.upValues {
-			closure.upValues[i] = l.newUpValue()
-		}
-	}, l.top, l.errorFunction)
-	l.nonYieldableCallCount--
-	return err
 }

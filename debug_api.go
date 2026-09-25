@@ -1,6 +1,9 @@
 package luart
 
-import "github.com/matjam/luart/internal/bytecode"
+import (
+	"github.com/matjam/luart/internal/bytecode"
+	"github.com/matjam/luart/internal/compiler"
+)
 
 // A Frame identifies an activation record. It is returned by State.Frame and
 // passed to State.Info; its zero value identifies none.
@@ -101,7 +104,7 @@ func functionInfo(p Debug, f closure) (d Debug) {
 			d.What = "main"
 		}
 	}
-	d.ShortSource = chunkID(d.Source)
+	d.ShortSource = compiler.ChunkID(d.Source)
 	return
 }
 

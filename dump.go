@@ -110,8 +110,8 @@ func (d *dumpState) writeLocalVariables(p *prototype) {
 
 	for _, lv := range p.LocalVariables {
 		d.writeString(lv.Name)
-		d.writePC(lv.StartPC)
-		d.writePC(lv.EndPC)
+		d.writePC(pc(lv.StartPC))
+		d.writePC(pc(lv.EndPC))
 	}
 }
 

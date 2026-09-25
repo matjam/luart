@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/matjam/luart/internal/compiler"
 )
 
 func testString(t *testing.T, s string) { testStringHelper(t, s, false) }
@@ -309,7 +311,7 @@ func TestError(t *testing.T) {
 			t.Error("error handler received no arguments")
 		} else if errorMessage, ok := l.ToString(-1); !ok {
 			t.Errorf("error handler received %s instead of string", l.TypeName(-1))
-		} else if errorMessage != chunkID(program)+":1: error" {
+		} else if errorMessage != compiler.ChunkID(program)+":1: error" {
 			t.Errorf("error handler received '%s' instead of 'error'", errorMessage)
 		}
 		errorHandled = true
@@ -325,8 +327,8 @@ func TestError(t *testing.T) {
 func TestErrorf(t *testing.T) {
 	l := NewState()
 	openLibraries(l)
-	program := "-- script that is bigger than the max ID size\nhelper()\n" + strings.Repeat("--", idSize)
-	expectedErrorMessage := chunkID(program) + ":2: error"
+	program := "-- script that is bigger than the max ID size\nhelper()\n" + strings.Repeat("--", compiler.IDSize)
+	expectedErrorMessage := compiler.ChunkID(program) + ":2: error"
 	l.PushGoFunction(func(l *State) int {
 		l.Errorf("error")
 		return 0
