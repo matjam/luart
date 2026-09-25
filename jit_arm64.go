@@ -3,6 +3,7 @@
 package luart
 
 import (
+	"github.com/matjam/luart/internal/bytecode"
 	. "github.com/matjam/luart/internal/jit/arm64"
 )
 
@@ -43,7 +44,7 @@ const maxOffset = 32768
 type arm64Compiler struct {
 	a       Asm
 	p       *prototype
-	code    []instruction
+	code    []bytecode.Instruction
 	pcs     []Label // start of each pc's code
 	exits   []Label // exit to the interpreter at each pc, created on demand
 	budget  []Label // budget exits by back-edge target pc, created on demand
@@ -72,7 +73,7 @@ func compileJIT(p *prototype) (code []byte, offsets []int32, entries []int, kern
 	c.prologue()
 	loops := map[int]*kernel{}
 	for ip, i := range c.p.code {
-		if i.opCode() == opForLoop && !isExtraArg(c.p.code, ip) {
+		if i.OpCode() == bytecode.OpForLoop && !isExtraArg(c.p.code, ip) {
 			if k := c.findKernel(ip); k != nil {
 				loops[ip] = k
 			}
@@ -162,7 +163,7 @@ func (c *arm64Compiler) stubs() {
 		for ip, l := range calls.labels {
 			if l >= 0 {
 				a.Bind(l)
-				fn := reg(c.code[ip].a())
+				fn := reg(c.code[ip].A())
 				a.Ldr(rTmp, fn.base, fn.off+offP)
 				a.Str(rTmp, rCtx, offCallee)
 				a.MovImm(rExitPC, uint64(ip))
@@ -230,10 +231,10 @@ func (c *arm64Compiler) constant(k int) (operand, bool) {
 // rkNumber returns the operand for an RK field that must be a number, and
 // false for a constant that is not one.
 func (c *arm64Compiler) rkNumber(field int) (operand, bool) {
-	if !isConstant(field) {
+	if !bytecode.IsConstant(field) {
 		return reg(field), true
 	}
-	k := constantIndex(field)
+	k := bytecode.ConstantIndex(field)
 	if !c.p.constants[k].isNumber() {
 		return operand{}, false
 	}
@@ -333,10 +334,10 @@ func (c *arm64Compiler) backEdge(target int) {
 // at ip consumes, and false when that JMP closes upvalues.
 func (c *arm64Compiler) jumpAfter(ip int) (int, bool) {
 	j := c.code[ip+1]
-	if j.a() != 0 {
+	if j.A() != 0 {
 		return 0, false
 	}
-	return ip + 2 + j.sbx(), true
+	return ip + 2 + j.SBx(), true
 }
 
 // instruction compiles the instruction at ip and returns how many extra
@@ -344,81 +345,81 @@ func (c *arm64Compiler) jumpAfter(ip int) (int, bool) {
 func (c *arm64Compiler) instruction(ip int) int {
 	a := &c.a
 	orig := c.p.code[ip]
-	switch op := orig.opCode(); op {
-	case opMove:
-		c.copyValue(reg(orig.a()), reg(orig.b()), ip)
-	case opLoadConstant:
-		k, ok := c.constant(orig.bx())
+	switch op := orig.OpCode(); op {
+	case bytecode.OpMove:
+		c.copyValue(reg(orig.A()), reg(orig.B()), ip)
+	case bytecode.OpLoadConstant:
+		k, ok := c.constant(orig.Bx())
 		if !ok {
 			c.exitAlways(ip)
 			break
 		}
-		c.copyValue(reg(orig.a()), k, ip)
-	case opLoadBool:
-		dst := reg(orig.a())
+		c.copyValue(reg(orig.A()), k, ip)
+	case bytecode.OpLoadBool:
+		dst := reg(orig.A())
 		c.guardStore(dst, noReg, ip)
 		bits := tagOf(vkBool)
-		if orig.b() != 0 {
+		if orig.B() != 0 {
 			bits |= 1
 		}
 		a.MovImm(rN, bits)
 		a.Str(rN, dst.base, dst.off+offN)
 		a.Str(rBool, dst.base, dst.off+offP)
-		if orig.c() != 0 {
+		if orig.C() != 0 {
 			a.B(c.pcs[ip+2])
 		}
-	case opLoadNil:
-		for r := orig.a(); r <= orig.a()+orig.b(); r++ {
+	case bytecode.OpLoadNil:
+		for r := orig.A(); r <= orig.A()+orig.B(); r++ {
 			c.guardStore(reg(r), noReg, ip)
 		}
-		for r := orig.a(); r <= orig.a()+orig.b(); r++ {
+		for r := orig.A(); r <= orig.A()+orig.B(); r++ {
 			a.Str(ZR, rFrame, reg(r).off+offP)
 			a.Str(ZR, rFrame, reg(r).off+offN)
 		}
-	case opGetUpValue:
-		c.upValueAddr(orig.b())
-		c.copyValue(reg(orig.a()), operand{rAddr, 0}, ip)
-	case opSetUpValue:
-		c.upValueAddr(orig.b())
-		c.copyValue(operand{rAddr, 0}, reg(orig.a()), ip)
-	case opAdd, opSub, opMul, opDiv, opMod:
-		b, okB := c.rkNumber(orig.b())
-		cc, okC := c.rkNumber(orig.c())
+	case bytecode.OpGetUpValue:
+		c.upValueAddr(orig.B())
+		c.copyValue(reg(orig.A()), operand{rAddr, 0}, ip)
+	case bytecode.OpSetUpValue:
+		c.upValueAddr(orig.B())
+		c.copyValue(operand{rAddr, 0}, reg(orig.A()), ip)
+	case bytecode.OpAdd, bytecode.OpSub, bytecode.OpMul, bytecode.OpDiv, bytecode.OpMod:
+		b, okB := c.rkNumber(orig.B())
+		cc, okC := c.rkNumber(orig.C())
 		if !okB || !okC {
 			c.exitAlways(ip)
 			break
 		}
-		dst := reg(orig.a())
+		dst := reg(orig.A())
 		c.guardNumber(b, ip)
 		c.guardNumber(cc, ip)
 		c.guardStore(dst, noReg, ip)
 		a.LdrD(0, b.base, b.off+offN)
 		a.LdrD(1, cc.base, cc.off+offN)
 		switch op {
-		case opAdd:
+		case bytecode.OpAdd:
 			a.Fadd(0, 0, 1)
-		case opSub:
+		case bytecode.OpSub:
 			a.Fsub(0, 0, 1)
-		case opMul:
+		case bytecode.OpMul:
 			a.Fmul(0, 0, 1)
-		case opDiv:
+		case bytecode.OpDiv:
 			a.Fdiv(0, 0, 1)
-		case opMod: // b - floor(b/c)*c, rounded step by step as arith does
+		case bytecode.OpMod: // b - floor(b/c)*c, rounded step by step as arith does
 			a.Fdiv(2, 0, 1)
 			a.Frintm(2, 2)
 			a.Fmul(2, 2, 1)
 			a.Fsub(0, 0, 2)
 		}
 		c.storeNumber(dst, 0)
-	case opUnaryMinus:
-		src, dst := reg(orig.b()), reg(orig.a())
+	case bytecode.OpUnaryMinus:
+		src, dst := reg(orig.B()), reg(orig.A())
 		c.guardNumber(src, ip)
 		c.guardStore(dst, noReg, ip)
 		a.LdrD(0, src.base, src.off+offN)
 		a.Fneg(0, 0)
 		c.storeNumber(dst, 0)
-	case opNot:
-		src, dst := reg(orig.b()), reg(orig.a())
+	case bytecode.OpNot:
+		src, dst := reg(orig.B()), reg(orig.A())
 		c.guardStore(dst, noReg, ip)
 		falsy, done := a.NewLabel(), a.NewLabel()
 		c.branchFalsy(src, falsy)
@@ -429,20 +430,20 @@ func (c *arm64Compiler) instruction(ip int) int {
 		a.Bind(done)
 		a.Str(rN, dst.base, dst.off+offN)
 		a.Str(rBool, dst.base, dst.off+offP)
-	case opJump:
-		if orig.a() != 0 {
+	case bytecode.OpJump:
+		if orig.A() != 0 {
 			c.exitAlways(ip)
 			break
 		}
-		if target := ip + 1 + orig.sbx(); target <= ip {
+		if target := ip + 1 + orig.SBx(); target <= ip {
 			c.backEdge(target)
 		} else {
 			a.B(c.pcs[target])
 		}
-	case opEqual, opLessThan, opLessOrEqual:
+	case bytecode.OpEqual, bytecode.OpLessThan, bytecode.OpLessOrEqual:
 		target, ok := c.jumpAfter(ip)
-		b, okB := c.rkNumber(orig.b())
-		cc, okC := c.rkNumber(orig.c())
+		b, okB := c.rkNumber(orig.B())
+		cc, okC := c.rkNumber(orig.C())
 		if !ok || !okB || !okC {
 			c.exitAlways(ip)
 			break
@@ -455,19 +456,19 @@ func (c *arm64Compiler) instruction(ip int) int {
 		// The JMP runs when the comparison's result equals A.
 		var when Cond
 		switch op {
-		case opEqual:
+		case bytecode.OpEqual:
 			when = EQ
-		case opLessThan:
+		case bytecode.OpLessThan:
 			when = MI
-		case opLessOrEqual:
+		case bytecode.OpLessOrEqual:
 			when = LS
 		}
-		if orig.a() == 0 {
+		if orig.A() == 0 {
 			when = negate(when)
 		}
 		c.branchTo(when, ip, target)
 		a.B(c.pcs[ip+2])
-	case opTest:
+	case bytecode.OpTest:
 		target, ok := c.jumpAfter(ip)
 		if !ok || target <= ip { // backward tests (repeat-until) spend no budget here
 			c.exitAlways(ip)
@@ -475,22 +476,22 @@ func (c *arm64Compiler) instruction(ip int) int {
 		}
 		// The JMP runs when the value's truth differs from C.
 		jump, skip := c.pcs[target], c.pcs[ip+2]
-		if orig.c() == 0 {
-			c.branchFalsy(reg(orig.a()), jump)
+		if orig.C() == 0 {
+			c.branchFalsy(reg(orig.A()), jump)
 			a.B(skip)
 		} else {
-			c.branchFalsy(reg(orig.a()), skip)
+			c.branchFalsy(reg(orig.A()), skip)
 			a.B(jump)
 		}
-	case opTestSet:
+	case bytecode.OpTestSet:
 		target, ok := c.jumpAfter(ip)
 		if !ok || target <= ip {
 			c.exitAlways(ip)
 			break
 		}
-		src, dst := reg(orig.b()), reg(orig.a())
+		src, dst := reg(orig.B()), reg(orig.A())
 		assign, skip := a.NewLabel(), c.pcs[ip+2]
-		if orig.c() == 0 {
+		if orig.C() == 0 {
 			c.branchFalsy(src, assign)
 			a.B(skip)
 		} else {
@@ -499,8 +500,8 @@ func (c *arm64Compiler) instruction(ip int) int {
 		a.Bind(assign)
 		c.copyValue(dst, src, ip)
 		a.B(c.pcs[target])
-	case opForPrep:
-		init, limit, step := reg(orig.a()), reg(orig.a()+1), reg(orig.a()+2)
+	case bytecode.OpForPrep:
+		init, limit, step := reg(orig.A()), reg(orig.A()+1), reg(orig.A()+2)
 		c.guardNumber(init, ip)
 		c.guardNumber(limit, ip)
 		c.guardNumber(step, ip)
@@ -508,12 +509,12 @@ func (c *arm64Compiler) instruction(ip int) int {
 		a.LdrD(2, step.base, step.off+offN)
 		a.Fsub(0, 0, 2)
 		a.StrD(0, init.base, init.off+offN)
-		a.B(c.pcs[ip+1+orig.sbx()])
-	case opForLoop:
+		a.B(c.pcs[ip+1+orig.SBx()])
+	case bytecode.OpForLoop:
 		// FORPREP made the three loop registers numbers, and Lua code
 		// cannot reach them, so they need no checks.
-		idx, limit, step, ext := reg(orig.a()), reg(orig.a()+1), reg(orig.a()+2), reg(orig.a()+3)
-		target := ip + 1 + orig.sbx()
+		idx, limit, step, ext := reg(orig.A()), reg(orig.A()+1), reg(orig.A()+2), reg(orig.A()+3)
+		target := ip + 1 + orig.SBx()
 		take, positive, done := a.NewLabel(), a.NewLabel(), a.NewLabel()
 		a.LdrD(0, idx.base, idx.off+offN)
 		a.LdrD(1, limit.base, limit.off+offN)
@@ -537,15 +538,15 @@ func (c *arm64Compiler) instruction(ip int) int {
 		a.StrD(0, idx.base, idx.off+offN)
 		c.storeNumber(ext, 0)
 		c.backEdge(target)
-	case opGetTable, opGetTableUp, opSelf, opSetTable, opSetTableUp:
+	case bytecode.OpGetTable, bytecode.OpGetTableUp, bytecode.OpSelf, bytecode.OpSetTable, bytecode.OpSetTableUp:
 		c.tableAccess(ip, c.code[ip])
-	case opCall:
+	case bytecode.OpCall:
 		c.call(ip, orig)
-	case opReturn:
+	case bytecode.OpReturn:
 		c.returnLua(ip, orig)
-	case opLoadConstantEx, opSetList:
+	case bytecode.OpLoadConstantEx, bytecode.OpSetList:
 		c.exitAlways(ip)
-		if op == opLoadConstantEx || orig.c() == 0 {
+		if op == bytecode.OpLoadConstantEx || orig.C() == 0 {
 			return 1 // the extra-argument word is not an instruction
 		}
 	default:

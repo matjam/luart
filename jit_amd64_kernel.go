@@ -3,6 +3,7 @@
 package luart
 
 import (
+	"github.com/matjam/luart/internal/bytecode"
 	. "github.com/matjam/luart/internal/jit/amd64"
 )
 
@@ -29,7 +30,7 @@ func (c *amd64Compiler) findKernel(latch int) *kernel {
 	}
 	if !c.sse41 {
 		for ip := plan.start; ip < latch; ip++ {
-			if c.p.code[ip].opCode() == opMod {
+			if c.p.code[ip].OpCode() == bytecode.OpMod {
 				return nil
 			}
 		}
@@ -45,7 +46,7 @@ func (c *amd64Compiler) findKernel(latch int) *kernel {
 // FORLOOP code at normal when the entry check fails.
 func (c *amd64Compiler) emitKernel(k *kernel, normal Label) {
 	a := &c.a
-	base := c.p.code[k.latch].a()
+	base := c.p.code[k.latch].A()
 	idx, limit, step, ext := k.reg(base), k.reg(base+1), k.reg(base+2), k.reg(base+3)
 
 	a.CmpMem(rCtx, offBarrier, 0)
@@ -104,10 +105,10 @@ func (c *amd64Compiler) flush(k *kernel) {
 }
 
 func (c *amd64Compiler) kernelOperand(k *kernel, field int, tmp XReg) XReg {
-	if !isConstant(field) {
+	if !bytecode.IsConstant(field) {
 		return k.reg(field)
 	}
-	o, _ := c.constant(constantIndex(field))
+	o, _ := c.constant(bytecode.ConstantIndex(field))
 	c.a.LoadSD(tmp, o.base, o.off+offN)
 	return tmp
 }
@@ -122,27 +123,27 @@ func (k *kernel) target(t int, latch Label) Label {
 func (c *amd64Compiler) kernelInstruction(k *kernel, ip int, latch Label) int {
 	a := &c.a
 	i := c.p.code[ip]
-	switch op := i.opCode(); op {
-	case opMove:
-		a.MovSD(k.reg(i.a()), k.reg(i.b()))
-	case opLoadConstant:
-		o, _ := c.constant(i.bx())
-		a.LoadSD(k.reg(i.a()), o.base, o.off+offN)
-	case opAdd, opSub, opMul, opDiv, opMod:
-		b, cc := c.kernelOperand(k, i.b(), 0), c.kernelOperand(k, i.c(), 1)
+	switch op := i.OpCode(); op {
+	case bytecode.OpMove:
+		a.MovSD(k.reg(i.A()), k.reg(i.B()))
+	case bytecode.OpLoadConstant:
+		o, _ := c.constant(i.Bx())
+		a.LoadSD(k.reg(i.A()), o.base, o.off+offN)
+	case bytecode.OpAdd, bytecode.OpSub, bytecode.OpMul, bytecode.OpDiv, bytecode.OpMod:
+		b, cc := c.kernelOperand(k, i.B(), 0), c.kernelOperand(k, i.C(), 1)
 		c.arith(op, 4, b, cc) // in X4, as the destination may be an operand
-		a.MovSD(k.reg(i.a()), 4)
-	case opUnaryMinus:
-		a.MovSD(4, k.reg(i.b()))
+		a.MovSD(k.reg(i.A()), 4)
+	case bytecode.OpUnaryMinus:
+		a.MovSD(4, k.reg(i.B()))
 		c.signMask(3)
 		a.XorPD(4, 3)
-		a.MovSD(k.reg(i.a()), 4)
-	case opEqual, opLessThan, opLessOrEqual:
+		a.MovSD(k.reg(i.A()), 4)
+	case bytecode.OpEqual, bytecode.OpLessThan, bytecode.OpLessOrEqual:
 		t, _ := kernelJump(c.p.code, ip, k.latch)
-		b, cc := c.kernelOperand(k, i.b(), 0), c.kernelOperand(k, i.c(), 1)
-		c.compare(op, i.a() != 0, b, cc, k.target(t, latch), k.target(ip+2, latch))
+		b, cc := c.kernelOperand(k, i.B(), 0), c.kernelOperand(k, i.C(), 1)
+		c.compare(op, i.A() != 0, b, cc, k.target(t, latch), k.target(ip+2, latch))
 		return 1
-	case opJump:
+	case bytecode.OpJump:
 		t, _ := kernelJump(c.p.code, ip, k.latch)
 		a.Jmp(k.target(t, latch))
 	}

@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"unsafe"
+
+	"github.com/matjam/luart/internal/bytecode"
 )
 
 // value is a Lua value in two words. p is nil for nil, a sentinel address
@@ -380,9 +382,9 @@ type upValueDesc struct {
 
 type prototype struct {
 	constants                    []value
-	code                         []instruction
-	exec                         []instruction // see execCode
-	fields                       []fieldCache  // by pc, for exec's field instructions
+	code                         []bytecode.Instruction
+	exec                         []bytecode.Instruction // see execCode
+	fields                       []fieldCache           // by pc, for exec's field instructions
 	prototypes                   []prototype
 	lineInfo                     []int32
 	localVariables               []localVariable
@@ -394,10 +396,10 @@ type prototype struct {
 	isVarArg                     bool
 
 	// JIT state, last so the interpreter's hot fields stay together.
-	jitOn   bool          // loaded by a state that compiles
-	hot     int32         // calls and loop iterations counted
-	jit     *jitCode      // compiled code, or nil
-	jitOrig []instruction // exec before JIT patches; see jit.go
+	jitOn   bool                   // loaded by a state that compiles
+	hot     int32                  // calls and loop iterations counted
+	jit     *jitCode               // compiled code, or nil
+	jitOrig []bytecode.Instruction // exec before JIT patches; see jit.go
 }
 
 func (p *prototype) upValueName(index int) string {
@@ -411,21 +413,21 @@ func (p *prototype) lastLoad(reg int, lastPC pc) (loadPC pc, found bool) {
 	var ip, jumpTarget pc
 	for ; ip < lastPC; ip++ {
 		i, maybe := p.code[ip], false
-		switch i.opCode() {
-		case opLoadNil:
-			maybe = i.a() <= reg && reg <= i.a()+i.b()
-		case opTForCall:
-			maybe = reg >= i.a()+2
-		case opCall, opTailCall:
-			maybe = reg >= i.a()
-		case opJump:
-			if dest := ip + 1 + pc(i.sbx()); ip < dest && dest <= lastPC && dest > jumpTarget {
+		switch i.OpCode() {
+		case bytecode.OpLoadNil:
+			maybe = i.A() <= reg && reg <= i.A()+i.B()
+		case bytecode.OpTForCall:
+			maybe = reg >= i.A()+2
+		case bytecode.OpCall, bytecode.OpTailCall:
+			maybe = reg >= i.A()
+		case bytecode.OpJump:
+			if dest := ip + 1 + pc(i.SBx()); ip < dest && dest <= lastPC && dest > jumpTarget {
 				jumpTarget = dest
 			}
-		case opTest:
-			maybe = reg == i.a()
+		case bytecode.OpTest:
+			maybe = reg == i.A()
 		default:
-			maybe = testAMode(i.opCode()) && reg == i.a()
+			maybe = bytecode.TestAMode(i.OpCode()) && reg == i.A()
 		}
 		if maybe {
 			if ip < jumpTarget { // Can't know loading instruction because code is conditional.
@@ -444,43 +446,43 @@ func (p *prototype) objectName(reg int, lastPC pc) (name, kind string) {
 	}
 	if pc, found := p.lastLoad(reg, lastPC); found {
 		i := p.code[pc]
-		switch op := i.opCode(); op {
-		case opMove:
-			if b := i.b(); b < i.a() {
+		switch op := i.OpCode(); op {
+		case bytecode.OpMove:
+			if b := i.B(); b < i.A() {
 				return p.objectName(b, pc)
 			}
-		case opGetTableUp:
-			name, kind = p.constantName(i.c(), pc), "field"
-			if p.upValueName(i.b()) == "_ENV" {
+		case bytecode.OpGetTableUp:
+			name, kind = p.constantName(i.C(), pc), "field"
+			if p.upValueName(i.B()) == "_ENV" {
 				kind = "global"
 			}
 			return
-		case opGetTable:
-			name, kind = p.constantName(i.c(), pc), "field"
-			if v, ok := p.localName(i.b()+1, pc); ok && v == "_ENV" {
+		case bytecode.OpGetTable:
+			name, kind = p.constantName(i.C(), pc), "field"
+			if v, ok := p.localName(i.B()+1, pc); ok && v == "_ENV" {
 				kind = "global"
 			}
 			return
-		case opGetUpValue:
-			return p.upValueName(i.b()), "upvalue"
-		case opLoadConstant:
-			if s, ok := p.constants[i.bx()].str(); ok {
+		case bytecode.OpGetUpValue:
+			return p.upValueName(i.B()), "upvalue"
+		case bytecode.OpLoadConstant:
+			if s, ok := p.constants[i.Bx()].str(); ok {
 				return s, "constant"
 			}
-		case opLoadConstantEx:
-			if s, ok := p.constants[p.code[pc+1].ax()].str(); ok {
+		case bytecode.OpLoadConstantEx:
+			if s, ok := p.constants[p.code[pc+1].Ax()].str(); ok {
 				return s, "constant"
 			}
-		case opSelf:
-			return p.constantName(i.c(), pc), "method"
+		case bytecode.OpSelf:
+			return p.constantName(i.C(), pc), "method"
 		}
 	}
 	return
 }
 
 func (p *prototype) constantName(k int, pc pc) string {
-	if isConstant(k) {
-		if s, ok := p.constants[constantIndex(k)].str(); ok {
+	if bytecode.IsConstant(k) {
+		if s, ok := p.constants[bytecode.ConstantIndex(k)].str(); ok {
 			return s
 		}
 	} else if name, kind := p.objectName(k, pc); kind == "c" {

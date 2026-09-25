@@ -7,6 +7,8 @@ import (
 	"io"
 	"math"
 	"unsafe"
+
+	"github.com/matjam/luart/internal/bytecode"
 )
 
 type loadState struct {
@@ -84,12 +86,12 @@ func (state *loadState) readString() (s string, err error) {
 	return
 }
 
-func (state *loadState) readCode() (code []instruction, err error) {
+func (state *loadState) readCode() (code []bytecode.Instruction, err error) {
 	n, err := state.readInt()
 	if err != nil || n == 0 {
 		return
 	}
-	code = make([]instruction, n)
+	code = make([]bytecode.Instruction, n)
 	err = state.read(code)
 	return
 }
@@ -270,7 +272,7 @@ func init() {
 	}
 	header.IntSize = 4
 	header.PointerSize = byte(1+^uintptr(0)>>32&1) * 4
-	header.InstructionSize = byte(1+^instruction(0)>>32&1) * 4
+	header.InstructionSize = byte(1+^bytecode.Instruction(0)>>32&1) * 4
 	header.NumberSize = 8
 	header.IntegralNumber = 0
 	tail := "\x19\x93\r\n\x1a\n"

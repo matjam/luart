@@ -1,6 +1,10 @@
 package luart
 
-import "log"
+import (
+	"log"
+
+	"github.com/matjam/luart/internal/bytecode"
+)
 
 func (l *State) push(v value) {
 	l.stack[l.top] = v
@@ -109,7 +113,7 @@ type callInfo struct {
 type luaCallInfo struct {
 	frame   []value
 	savedPC pc
-	code    []instruction
+	code    []bytecode.Instruction
 	closure *luaClosure // the running function, as found at stack[function]
 }
 
@@ -189,7 +193,7 @@ func (l *State) pushGoFrame(function, resultCount int) {
 	l.callInfo = ci
 }
 
-func (ci *luaCallInfo) step() instruction {
+func (ci *luaCallInfo) step() bytecode.Instruction {
 	i := ci.code[ci.savedPC]
 	ci.savedPC++
 	return i
@@ -317,7 +321,7 @@ func (l *State) preCall(function int, resultCount int) bool {
 
 func (l *State) callHook(ci *callInfo) {
 	ci.savedPC++ // hooks assume 'pc' is already incremented
-	if pci := ci.previous; pci.isLua() && pci.code[pci.savedPC-1].opCode() == opTailCall {
+	if pci := ci.previous; pci.isLua() && pci.code[pci.savedPC-1].OpCode() == bytecode.OpTailCall {
 		ci.setCallStatus(callStatusTail)
 		l.hook(HookTailCall, -1)
 	} else {

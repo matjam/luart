@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"unsafe"
 
+	"github.com/matjam/luart/internal/bytecode"
 	"github.com/matjam/luart/internal/jit/call"
 	"github.com/matjam/luart/internal/jit/execmem"
 )
@@ -112,9 +113,9 @@ func markJIT(p *prototype) {
 // patchJITCounters puts opJITCount at p's entry and loop latches. It runs
 // when p's exec code is built.
 func (p *prototype) patchJITCounters() {
-	p.jitOrig = append([]instruction(nil), p.exec...)
+	p.jitOrig = append([]bytecode.Instruction(nil), p.exec...)
 	for ip, i := range p.jitOrig {
-		if ip == 0 || p.code[ip].opCode() == opForLoop && !isExtraArg(p.code, ip) {
+		if ip == 0 || p.code[ip].OpCode() == bytecode.OpForLoop && !isExtraArg(p.code, ip) {
 			p.exec[ip] = patched(i, opJITCount)
 		}
 	}
@@ -131,9 +132,9 @@ func (p *prototype) patchJITCounters() {
 // slower on arithmetic.
 //
 //go:noinline
-func (l *State) jitInstruction(i instruction, ip pc) (instruction, pc) {
+func (l *State) jitInstruction(i bytecode.Instruction, ip pc) (bytecode.Instruction, pc) {
 	ci := l.callInfo
-	if i.opCode() == opJITCount {
+	if i.OpCode() == opJITCount {
 		l.countJIT(ci.closure.prototype)
 	} else if l.hookMask == 0 {
 		l.runJIT(ci, ip-1, nil)
@@ -196,11 +197,11 @@ func jitEntries(p *prototype, exits, always []bool) []int {
 		if isExtraArg(p.code, ip) {
 			continue
 		}
-		switch i.opCode() {
-		case opJump, opForPrep, opForLoop, opTForLoop:
-			mark(ip + 1 + i.sbx())
+		switch i.OpCode() {
+		case bytecode.OpJump, bytecode.OpForPrep, bytecode.OpForLoop, bytecode.OpTForLoop:
+			mark(ip + 1 + i.SBx())
 		}
-		if i.opCode() == opForLoop {
+		if i.OpCode() == bytecode.OpForLoop {
 			mark(ip)
 		}
 		if exits[ip] {
@@ -223,36 +224,36 @@ func jitEntries(p *prototype, exits, always []bool) []int {
 // worthEntering reports whether compiled code entered at ip runs at least
 // jitMinRun instructions, or reaches a loop, before an instruction the
 // interpreter must run.
-func worthEntering(code []instruction, always []bool, ip int) bool {
+func worthEntering(code []bytecode.Instruction, always []bool, ip int) bool {
 	for run := 0; ip < len(code); ip++ {
 		if isExtraArg(code, ip) {
 			continue
 		}
-		op := code[ip].opCode()
-		if always[ip] && op != opCall && op != opReturn && !jitSteps(op) {
+		op := code[ip].OpCode()
+		if always[ip] && op != bytecode.OpCall && op != bytecode.OpReturn && !jitSteps(op) {
 			return false
 		}
-		if run++; run >= jitMinRun || op == opForLoop || op == opJump && code[ip].sbx() < 0 {
+		if run++; run >= jitMinRun || op == bytecode.OpForLoop || op == bytecode.OpJump && code[ip].SBx() < 0 {
 			return true
 		}
 	}
 	return false
 }
 
-func patched(i instruction, op opCode) instruction {
-	i.setOpCode(op)
+func patched(i bytecode.Instruction, op bytecode.OpCode) bytecode.Instruction {
+	i.SetOpCode(op)
 	return i
 }
 
 // isConsumed reports whether the instruction before code[ip] reads it as
 // part of itself: an extra-argument word, the JMP after a test, or the
 // TFORLOOP after TFORCALL. Such instructions are never patched.
-func isConsumed(code []instruction, ip int) bool {
+func isConsumed(code []bytecode.Instruction, ip int) bool {
 	if ip == 0 {
 		return false
 	}
-	switch code[ip-1].opCode() {
-	case opEqual, opLessThan, opLessOrEqual, opTest, opTestSet, opTForCall:
+	switch code[ip-1].OpCode() {
+	case bytecode.OpEqual, bytecode.OpLessThan, bytecode.OpLessOrEqual, bytecode.OpTest, bytecode.OpTestSet, bytecode.OpTForCall:
 		return true
 	}
 	return isExtraArg(code, ip)
@@ -260,15 +261,15 @@ func isConsumed(code []instruction, ip int) bool {
 
 // isExtraArg reports whether code[ip] is the extra-argument word of the
 // instruction before it rather than an instruction.
-func isExtraArg(code []instruction, ip int) bool {
+func isExtraArg(code []bytecode.Instruction, ip int) bool {
 	if ip == 0 {
 		return false
 	}
-	switch prev := code[ip-1]; prev.opCode() {
-	case opLoadConstantEx:
+	switch prev := code[ip-1]; prev.OpCode() {
+	case bytecode.OpLoadConstantEx:
 		return true
-	case opSetList:
-		return prev.c() == 0
+	case bytecode.OpSetList:
+		return prev.C() == 0
 	}
 	return false
 }
@@ -320,8 +321,8 @@ func (l *State) runJIT(ci *callInfo, ip pc, bottom *callInfo) bool {
 		if l.hookMask != 0 { // a Go function set a hook
 			break
 		}
-		switch i := p.jitOrig[ip]; i.opCode() {
-		case opCall:
+		switch i := p.jitOrig[ip]; i.OpCode() {
+		case bytecode.OpCall:
 			if nci, ok := l.jitCall(ci, i, ip); ok {
 				if nci == ci {
 					ip++
@@ -331,7 +332,7 @@ func (l *State) runJIT(ci *callInfo, ip pc, bottom *callInfo) bool {
 				}
 				continue
 			}
-		case opReturn:
+		case bytecode.OpReturn:
 			if ci == bottom {
 				if l.jitReturnToGo(ci, p, i) {
 					return true
@@ -342,12 +343,12 @@ func (l *State) runJIT(ci *callInfo, ip pc, bottom *callInfo) bool {
 				p = c.prototype
 				continue
 			}
-		case opJump: // one that closes upvalues, which compiled code leaves to Go
+		case bytecode.OpJump: // one that closes upvalues, which compiled code leaves to Go
 			ci.savedPC = ip + 1
 			ip = l.jumpFrom(ci, i, ip+1)
 			continue
 		default:
-			if jitSteps(i.opCode()) {
+			if jitSteps(i.OpCode()) {
 				ci.savedPC = ip + 1
 				l.jitStep(ci, i, ip)
 				ip++
@@ -375,8 +376,8 @@ func (l *State) callJIT() bool {
 // frame Go called running p, as the interpreter's general RETURN does. It
 // reports false, having changed nothing, when the results run up to
 // l.top, which compiled code does not track.
-func (l *State) jitReturnToGo(ci *callInfo, p *prototype, i instruction) bool {
-	a, b := i.a(), i.b()
+func (l *State) jitReturnToGo(ci *callInfo, p *prototype, i bytecode.Instruction) bool {
+	a, b := i.A(), i.B()
 	if b == 0 {
 		return false
 	}
@@ -390,9 +391,9 @@ func (l *State) jitReturnToGo(ci *callInfo, p *prototype, i instruction) bool {
 
 // jitSteps reports whether runJIT runs op itself when compiled code exits
 // at it, and goes on in compiled code after it.
-func jitSteps(op opCode) bool {
+func jitSteps(op bytecode.OpCode) bool {
 	switch op {
-	case opJump, opNewTable, opClosure, opLength, opGetTable, opGetTableUp, opSelf, opSetTable, opSetTableUp,
+	case bytecode.OpJump, bytecode.OpNewTable, bytecode.OpClosure, bytecode.OpLength, bytecode.OpGetTable, bytecode.OpGetTableUp, bytecode.OpSelf, bytecode.OpSetTable, bytecode.OpSetTableUp,
 		opGetField, opGetFieldUp, opSelfField, opSetField, opSetFieldUp:
 		return true
 	}
@@ -401,66 +402,66 @@ func jitSteps(op opCode) bool {
 
 // jitStep runs i, the exec instruction at ip, as the interpreter would.
 // Each case is a copy of the interpreter's.
-func (l *State) jitStep(ci *callInfo, i instruction, ip pc) {
+func (l *State) jitStep(ci *callInfo, i bytecode.Instruction, ip pc) {
 	closure, frame := ci.closure, ci.frame
 	constants := closure.prototype.constants
-	switch i.opCode() {
-	case opNewTable:
-		a := i.a()
-		b, c := float8(i.b()), float8(i.c())
+	switch i.OpCode() {
+	case bytecode.OpNewTable:
+		a := i.A()
+		b, c := float8(i.B()), float8(i.C())
 		frame[a] = objectValue(newTableAt(&closure.prototype.fields[ip], intFromFloat8(b), intFromFloat8(c)))
 		clear(frame[a+1:])
-	case opClosure:
-		a, p := i.a(), &closure.prototype.prototypes[i.bx()]
+	case bytecode.OpClosure:
+		a, p := i.A(), &closure.prototype.prototypes[i.Bx()]
 		if ncl := cached(p, closure.upValues, ci.base()); ncl == nil {
 			frame[a] = l.newClosure(p, closure.upValues, ci.base())
 		} else {
 			frame[a] = objectValue(ncl)
 		}
 		clear(frame[a+1:])
-	case opLength:
-		tmp := l.objectLength(frame[i.b()])
-		ci.frame[i.a()] = tmp
-	case opGetTableUp:
-		tmp := l.tableAt(closure.upValue(i.b()), k(i.c(), constants, frame))
-		ci.frame[i.a()] = tmp
-	case opGetTable:
-		tmp := l.tableAt(frame[i.b()], k(i.c(), constants, frame))
-		ci.frame[i.a()] = tmp
-	case opSetTableUp:
-		l.setTableAt(closure.upValue(i.a()), k(i.b(), constants, frame), k(i.c(), constants, frame))
-	case opSetTable:
-		l.setTableAt(frame[i.a()], k(i.b(), constants, frame), k(i.c(), constants, frame))
-	case opSelf:
-		a, t := i.a(), frame[i.b()]
-		tmp := l.tableAt(t, k(i.c(), constants, frame))
+	case bytecode.OpLength:
+		tmp := l.objectLength(frame[i.B()])
+		ci.frame[i.A()] = tmp
+	case bytecode.OpGetTableUp:
+		tmp := l.tableAt(closure.upValue(i.B()), k(i.C(), constants, frame))
+		ci.frame[i.A()] = tmp
+	case bytecode.OpGetTable:
+		tmp := l.tableAt(frame[i.B()], k(i.C(), constants, frame))
+		ci.frame[i.A()] = tmp
+	case bytecode.OpSetTableUp:
+		l.setTableAt(closure.upValue(i.A()), k(i.B(), constants, frame), k(i.C(), constants, frame))
+	case bytecode.OpSetTable:
+		l.setTableAt(frame[i.A()], k(i.B(), constants, frame), k(i.C(), constants, frame))
+	case bytecode.OpSelf:
+		a, t := i.A(), frame[i.B()]
+		tmp := l.tableAt(t, k(i.C(), constants, frame))
 		frame = ci.frame
 		frame[a+1], frame[a] = t, tmp
 	case opGetField, opGetFieldUp, opSelfField:
 		var t value
-		if i.opCode() == opGetFieldUp {
-			t = closure.upValue(i.b())
+		if i.OpCode() == opGetFieldUp {
+			t = closure.upValue(i.B())
 		} else {
-			t = frame[i.b()]
+			t = frame[i.B()]
 		}
-		key := constants[i.c()]
+		key := constants[i.C()]
 		v, ok := getField(t, key, &closure.prototype.fields[ip])
 		if !ok {
 			v = l.tableAt(t, key)
 			frame = ci.frame
 		}
-		if i.opCode() == opSelfField {
-			frame[i.a()+1] = t
+		if i.OpCode() == opSelfField {
+			frame[i.A()+1] = t
 		}
-		frame[i.a()] = v
+		frame[i.A()] = v
 	case opSetField, opSetFieldUp:
 		var t value
-		if i.opCode() == opSetFieldUp {
-			t = closure.upValue(i.a())
+		if i.OpCode() == opSetFieldUp {
+			t = closure.upValue(i.A())
 		} else {
-			t = frame[i.a()]
+			t = frame[i.A()]
 		}
-		key, v := constants[i.b()], k(i.c(), constants, frame)
+		key, v := constants[i.B()], k(i.C(), constants, frame)
 		if !setField(t, key, v, &closure.prototype.fields[ip]) {
 			l.setTableAt(t, key, v)
 		}
@@ -496,8 +497,8 @@ func (l *State) enterJIT(ci *callInfo, c *luaClosure, p *prototype, jc *jitCode,
 // directly. It returns ci when the call is done and compiled code can go
 // on after it, or the callee's new frame. It reports false, having changed
 // nothing, when the interpreter must make the call.
-func (l *State) jitCall(ci *callInfo, i instruction, ip pc) (*callInfo, bool) {
-	a, b, c := i.a(), i.b(), i.c()
+func (l *State) jitCall(ci *callInfo, i bytecode.Instruction, ip pc) (*callInfo, bool) {
+	a, b, c := i.A(), i.B(), i.C()
 	if b == 0 { // arguments up to l.top, which compiled code does not track
 		return nil, false
 	}
@@ -521,8 +522,8 @@ func (l *State) jitCall(ci *callInfo, i instruction, ip pc) (*callInfo, bool) {
 
 // jitCallGo runs the CALL i at ip, which has fixed arguments and results
 // and calls the Go function or Go closure in its register A.
-func (l *State) jitCallGo(ci *callInfo, i instruction, ip pc) {
-	a, b, c := i.a(), i.b(), i.c()
+func (l *State) jitCallGo(ci *callInfo, i bytecode.Instruction, ip pc) {
+	a, b, c := i.A(), i.B(), i.C()
 	frame := ci.frame
 	fv := frame[a]
 	ci.savedPC = ip + 1
@@ -544,11 +545,11 @@ func (l *State) jitCallGo(ci *callInfo, i instruction, ip pc) {
 // reloading the callee from the frame, and copies the results itself
 // unless a hook is set. No hook is set on entry, as compiled code runs
 // only without one.
-func (l *State) jitCallGoFunction(ci *callInfo, i instruction, ip pc) {
+func (l *State) jitCallGoFunction(ci *callInfo, i bytecode.Instruction, ip pc) {
 	ctx := &l.jitCtx
 	f := *(*Function)(ctx.callee)
 	ctx.callee = nil
-	a, b, wanted := i.a(), i.b(), i.c()-1
+	a, b, wanted := i.A(), i.B(), i.C()-1
 	base := int((uintptr(ctx.frame) - uintptr(unsafe.Pointer(unsafe.SliceData(l.stack)))) / unsafe.Sizeof(value{}))
 	function := base + a
 	ci.savedPC = ip + 1
@@ -578,10 +579,10 @@ func (l *State) jitCallGoFunction(ci *callInfo, i instruction, ip pc) {
 // l.jitCtx.callee and the frame's address in l.jitCtx.frame. It calls the
 // function without a frame, as the interpreter does, when the arguments
 // fit it, and otherwise as an ordinary Go function.
-func (l *State) jitCallNumber(ci *callInfo, i instruction, ip pc) {
+func (l *State) jitCallNumber(ci *callInfo, i bytecode.Instruction, ip pc) {
 	ctx := &l.jitCtx
 	nf := (*goFunction)(ctx.callee).number
-	a, b, wanted := i.a(), i.b(), i.c()-1
+	a, b, wanted := i.A(), i.B(), i.C()-1
 	function := int((uintptr(ctx.frame)-uintptr(unsafe.Pointer(unsafe.SliceData(l.stack))))/unsafe.Sizeof(value{})) + a
 	r, ok := nf.tryCall(l.stack[function+1 : function+b])
 	if !ok {
@@ -603,8 +604,8 @@ func (l *State) jitCallNumber(ci *callInfo, i instruction, ip pc) {
 // a fixed number of results to a Lua caller in the same interpreter loop
 // that wants a fixed number. It reports false, having changed nothing,
 // when the interpreter must return.
-func (l *State) jitReturn(ci *callInfo, i instruction) bool {
-	a, b, wanted := i.a(), i.b(), ci.resultCount
+func (l *State) jitReturn(ci *callInfo, i bytecode.Instruction) bool {
+	a, b, wanted := i.A(), i.B(), ci.resultCount
 	if b == 0 || wanted < 0 || !ci.isCallStatus(callStatusReentry) {
 		return false
 	}
