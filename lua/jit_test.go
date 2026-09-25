@@ -224,6 +224,19 @@ func TestJITTablesAndCalls(t *testing.T) {
 		{"deep recursion", `local function d(n) if n == 0 then return 0 end return 1 + d(n - 1) end; function run() return d(5000) end`},
 		{"closures in loops", `function run() local s = 0; for i = 1, 20 do local f = function(x) return x + i end; s = s + f(1) end; return s end`},
 		{"tail calls", `local function t(n, acc) if n == 0 then return acc end return t(n - 1, acc + n) end; function run() return t(100, 0) end`},
+		// A compiled function returns from a frame another function
+		// tail-called, whose callInfo the next compiled call reuses.
+		{"calls after returning from a tail-called frame", `
+			local function new(x) return {x = x} end
+			local function plus(a) return new(a.x + 1) end
+			local function minus(a) return new(a.x - 1) end
+			local n = 0
+			local function rec(v, depth)
+			  if depth == 0 then n = n + v.x return end
+			  rec(minus(v), depth - 1)
+			  rec(plus(v), depth - 1)
+			end
+			function run() for i = 1, 200 do rec(new(i), 6) end return n end`},
 		{"absent keys without a metatable", `function run() local t = {1, nil, 3, x = 1}; local n = 0; for i = 1, 4 do if t[i] == nil then n = n + 1 end; if t.y == nil then n = n + 10 end end; return n end`},
 		{"absent keys with a metatable", `
 			local t = setmetatable({1, nil, 3}, {__index = function(_, k) return k end})

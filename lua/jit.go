@@ -284,9 +284,10 @@ func isExtraArg(code []bytecode.Instruction, ip int) bool {
 // returns from it to Go itself, as the interpreter would, and then reports
 // true.
 //
-// c and p follow ci, and are reloaded only when ci changes: an exit for a
-// Go call comes back to the frame it left, and the chain of loads from ci
-// to its prototype would otherwise be repeated on every crossing.
+// c and p follow ci, and are reloaded only when ci or its closure changes:
+// an exit for a Go call comes back to the frame it left, and the chain of
+// loads from ci to its prototype would otherwise be repeated on every
+// crossing.
 func (l *State) runJIT(ci *callInfo, ip pc, bottom *callInfo) bool {
 	c := ci.closure
 	p := c.prototype
@@ -300,7 +301,10 @@ func (l *State) runJIT(ci *callInfo, ip pc, bottom *callInfo) bool {
 			break
 		}
 		l.enterJIT(ci, c, p, jc, off)
-		if nci := l.callInfo; nci != ci { // compiled calls and returns move between frames
+		// Compiled calls and returns move between frames. A frame compiled
+		// code returned from and another call reused can be ci again,
+		// running another function.
+		if nci := l.callInfo; nci != ci || nci.closure != c {
 			ci, c = nci, nci.closure
 			p = c.prototype
 		}
