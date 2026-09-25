@@ -597,6 +597,14 @@ func (l *State) executeSwitchJIT() {
 					frame[a+j] = nilValue
 				}
 			}
+		case bytecode.OpErrNNil:
+			if !frame[i.A()].isNil() {
+				name := "?"
+				if bx := i.Bx(); bx > 0 {
+					name, _ = constants[bx-1].str()
+				}
+				l.runtimeError(fmt.Sprintf("global '%s' already defined", name))
+			}
 		case bytecode.OpExtraArg:
 			panic(fmt.Sprintf("unexpected opExtraArg instruction, '%s'", i.String()))
 		}

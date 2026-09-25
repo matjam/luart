@@ -58,6 +58,10 @@ const (
 	// operators take one of the few opcodes left.
 	OpIDiv
 	OpBitwise
+
+	// Lua 5.5's global declarations: ERRNNIL A Bx raises "global 'K[Bx-1]'
+	// already defined" unless R(A) is nil ('?' for the name when Bx is 0).
+	OpErrNNil
 )
 
 var OpNames = []string{
@@ -103,6 +107,7 @@ var OpNames = []string{
 	"EXTRAARG",
 	"IDIV",
 	"BITWISE",
+	"ERRNNIL",
 }
 
 const (
@@ -276,4 +281,5 @@ var opModes []byte = []byte{
 	opmode(0, 0, ArgU, ArgU, ModeAx),   // opExtraArg
 	opmode(0, 1, ArgK, ArgK, ModeABC),  // opIDiv
 	opmode(0, 1, ArgK, ArgK, ModeABC),  // opBitwise; C is unused for ~x
+	opmode(0, 0, ArgU, ArgN, ModeABx),  // opErrNNil
 }
