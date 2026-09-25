@@ -180,57 +180,68 @@ compares the callee against each intrinsic in turn (`sin` is fifth).
 
 ## Recommended next steps
 
+### Where the time goes now
+
+Measured on the 9900X3D with the JIT on (bench/README.md):
+
+- Crossings between compiled code and Go are close to their floor. A
+  call into Go costs about 12.5 ns, of which about 4.5 ns is compiled
+  code around it, and the rest is the API's Go frame and the round trip.
+  Within a workload, the only exits left on every iteration are calls
+  into Go, allocations (`CLOSURE`, `NEWTABLE`) and the sort comparator's
+  return to Go.
+- Plasma takes about 37 ns a pixel against Go's 15: about 12 ns for the
+  call to `set`, about 6 ns for each of three `sin`s (Go's `math.Sin` is
+  about 4), and the rest in ordinary compiled code, which keeps every Lua
+  register in memory.
+- fib, records and particles are limited by ordinary compiled code:
+  values in memory, a type check on every read and a barrier check on
+  every store.
+- Closures and records are limited by allocation, one object per
+  iteration, as Lua requires.
+
+### Done in this round
+
+- Calls into Go: `jitExitCallGo` and `jitExitCallNumber`, and a driver
+  path that makes the call from what the exit leaves in the context (16.6
+  to 12.5 ns). `numberFunction.call` takes float64 arguments, not an
+  array: an array went through memory, and its 16-byte copies of 8-byte
+  stores stalled on store forwarding.
+- Go calling compiled Lua: `callJIT` and `jitReturnToGo`; `table.sort`
+  on the table and stack directly (sort 5.6 to 3.6 ms).
+- `sin` and `cos` constants from memory (−12% on `sin`-heavy loops).
+- Array indexing of tables in upvalues (particles −15%).
+
+### Next
+
 In order of expected payoff for real-time scripts such as visualisers:
 
-1. **Cheaper calls into Go.**
-   - *Done:* the `jitExitCallGo` exit, which leaves the callee's object
-     and frame in the context; `jitCallGoFunction`, which pushes the Go
-     frame and copies results itself (a loop: `copy` of a few values is a
-     runtime call); reloading the prototype only when the frame changes;
-     and a leaner `enterJIT`. Calls into Go went from 16.6 to 12.5 ns on
-     amd64.
-   - Number functions exit with `jitExitCallNumber`, the same way, and
-     `jitCallNumber` calls them frameless through `tryCall`, falling back
-     to an ordinary Go call when the arguments do not fit.
-     `numberFunction.call` takes its arguments as separate float64s: as
-     an array by value they went through memory, where 16-byte copies of
-     8-byte stores stalled on store forwarding.
-2. **Go calling compiled Lua** (the `table.sort` comparator, callbacks
-   from host code).
-   - *Done:* `callJIT` and `jitReturnToGo`, and `table.sort` working on
-     the table and stack directly rather than through the API. Sort went
-     from 5.6 to 3.6 ms with the JIT, and 5.0 to 3.6 ms without it.
-   - *Left:* compiled code could run the RETURN of the frame Go called
-     itself, as `returnLua` does for re-entries. It would need a call
-     status bit on `callJIT`'s frame, cleared when the interpreter takes
-     over. `call` and `preCall` also still run their general cases for
-     every call.
-3. **Loop-invariant global and upvalue loads.** Measured and not worth
-   it for now: plasma's inner loop runs at 41.5 ns per pixel with `set` a
-   global and 41.3 ns with it a local, so re-walking the field cache each
-   iteration costs almost nothing. Measure again before building it. On
-   amd64, per pixel, the call to `set` costs about 18 ns and each `sin`
-   about 6 ns (Go's `math.Sin` about 4).
-4. **Wider kernels.**
-   - Allow intrinsic calls inside kernels. The callee value is guarded
-     once at loop entry, as the upvalue or global it comes from cannot
-     change inside a kernel with no stores.
-   - Allow number-function calls by writing back only the registers the
-     call can observe.
-   - This would make plasma's inner loop a kernel apart from `set`.
-5. **Closures and GC.**
-   - *Why:* the closures workload is GC-bound in both modes; the main
-     goroutine gets about half the CPU.
-   - *Fix:* shrink `luaClosure`, reuse closures for identical upvalues
-     (Lua 5.2's closure cache, `cached`, only helps when upvalues match),
-     or create closures in compiled code from a pre-allocated pool.
-6. **More native instructions:**
-   - TFORCALL/TFORLOOP, with fast paths for `ipairs` and `pairs` over
-     array parts.
-   - CONCAT of numbers and strings into a reusable buffer.
-   - SETLIST.
-   - Vararg calls and tail calls.
-7. **amd64 on real hardware.** bench/README.md now has linux/amd64
-   timings. Still to check: whether keeping the budget and barrier in
-   memory costs enough to justify spilling another register for them.
-   Plasma suggests it does, as every store re-reads the barrier.
+1. **Kernels with calls.** Let a kernel call an intrinsic, guarding the
+   callee once at loop entry (nothing in a kernel can change the upvalue
+   or global it comes from), and call a Go or number function by writing
+   the kernel's registers back, exiting, and re-entering after the call.
+   Plasma's inner loop would then keep its numbers in registers apart
+   from the call to `set`; its body without `set` measured 23 ns a pixel
+   as ordinary code and 1.4 ns as a kernel without `sin`.
+2. **Registers across ordinary code.** Keep numbers in FP registers
+   across straight-line code between exits, not only in kernels, with
+   type checks at the first use. This is the lever for fib, records and
+   particles.
+3. **The comparator's return to Go.** Compiled code could run the RETURN
+   of the frame `callJIT` entered itself, with a call status bit on that
+   frame cleared when the interpreter takes over. Replacing
+   `jitReturnToGo`'s `postCall` with an inline copy measured no gain; the
+   remaining cost of each comparison is spread across `call`, `preCall`,
+   `pushLuaFrame` and `enterJIT`.
+4. **Closures and GC.** Shrink `luaClosure`, or create closures in
+   compiled code from a pre-allocated pool.
+5. **More native instructions:** TFORCALL/TFORLOOP with fast paths for
+   `ipairs` and `pairs` over array parts; CONCAT into a reusable buffer;
+   SETLIST; vararg and tail calls.
+6. **The barrier and budget in registers on amd64**, where they live in
+   the context: unmeasured.
+
+Measured and not worth it for now: loop-invariant global loads (plasma
+runs the same with `set` global or local), and putting `sin` and `cos`
+first in the intrinsic dispatch (0.9% on plasma, at a cost to every other
+intrinsic).
