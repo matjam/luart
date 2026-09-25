@@ -167,3 +167,29 @@ func (k *kernelPlan) writtenOnce() []int {
 	}
 	return out
 }
+
+// A numKind is what compiling knows of an operand's number type: a
+// constant's, or nothing, for a register.
+type numKind uint8
+
+const (
+	kindAny numKind = iota
+	kindFloat
+	kindInt
+)
+
+// constKind is the number type of constant v, or kindAny if it is not a
+// number.
+func constKind(v value) numKind {
+	switch {
+	case v.isFloat():
+		return kindFloat
+	case v.isInteger():
+		return kindInt
+	}
+	return kindAny
+}
+
+// exactFloat reports whether the integer i converts to a float exactly,
+// so that comparing the float compares i.
+func exactFloat(i int64) bool { return -(1<<53) <= i && i <= 1<<53 }

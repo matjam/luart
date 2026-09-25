@@ -65,7 +65,9 @@ func runBothWith(t *testing.T, src string, setup func(*State)) (jit, interp stri
 		l.Call(0, MultipleReturns)
 		var parts []string
 		for i := 1; i <= l.Top(); i++ {
-			if n, ok := l.ToNumber(i); ok && l.TypeOf(i) == TypeNumber {
+			if n, ok := l.ToInteger(i); ok && l.IsInteger(i) {
+				parts = append(parts, fmt.Sprintf("int %d", n))
+			} else if n, ok := l.ToNumber(i); ok && l.TypeOf(i) == TypeNumber {
 				parts = append(parts, fmt.Sprintf("%.17g", n))
 			} else {
 				parts = append(parts, fmt.Sprint(l.ToValue(i)))
@@ -634,6 +636,48 @@ func TestJITTrigMatchesGo(t *testing.T) {
 // Numeric loops on floats compile to kernels that keep numbers in
 // registers; each case says how many kernels it should compile. Integer
 // loops do not compile to kernels yet.
+// Integers in compiled code: arithmetic wraps, mixes with floats, and
+// compares exactly; integer loops count as forPrep does; integer keys
+// index arrays.
+func TestJITIntegers(t *testing.T) {
+	skipWithoutJIT(t)
+	for _, src := range []string{
+		`function run() local s = 0; for i = 1, 100 do s = s + i * 3 - 1 end; return s end`,
+		`function run() local s = 0; for i = 10, 1, -3 do s = s + i end; return s end`,
+		`function run() local s = 0; for i = 1, 0 do s = s + 1 end; for i = 5, 6, -1 do s = s + 1 end; return s end`,
+		`function run() local s = 0; for i = math.maxinteger - 2, math.maxinteger do s = s + 1 end; return s end`,
+		`function run() local s = 0; for i = math.mininteger, math.mininteger + 4, 2 do s = s + 1 end; return s end`,
+		`function run() local s = 0; for i = math.maxinteger, math.maxinteger - 10, math.mininteger do s = s + 1 end; return s end`,
+		`function run() local s = 0; for i = 1, 3.5 do s = s + i end; return s end`,
+		`function run() local s = 0.0; for i = 1, 10 do s = s + i / 2 end; return s end`,
+		`function run() local x = math.maxinteger; for i = 1, 3 do x = x + 1 end; return x, -math.mininteger end`,
+		`function run() local a, b = 0, 0.0; for i = 1, 20 do a = a + i; b = b + i * 0.5 end; return a, b, a * b end`,
+		`function run() local n = 0; for i = -10, 10 do if i < 3 then n = n + 1 end; if i <= -2.5 then n = n + 10 end end; return n end`,
+		`function run() local n = 0; local big = 2^53 | 0; for i = big - 2, big + 2 do if i < 2^53 then n = n + 1 end end; return n end`,
+		`function run() local n = 0; for i = 1, 10 do if 5 < i then n = n + 1 end; if i >= 7.5 then n = n + 100 end end; return n end`,
+		`function run() local t = {}; for i = 1, 50 do t[i] = i * i end; local s = 0; for i = 1, 50 do s = s + t[i] end; return s, t[2.0], #t end`,
+		`function run() local t = {10, 20, 30}; local s = 0; for i = 1, 3 do s = s + t[i] + t[1] end; return s end`,
+		`function run() local s = 0; for i = 1, 10 do local n = -i; if n == -5 then s = s + 100 end; s = s + n end; return s end`,
+		`function run() local s = 0; for i = 1, 10 do s = s - -i + (i == 3.0 and 1000 or 0) end; return s end`,
+		`function run() local s = 1; local i = 0; while i < 20 do i = i + 1; s = s * 3 end; return s, i end`,
+		`function run() local s = 0; for i = 1.0, 3 do s = s + i end; for i = 1, 3, 0.5 do s = s + i end; return s end`,
+		`function run() local s = 0.0; for i = 1, 30 do s = s + math.sqrt(i) + math.sin(i) end; return s end`,
+		`function run() local s = 0; for i = -20, 20 do s = s + i % 7 + i % -3 + i // 4 + i // -3 + (i * 1000003) % 65536 end; return s end`,
+		`function run() local s = 0; for i = 1, 10 do s = s + math.mininteger // -1 + math.mininteger % -1 + i // 2.5 + i % 2.5 end; return s end`,
+		`function run() local s = 0.0; for i = 1, 10 do s = s + (i + 0.5) // 2 + 7.5 // -i end; return s end`,
+		`function run() local s, x = 0, 0; for i = 1, 70 do x = x ~ (i << (i % 5)) ~ (-i >> 3); s = s + (x & 0xff) + (x | i) % 97 + ~i + (1 << i) + (-1 >> i) + (i << -2) + (i >> -1) end; return s, x end`,
+		`function run() local s = 0; for i = 1, 5 do s = s + (i << 63) + (i << 64) + (i >> 64) + (i << -64) end; return s end`,
+		`function run() local s = 0; for i = 1, 5 do s = s | (i & 3.0) end; return s end`,
+		`function run() local ok = pcall(function() local s = 0; for i = 1, 5 do s = s + i // (i - 3) end end); return ok end`,
+		`function run() local ok, e = pcall(function() local s = 0; for i = 1, 5 do s = s + i % (3 - i) end end); return ok, e end`,
+	} {
+		jit, interp, _ := runBoth(t, src)
+		if jit != interp {
+			t.Errorf("%s:\nJIT %q, interpreter %q", src, jit, interp)
+		}
+	}
+}
+
 func TestJITKernels(t *testing.T) {
 	skipWithoutJIT(t)
 	tests := []struct {
@@ -870,20 +914,33 @@ func TestJITRandomArithmetic(t *testing.T) {
 	skipWithoutJIT(t)
 	r := rand.New(rand.NewPCG(1, 2))
 	ops := []string{"+", "-", "*", "/"}
-	for n := range 200 {
+	for n := range 400 {
 		var b strings.Builder
-		b.WriteString("function run()\n local v0, v1, v2, v3 = 1.5, -2, 3.25, 1e-3\n")
+		// Half the programs start from integers, some near the ends of
+		// their range, and mix in integer constants.
+		start := "1.5, -2, 3.25, 1e-3"
+		if n%2 == 1 {
+			start = "7, -3, math.maxinteger - 5, 2^53 // 1"
+		}
+		fmt.Fprintf(&b, "function run()\n local v0, v1, v2, v3 = %s\n", start)
 		for range 12 {
 			dst := r.IntN(4)
 			x := fmt.Sprintf("v%d", r.IntN(4))
 			y := fmt.Sprintf("v%d", r.IntN(4))
-			if r.IntN(3) == 0 {
+			switch r.IntN(4) {
+			case 0:
 				y = fmt.Sprintf("%g", r.Float64()*10-5)
+			case 1:
+				y = fmt.Sprint(r.IntN(20) - 10)
 			}
 			if r.IntN(5) == 0 {
 				x = "-" + x
 			}
-			fmt.Fprintf(&b, " v%d = %s %s %s\n", dst, x, ops[r.IntN(len(ops))], y)
+			op := ops[r.IntN(len(ops))]
+			if n%2 == 0 && r.IntN(4) == 0 { // floats: no division by zero errors
+				op = []string{"//", "%"}[r.IntN(2)]
+			}
+			fmt.Fprintf(&b, " v%d = %s %s %s\n", dst, x, op, y)
 		}
 		b.WriteString(" return v0, v1, v2, v3\nend")
 		jit, interp, _ := runBoth(t, b.String())

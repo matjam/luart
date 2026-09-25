@@ -325,20 +325,32 @@ func (c *amd64Compiler) setField(ip int, i bytecode.Instruction, up bool) {
 }
 
 // arrayIndex puts the zero-based array index for the number key RK(field)
-// in rIdx, exiting at ip unless it is an integer.
+// in rIdx: an integer, or a float with an integer value, as the table
+// normalises it; anything else exits at ip.
 func (c *amd64Compiler) arrayIndex(field, ip int) bool {
 	a := &c.a
-	k, ok := c.rkNumber(field)
+	k, kind, ok := c.rkArith(field)
 	if !ok {
 		return false
 	}
-	c.guardNumber(k, ip)
-	a.LoadSD(0, k.base, k.off+offN)
-	a.Cvttsd2si(rIdx, 0)
-	a.Cvtsi2sd(1, rIdx)
-	a.Ucomisd(0, 1)
-	a.J(P, c.exit(ip))
-	a.J(NE, c.exit(ip))
+	floatKey, done := a.NewLabel(), a.NewLabel()
+	c.branchUnlessInteger(k, kind, floatKey)
+	a.Load(rIdx, k.base, k.off+offN)
+	a.Jmp(done)
+	a.Bind(floatKey)
+	if kind != kindInt {
+		if kind == kindAny {
+			a.Test(rTmp, rTmp) // p - numberPtr(): 0 for a float
+			a.J(NE, c.exit(ip))
+		}
+		a.LoadSD(0, k.base, k.off+offN)
+		a.Cvttsd2si(rIdx, 0)
+		a.Cvtsi2sd(1, rIdx)
+		a.Ucomisd(0, 1)
+		a.J(P, c.exit(ip))
+		a.J(NE, c.exit(ip))
+	}
+	a.Bind(done)
 	a.SubImm(rIdx, 1)
 	return true
 }
@@ -483,8 +495,7 @@ func (c *amd64Compiler) intrinsic(ip int, i bytecode.Instruction, notGo Label) {
 	a.Test(rT, rT)
 	a.J(E, c.goCallExit(ip))
 	a.Load(rT, rT, offNFUnary)
-	c.guardNumber(arg, ip)
-	a.LoadSD(0, arg.base, arg.off+offN)
+	c.loadFloat(0, arg, kindAny, false, ip) // an integer converts, as for a number function
 	done := a.NewLabel()
 	for _, in := range c.intrinsics() {
 		next := a.NewLabel()
