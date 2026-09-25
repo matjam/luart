@@ -93,30 +93,77 @@ Each cell is the median time, and in brackets that time divided by C Lua
 
 ## arm64
 
-Apple M1 Pro, Go 1.27.1, `CGO_ENABLED=0`, `-count 6`,
-`-ldflags=-funcalign=64`, medians, 2026-09-24, measured at commit 664f09d,
-before the changes to calls between Go and compiled Lua, to `table.sort`,
-and to `sin` and `cos` that the amd64 results include, and without the C
-interpreters or the standard benchmarks. Raw output:
+Apple M1 Pro, macOS, Go 1.27.1, `-count 6`, `-ldflags=-funcalign=64`,
+medians, 2026-09-25, at commit 26f3589. Lua 5.4.9 and LuaJIT 2.1.1788856981
+from Homebrew (`lua@5.4`, `luajit`). The machine was not idle, so single
+results vary more than on amd64. Raw output:
 [`suite-results.txt`](suite-results.txt).
+
+### The suite
 
 ![Each interpreter's time on each workload divided by native Go's, on Apple M1 Pro](suite-arm64-m1.svg)
 
+Each cell is the median time, and in brackets that time divided by native
+Go's.
+
 <!-- suite-table arm64-m1 -->
-| Workload | Native Go | Luart (JIT) | Luart (no JIT) | go-lua |
-|---|---:|---:|---:|---:|
-| fib(25), recursive calls | 0.25 ms | 2.68 ms (11×) | 7.94 ms (32×) | 13.8 ms (55×) |
-| numeric loop, 1M iterations | 1.20 ms | 1.83 ms (1.5×) | 14.0 ms (12×) | 294 ms (245×) |
-| array fill and sum, 100k | 0.45 ms | 1.63 ms (3.6×) | 4.03 ms (8.9×) | 8.45 ms (19×) |
-| records, 10k tables | 0.13 ms | 1.09 ms (8.7×) | 1.29 ms (10×) | 4.23 ms (34×) |
-| closures, 100k | 0.35 ms | 9.55 ms (27×) | 7.80 ms (22×) | 13.6 ms (39×) |
-| sort 10k with comparator | 1.94 ms | 9.52 ms (4.9×) | 7.41 ms (3.8×) | 14.0 ms (7.2×) |
-| string build, 10k pieces | 0.57 ms | 0.99 ms (1.7×) | 1.04 ms (1.8×) | 93.4 ms (165×) |
-| calls into Go, 100k | 0.35 ms | 3.21 ms (9.2×) | 2.76 ms (7.9×) | 7.66 ms (22×) |
-| plasma frame | 0.30 ms | 1.66 ms (5.5×) | 2.19 ms (7.2×) | 5.70 ms (19×) |
-| particles frame | 0.006 ms | 0.22 ms (38×) | 0.36 ms (61×) | 1.59 ms (270×) |
-| **geometric mean** |  | **6.9×** | **11×** | **46×** |
+| Workload | Native Go | Luart (JIT) | Luart (no JIT) | go-lua | Lua 5.4 | LuaJIT |
+|---|---:|---:|---:|---:|---:|---:|
+| fib(25), recursive calls | 0.25 ms | 2.75 ms (11×) | 8.03 ms (32×) | 13.7 ms (54×) | 4.28 ms (17×) | 0.50 ms (2.0×) |
+| numeric loop, 1M iterations | 1.17 ms | 1.77 ms (1.5×) | 13.9 ms (12×) | 290 ms (247×) | 11.6 ms (9.9×) | 1.10 ms (0.94×) |
+| array fill and sum, 100k | 0.57 ms | 1.91 ms (3.3×) | 4.26 ms (7.5×) | 9.36 ms (16×) | 1.22 ms (2.1×) | 0.41 ms (0.71×) |
+| records, 10k tables | 0.14 ms | 1.17 ms (8.3×) | 1.49 ms (11×) | 5.06 ms (36×) | 1.34 ms (9.4×) | 0.43 ms (3.1×) |
+| closures, 100k | 0.37 ms | 9.91 ms (27×) | 9.99 ms (27×) | 15.0 ms (40×) | 9.73 ms (26×) | 5.40 ms (14×) |
+| sort 10k with comparator | 2.07 ms | 6.90 ms (3.3×) | 5.76 ms (2.8×) | 15.3 ms (7.4×) | 5.56 ms (2.7×) | 4.01 ms (1.9×) |
+| string build, 10k pieces | 0.61 ms | 0.91 ms (1.5×) | 1.10 ms (1.8×) | 127 ms (207×) | 1.79 ms (2.9×) | 0.49 ms (0.81×) |
+| string scan, 11k characters | 0.02 ms | 0.88 ms (40×) | 2.38 ms (108×) | 3.72 ms (168×) | 1.10 ms (50×) | 0.10 ms (4.7×) |
+| calls into Go, 100k | 0.41 ms | 2.30 ms (5.6×) | 2.87 ms (7.0×) | 8.36 ms (20×) | 1.99 ms (4.8×) | 1.20 ms (2.9×) |
+| plasma frame | 0.32 ms | 1.53 ms (4.8×) | 2.35 ms (7.4×) | 6.10 ms (19×) | 2.37 ms (7.4×) | 0.55 ms (1.7×) |
+| particles frame | 0.006 ms | 0.19 ms (32×) | 0.40 ms (65×) | 1.77 ms (291×) | 0.29 ms (48×) | 0.06 ms (10×) |
+| **geometric mean** |  | **7.0×** | **13×** | **53×** | **9.5×** | **2.5×** |
 <!-- /suite-table -->
+
+- Sort with a comparator takes longer with the JIT than without it on
+  the M1 (6.90 ms against 5.76 ms), where amd64 is a little faster with
+  it. Why is not yet measured.
+
+### The standard benchmarks
+
+![Each interpreter's time on each standard benchmark divided by C Lua 5.4's, on Apple M1 Pro](standard-arm64-m1.svg)
+
+Each cell is the median time, and in brackets that time divided by C Lua
+5.4's.
+
+<!-- suite-table standard-arm64-m1 -->
+| Benchmark | Lua 5.4 | Luart (JIT) | Luart (no JIT) | go-lua | LuaJIT |
+|---|---:|---:|---:|---:|---:|
+| Bounce | 0.49 ms | 0.35 ms (0.70×) | 0.79 ms (1.6×) | 3.02 ms (6.1×) | 0.10 ms (0.19×) |
+| CD | 57.8 ms | 57.1 ms (0.99×) | 63.8 ms (1.1×) | 236 ms (4.1×) | 23.8 ms (0.41×) |
+| DeltaBlue | 40.5 ms | 32.8 ms (0.81×) | 47.7 ms (1.2×) | 2473 ms (61×) | 15.4 ms (0.38×) |
+| Havlak | 3436 ms | 2701 ms (0.79×) | 3142 ms (0.91×) | – | 1892 ms (0.55×) |
+| Json | 8.80 ms | 6.18 ms (0.70×) | 10.2 ms (1.2×) | 28.2 ms (3.2×) | 1.24 ms (0.14×) |
+| List | 0.48 ms | 0.28 ms (0.59×) | 0.62 ms (1.3×) | 1.48 ms (3.1×) | 0.08 ms (0.16×) |
+| Mandelbrot | 303 ms | 175 ms (0.58×) | 346 ms (1.1×) | 1145 ms (3.8×) | 40.8 ms (0.13×) |
+| NBody | 2.68 ms | 1.44 ms (0.54×) | 3.37 ms (1.3×) | 14.9 ms (5.6×) | 0.13 ms (0.05×) |
+| Permute | 0.77 ms | 0.46 ms (0.60×) | 1.43 ms (1.9×) | 3.43 ms (4.5×) | 0.02 ms (0.03×) |
+| Queens | 0.55 ms | 0.28 ms (0.51×) | 0.88 ms (1.6×) | 1.99 ms (3.6×) | 0.05 ms (0.10×) |
+| Richards | 29.7 ms | 23.6 ms (0.79×) | 38.3 ms (1.3×) | 131 ms (4.4×) | 7.41 ms (0.25×) |
+| Sieve | 0.18 ms | 0.14 ms (0.76×) | 0.44 ms (2.4×) | 0.87 ms (4.7×) | 0.02 ms (0.11×) |
+| Storage | 1.51 ms | 1.02 ms (0.68×) | 1.26 ms (0.83×) | 4.20 ms (2.8×) | 0.49 ms (0.33×) |
+| Towers | 1.34 ms | 0.97 ms (0.73×) | 2.08 ms (1.6×) | 6.11 ms (4.6×) | 0.08 ms (0.06×) |
+| binary-trees | 195 ms | 231 ms (1.2×) | 269 ms (1.4×) | 316 ms (1.6×) | 52.3 ms (0.27×) |
+| fannkuch-redux | 136 ms | 109 ms (0.80×) | 262 ms (1.9×) | 457 ms (3.4×) | 17.2 ms (0.13×) |
+| spectral-norm | 65.5 ms | 32.6 ms (0.50×) | 93.7 ms (1.4×) | 247 ms (3.8×) | 2.04 ms (0.03×) |
+| **geometric mean** |  | **0.70×** | **1.4×** | **4.5×** | **0.14×** |
+<!-- /suite-table -->
+
+- luart with the JIT takes 0.70 times as long as C Lua 5.4 on the
+  geometric mean, and is faster on 16 of the 17; binary-trees, which
+  allocates most, takes 1.2 times as long.
+- Without the JIT, luart takes 1.4 times as long as C Lua 5.4.
+- Relative to C Lua 5.4, both luart and LuaJIT do better here than on
+  amd64. The two machines' C Lua 5.4 are different builds (Homebrew and
+  Arch Linux), so compare their ratios with care.
 
 ## Allocations
 
@@ -178,7 +225,9 @@ C Lua 5.4 and LuaJIT are linked with cgo, so they need a C compiler and
 their development packages, found with pkg-config (`lua5.4` and
 `luajit`). Both define the Lua C API, so a test binary can link only one.
 Each has a build tag: `clua54` or `luajit`. Without either, the benchmarks
-build with `CGO_ENABLED=0` and run luart and go-lua only.
+build with `CGO_ENABLED=0` and run luart and go-lua only. On macOS,
+Homebrew's `lua` is now 5.5; install `lua@5.4`, which is keg-only, and
+set `PKG_CONFIG_PATH=$(brew --prefix lua@5.4)/lib/pkgconfig`.
 
 ## Reproducing
 
@@ -196,5 +245,10 @@ go run ./chart -suite standard -svg standard-amd64.svg -readme README.md,../READ
 From the median of each benchmark in the file, `-svg` redraws the chart
 and `-readme` rewrites the table between `<!-- suite-table NAME -->` and
 `<!-- /suite-table -->` in each file; `-table` prints it instead. Name the
-file, charts and tables for the machine; `suite-results.txt`,
-`suite-arm64-m1.svg` and `arm64-m1` are Apple M1.
+file, charts and tables for the machine. On Apple M1 the file is
+`suite-results.txt`, and the charts and tables are only in this README:
+
+```sh
+go run ./chart -svg suite-arm64-m1.svg -readme README.md -name arm64-m1 suite-results.txt
+go run ./chart -suite standard -svg standard-arm64-m1.svg -readme README.md -name standard-arm64-m1 suite-results.txt
+```
