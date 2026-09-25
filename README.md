@@ -67,9 +67,9 @@ Work so far:
 
 Inherited from go-lua:
 
-- Most core libraries are implemented. The gaps are the coroutine library,
-  `debug.getlocal`, `setlocal` and `debug`, `os.date` and `os.setlocale`,
-  and `io.popen`.
+- The standard libraries are complete apart from the coroutine library.
+  There is only the C locale, and C modules cannot load: luart has no
+  dynamic libraries.
 - Weak tables are not supported. Go's `weak` package (Go 1.24) could make
   them possible.
 
