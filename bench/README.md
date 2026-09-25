@@ -15,18 +15,20 @@ AMD Ryzen 9 9900X3D, linux, Go 1.27.1, `CGO_ENABLED=0`, `-count 6`,
 
 ![How many times slower than native Go each interpreter runs each workload, on amd64](suite-amd64.svg)
 
+<!-- suite-table amd64 -->
 | Workload | Native Go | Luart (no JIT) | Luart (JIT) | go-lua | Luart (no JIT) vs Go | Luart (JIT) vs Go | go-lua vs Go |
 |---|---|---|---|---|---|---|---|
-| fib(25), recursive calls | 0.22 ms | 5.64 ms | 1.60 ms | 9.29 ms | 25× slower | 7.2× slower | 42× slower |
-| numeric loop, 1M iterations | 0.78 ms | 8.47 ms | 0.99 ms | 189 ms | 11× slower | 1.3× slower | 242× slower |
-| array fill and sum, 100k | 0.50 ms | 2.67 ms | 1.12 ms | 6.41 ms | 5.4× slower | 2.3× slower | 13× slower |
-| records, 10k tables | 0.09 ms | 0.90 ms | 0.68 ms | 3.07 ms | 9.7× slower | 7.3× slower | 33× slower |
-| closures, 100k | 0.22 ms | 5.33 ms | 4.62 ms | 9.59 ms | 24× slower | 21× slower | 43× slower |
-| sort 10k with comparator | 1.28 ms | 3.63 ms | 3.55 ms | 9.73 ms | 2.8× slower | 2.8× slower | 7.6× slower |
-| string build, 10k pieces | 0.37 ms | 0.72 ms | 0.60 ms | 59.4 ms | 1.9× slower | 1.6× slower | 161× slower |
-| calls into Go, 100k | 0.22 ms | 1.71 ms | 1.26 ms | 5.42 ms | 7.7× slower | 5.7× slower | 25× slower |
-| plasma frame | 0.29 ms | 1.35 ms | 0.74 ms | 4.15 ms | 4.6× slower | 2.5× slower | 14× slower |
-| particles frame | 0.005 ms | 0.26 ms | 0.10 ms | 1.20 ms | 49× slower | 19× slower | 230× slower |
+| fib(25), recursive calls | 0.22 ms | 5.54 ms | 1.58 ms | 9.19 ms | 26× slower | 7.3× slower | 42× slower |
+| numeric loop, 1M iterations | 0.78 ms | 8.51 ms | 0.96 ms | 187 ms | 11× slower | 1.2× slower | 239× slower |
+| array fill and sum, 100k | 0.46 ms | 2.76 ms | 1.19 ms | 6.39 ms | 6.0× slower | 2.6× slower | 14× slower |
+| records, 10k tables | 0.09 ms | 0.88 ms | 0.65 ms | 3.02 ms | 9.8× slower | 7.2× slower | 34× slower |
+| closures, 100k | 0.22 ms | 5.48 ms | 4.63 ms | 9.72 ms | 25× slower | 21× slower | 44× slower |
+| sort 10k with comparator | 1.28 ms | 3.63 ms | 3.56 ms | 10.2 ms | 2.8× slower | 2.8× slower | 7.9× slower |
+| string build, 10k pieces | 0.37 ms | 0.71 ms | 0.60 ms | 60.2 ms | 1.9× slower | 1.6× slower | 163× slower |
+| calls into Go, 100k | 0.22 ms | 1.72 ms | 1.25 ms | 5.50 ms | 7.8× slower | 5.7× slower | 25× slower |
+| plasma frame | 0.29 ms | 1.35 ms | 0.74 ms | 4.23 ms | 4.6× slower | 2.5× slower | 15× slower |
+| particles frame | 0.005 ms | 0.25 ms | 0.08 ms | 1.23 ms | 49× slower | 16× slower | 236× slower |
+<!-- /suite-table -->
 
 The numeric loop with the JIT varies by about 20% between runs on this
 part, which has two core complexes with different caches and clocks; the
@@ -42,6 +44,7 @@ and to `sin` and `cos` that the amd64 results include. Raw output:
 
 ![How many times slower than native Go each interpreter runs each workload, on Apple M1 Pro](suite-arm64-m1.svg)
 
+<!-- suite-table arm64-m1 -->
 | Workload | Native Go | Luart (no JIT) | Luart (JIT) | go-lua | Luart (no JIT) vs Go | Luart (JIT) vs Go | go-lua vs Go |
 |---|---|---|---|---|---|---|---|
 | fib(25), recursive calls | 0.25 ms | 7.94 ms | 2.68 ms | 13.8 ms | 32× slower | 11× slower | 55× slower |
@@ -54,6 +57,7 @@ and to `sin` and `cos` that the amd64 results include. Raw output:
 | calls into Go, 100k | 0.35 ms | 2.76 ms | 3.21 ms | 7.66 ms | 7.9× slower | 9.2× slower | 22× slower |
 | plasma frame | 0.30 ms | 2.19 ms | 1.66 ms | 5.70 ms | 7.2× slower | 5.5× slower | 19× slower |
 | particles frame | 0.006 ms | 0.36 ms | 0.22 ms | 1.59 ms | 61× slower | 38× slower | 270× slower |
+<!-- /suite-table -->
 
 ## Allocations
 
@@ -103,10 +107,11 @@ From this directory, on an idle machine:
 
 ```sh
 CGO_ENABLED=0 go test -run x -bench . -benchmem -count 6 -ldflags=-funcalign=64 | tee suite-results-amd64.txt
-go run ./chart -table suite-results-amd64.txt
-go run ./chart -svg suite-amd64.svg suite-results-amd64.txt
+go run ./chart -svg suite-amd64.svg -readme README.md,../README.md -name amd64 suite-results-amd64.txt
 ```
 
-`-table` prints the table above, and `-svg` redraws the chart, from the
-median of each benchmark in the file. Name the file and chart for the
-machine; `suite-results.txt` and `suite-arm64-m1.svg` are Apple M1.
+From the median of each benchmark in the file, `-svg` redraws the chart
+and `-readme` rewrites the table between `<!-- suite-table NAME -->` and
+`<!-- /suite-table -->` in each file; `-table` prints it instead. Name the
+file, chart and table for the machine; `suite-results.txt`,
+`suite-arm64-m1.svg` and `arm64-m1` are Apple M1.

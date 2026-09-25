@@ -3,6 +3,10 @@
 //
 //	go run ./chart -table suite-results-amd64.txt
 //	go run ./chart -svg suite-amd64.svg suite-results-amd64.txt
+//	go run ./chart -readme README.md,../README.md -name amd64 suite-results-amd64.txt
+//
+// -readme replaces the table between the lines <!-- suite-table NAME -->
+// and <!-- /suite-table --> in each file.
 //
 // Each timing is the median of the runs in the file. Every interpreter is
 // compared with native Go.
@@ -154,9 +158,11 @@ func table(w io.Writer, r *results) {
 func main() {
 	tbl := flag.Bool("table", false, "print the Markdown table")
 	svg := flag.String("svg", "", "write the chart to this SVG file")
+	readmes := flag.String("readme", "", "comma-separated Markdown files whose table to replace")
+	name := flag.String("name", "", "the table's name in -readme files")
 	flag.Parse()
-	if flag.NArg() != 1 || !*tbl && *svg == "" {
-		fmt.Fprintln(os.Stderr, "usage: chart [-table] [-svg out.svg] results.txt")
+	if flag.NArg() != 1 || !*tbl && *svg == "" && *readmes == "" || *readmes != "" && *name == "" {
+		fmt.Fprintln(os.Stderr, "usage: chart [-table] [-svg out.svg] [-readme a.md,b.md -name NAME] results.txt")
 		os.Exit(2)
 	}
 	f, err := os.Open(flag.Arg(0))
@@ -176,6 +182,34 @@ func main() {
 			fatal(err)
 		}
 	}
+	if *readmes != "" {
+		var t strings.Builder
+		table(&t, r)
+		for _, path := range strings.Split(*readmes, ",") {
+			if err := replaceTable(path, *name, t.String()); err != nil {
+				fatal(err)
+			}
+		}
+	}
+}
+
+// replaceTable replaces the lines between <!-- suite-table name --> and
+// the next <!-- /suite-table --> in the file at path with table.
+func replaceTable(path, name, table string) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	begin, end := "<!-- suite-table "+name+" -->\n", "<!-- /suite-table -->"
+	before, rest, ok := strings.Cut(string(b), begin)
+	if !ok {
+		return fmt.Errorf("%s: no %q", path, strings.TrimSpace(begin))
+	}
+	_, after, ok := strings.Cut(rest, end)
+	if !ok {
+		return fmt.Errorf("%s: no %q after %q", path, end, strings.TrimSpace(begin))
+	}
+	return os.WriteFile(path, []byte(before+begin+table+end+after), 0o644)
 }
 
 func fatal(err error) {

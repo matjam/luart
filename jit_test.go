@@ -233,6 +233,23 @@ func TestJITTablesAndCalls(t *testing.T) {
 			local log = {}
 			local t = setmetatable({}, {__newindex = function(t, k, v) log[#log + 1] = k; rawset(t, k, v) end})
 			function run() for i = 1, 5 do t[i] = i end; return #log, t[5] end`},
+		{"arrays in upvalues", `
+			local t, u = {1, 2, 3, 4}, {}
+			function run()
+			  for i = 1, 8 do u[i] = (t[i] or 0) * 2 end
+			  t[2] = nil
+			  local s = 0
+			  for i = 1, 8 do s = s + (t[i] or 100) + u[i] end
+			  return s, #u, t[5]
+			end`},
+		{"arrays in upvalues with metatables", `
+			local log = 0
+			local t = setmetatable({1}, {__index = function(_, k) return k * 10 end,
+			  __newindex = function(t, k, v) log = log + v; rawset(t, k, v) end})
+			function run() local s = 0; for i = 1, 5 do s = s + t[i]; t[i + 1] = i end; return s, log end`},
+		{"indexing a non-table upvalue", `
+			local n = 5
+			function run() local ok, err = pcall(function() for i = 1, 3 do local x = n[i] end end); return ok, err end`},
 		{"new fields on shaped tables", `function run() local s = 0; for i = 1, 10 do local t = {}; t.a = i; t.b = i * 2; s = s + t.a + t.b end; return s end`},
 		{"dictionary tables", `
 			function run()
