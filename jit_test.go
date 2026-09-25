@@ -325,6 +325,60 @@ func TestJITGoCallExits(t *testing.T) {
 	}
 }
 
+// Go calling a compiled Lua function runs it from l.call without the
+// interpreter, returning to Go from compiled code, or hands over to the
+// interpreter part way through.
+func TestJITCalledFromGo(t *testing.T) {
+	if !jitSupported {
+		t.Skip("no JIT on this platform")
+	}
+	src := `
+		local function fixed(a, b) return a + b, a * b end
+		local function tail(a) return fixed(a, 2) end
+		local function interpreted(a) local s = "x" .. a; return #s end
+		local function closes(a) local f = function() return a end; return f() + 1 end
+		local function fails(a) if a % 5 == 0 then error("five") end return a end
+		local function varResults(...) return ... end
+		function run()
+			local s = 0
+			s = s + callEach(fixed, 1) + callEach(fixed, 2) + callEach(tail, 2)
+			s = s + callEach(interpreted, 1) + callEach(closes, 1) + callEach(varResults, 3)
+			local ok, err = pcall(callEach, fails, 1)
+			local t = {}
+			for i = 1, 40 do t[i] = (i * 7919) % 41 end
+			table.sort(t, function(a, b) return a > b end)
+			return s, ok, err, t[1], t[40]
+		end`
+	jit, interp, _ := runBothWith(t, src, func(l *State) {
+		// callEach(f, n) calls f(i, i) from Go for i = 1..20, wanting n
+		// results each time (MultipleReturns when n is 3), and sums them.
+		l.Register("callEach", func(l *State) int {
+			want, _ := l.ToInteger(2)
+			if want == 3 {
+				want = MultipleReturns
+			}
+			sum := 0.0
+			for i := 1; i <= 20; i++ {
+				top := l.Top()
+				l.PushValue(1)
+				l.PushInteger(i)
+				l.PushInteger(i)
+				l.Call(2, want)
+				for k := top + 1; k <= l.Top(); k++ {
+					v, _ := l.ToNumber(k)
+					sum += v
+				}
+				l.SetTop(top)
+			}
+			l.PushNumber(sum)
+			return 1
+		})
+	})
+	if jit != interp {
+		t.Fatalf("JIT %q, interpreter %q", jit, interp)
+	}
+}
+
 // A Go function called from compiled code may grow the stack, moving every
 // frame.
 func TestJITStackGrowsInGoCall(t *testing.T) {
