@@ -357,34 +357,27 @@ func (l *State) OptNumber(index int, def float64) float64 {
 	return l.CheckNumber(index)
 }
 
-func (l *State) CheckInteger(index int) int {
+// CheckInteger returns the argument at index as an integer, raising an
+// error if it is not a number, or has no integer representation.
+//
+// http://www.lua.org/manual/5.5/manual.html#luaL_checkinteger
+func (l *State) CheckInteger(index int) int64 {
 	i, ok := l.ToInteger(index)
 	if !ok {
+		if l.IsNumber(index) {
+			l.ArgumentError(index, "number has no integer representation")
+		}
 		tagError(l, index, TypeNumber)
 	}
 	return i
 }
 
-func (l *State) OptInteger(index, def int) int {
+// OptInteger is CheckInteger, returning def for an absent or nil argument.
+func (l *State) OptInteger(index int, def int64) int64 {
 	if l.IsNoneOrNil(index) {
 		return def
 	}
 	return l.CheckInteger(index)
-}
-
-func (l *State) CheckUnsigned(index int) uint {
-	i, ok := l.ToUnsigned(index)
-	if !ok {
-		tagError(l, index, TypeNumber)
-	}
-	return i
-}
-
-func (l *State) OptUnsigned(index int, def uint) uint {
-	if l.IsNoneOrNil(index) {
-		return def
-	}
-	return l.CheckUnsigned(index)
 }
 
 func (l *State) TypeName(index int) string { return l.TypeOf(index).String() }
@@ -549,13 +542,17 @@ func (l *State) LoadBuffer(b, name, mode string) error {
 	return l.Load(strings.NewReader(b), name, mode)
 }
 
-func (l *State) Len(index int) int {
+// Len returns the length of the value at index as an integer, as the #
+// operator computes it, metamethods included.
+//
+// http://www.lua.org/manual/5.5/manual.html#luaL_len
+func (l *State) Len(index int) int64 {
 	l.Length(index)
 	if length, ok := l.ToInteger(-1); ok {
 		l.Pop(1)
 		return length
 	}
-	l.Errorf("object length is not a number")
+	l.Errorf("object length is not an integer")
 	panic("unreachable")
 }
 

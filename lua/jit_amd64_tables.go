@@ -48,8 +48,7 @@ func (c *amd64Compiler) objectOf(o operand, k valueKind, r Reg, ip int) {
 	a.Cmp(rTmp, rTmp2)
 	a.J(NE, c.exit(ip))
 	a.Load(r, o.base, o.off+offP)
-	a.Cmp(r, rNumber) // a number whose bits match the tag
-	a.J(E, c.exit(ip))
+	c.branchNumber(r, c.exit(ip)) // a number whose bits match the tag
 }
 
 // element puts the address of element idx of the []value at obj+off in
@@ -229,8 +228,7 @@ func (c *amd64Compiler) selfField(ip int, i bytecode.Instruction) {
 	a.Cmp(rTmp, rTmp2)
 	a.J(NE, c.strSelf[ip])
 	a.Load(rT, recv.base, recv.off+offP)
-	a.Cmp(rT, rNumber) // a number whose bits match the tag
-	a.J(E, c.exit(ip))
+	c.branchNumber(rT, c.exit(ip)) // a number whose bits match the tag
 	c.readField(ip)
 	c.guardStore(fn, rP, ip)
 	c.guardStore(self, rT, ip)
@@ -252,8 +250,7 @@ func (c *amd64Compiler) selfString(ip int, i bytecode.Instruction) {
 	a.CmpImm(rTmp, int32(vkString))
 	a.J(NE, c.exit(ip))
 	a.Load(rT, recv.base, recv.off+offP)
-	a.Cmp(rT, rNumber) // a number whose bits match the tag
-	a.J(E, c.exit(ip))
+	c.branchNumber(rT, c.exit(ip)) // a number whose bits match the tag
 	c.readStringMethod(ip)
 	c.guardStore(fn, rP, ip)
 	c.guardStore(self, rT, ip)
@@ -411,22 +408,13 @@ type intrinsic struct {
 	emit func()
 }
 
-// intrinsics returns the functions compiled inline on amd64: floor and
-// ceil need SSE4.1, and sin and cos a GOAMD64 level Go does not fuse at.
+// intrinsics returns the functions compiled inline on amd64: sin and cos
+// need a GOAMD64 level Go does not fuse at. floor, ceil and abs return
+// integers for integers, so they are no longer number functions of floats.
 func (c *amd64Compiler) intrinsics() []intrinsic {
 	a := &c.a
 	list := []intrinsic{
 		{funcValue(math.Sqrt), func() { a.SqrtSD(0, 0) }},
-		{funcValue(math.Abs), func() {
-			a.MovImm(rTmp, 1<<63-1)
-			a.MovqToX(1, rTmp)
-			a.AndPD(0, 1)
-		}},
-	}
-	if c.sse41 {
-		list = append(list,
-			intrinsic{funcValue(math.Floor), func() { a.RoundSD(0, 0, 1) }},
-			intrinsic{funcValue(math.Ceil), func() { a.RoundSD(0, 0, 2) }})
 	}
 	return append(list, c.trigIntrinsics()...)
 }
@@ -467,16 +455,15 @@ func (c *amd64Compiler) goCallee(ip int, i bytecode.Instruction) {
 	a.Cmp(rTmp, rTmp2)
 	a.J(NE, notGo)
 	a.Load(rT, fn.base, fn.off+offP)
-	a.Cmp(rT, rNumber) // a number whose bits match the tag
-	a.J(E, notGo)
+	c.branchNumber(rT, notGo) // a number whose bits match the tag
 	a.Load(rTmp, rT, offGFNumber)
 	a.Test(rTmp, rTmp)
 	a.J(NE, c.numCallExit(ip)) // runJIT may call it frameless
 	a.Jmp(c.goCallExit(ip))
 	a.Bind(closure)
 	a.Load(rT, fn.base, fn.off+offP)
-	a.Cmp(rT, rNumber)
-	a.J(NE, c.goCallExit(ip))
+	c.branchNumber(rT, notGo) // a number whose bits match the tag
+	a.Jmp(c.goCallExit(ip))
 	a.Bind(notGo)
 }
 
@@ -491,8 +478,7 @@ func (c *amd64Compiler) intrinsic(ip int, i bytecode.Instruction, notGo Label) {
 	a.Cmp(rTmp, rTmp2)
 	a.J(NE, notGo)
 	a.Load(rT, fn.base, fn.off+offP)
-	a.Cmp(rT, rNumber)
-	a.J(E, notGo)
+	c.branchNumber(rT, notGo) // a number whose bits match the tag
 	a.Load(rT, rT, offGFNumber)
 	a.Test(rT, rT)
 	a.J(E, c.goCallExit(ip))

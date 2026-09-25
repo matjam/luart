@@ -54,8 +54,7 @@ func (c *arm64Compiler) objectOf(o operand, k valueKind, r Reg, ip int) {
 	a.Cmp(rTmp, rTmp2)
 	a.BCond(NE, c.exit(ip))
 	a.Ldr(r, o.base, o.off+offP)
-	a.Cmp(r, rNumber) // a number whose bits match the tag
-	a.BCond(EQ, c.exit(ip))
+	c.branchNumber(r, c.exit(ip)) // a number whose bits match the tag
 }
 
 // element puts the address of element idx of the []value at obj+off in
@@ -219,8 +218,7 @@ func (c *arm64Compiler) selfField(ip int, i bytecode.Instruction) {
 	a.Cmp(rTmp, rTmp2)
 	a.BCond(NE, c.strSelf[ip])
 	a.Ldr(rT, recv.base, recv.off+offP)
-	a.Cmp(rT, rNumber) // a number whose bits match the tag
-	a.BCond(EQ, c.exit(ip))
+	c.branchNumber(rT, c.exit(ip)) // a number whose bits match the tag
 	c.readField(ip)
 	c.guardStore(fn, rP, ip)
 	c.guardStore(self, rT, ip)
@@ -242,8 +240,7 @@ func (c *arm64Compiler) selfString(ip int, i bytecode.Instruction) {
 	a.CmpImm(rTmp, uint32(vkString))
 	a.BCond(NE, c.exit(ip))
 	a.Ldr(rT, recv.base, recv.off+offP)
-	a.Cmp(rT, rNumber) // a number whose bits match the tag
-	a.BCond(EQ, c.exit(ip))
+	c.branchNumber(rT, c.exit(ip)) // a number whose bits match the tag
 	c.readStringMethod(ip)
 	c.guardStore(fn, rP, ip)
 	c.guardStore(self, rT, ip)
@@ -427,15 +424,14 @@ func (c *arm64Compiler) goCallee(ip int, i bytecode.Instruction) {
 	a.Cmp(rTmp, rTmp2)
 	a.BCond(NE, notGo)
 	a.Ldr(rT, fn.base, fn.off+offP)
-	a.Cmp(rT, rNumber) // a number whose bits match the tag
-	a.BCond(EQ, notGo)
+	c.branchNumber(rT, notGo) // a number whose bits match the tag
 	a.Ldr(rTmp, rT, offGFNumber)
 	a.Cbnz(rTmp, c.numCallExit(ip)) // runJIT may call it frameless
 	a.B(c.goCallExit(ip))
 	a.Bind(closure)
 	a.Ldr(rT, fn.base, fn.off+offP)
-	a.Cmp(rT, rNumber)
-	a.BCond(NE, c.goCallExit(ip))
+	c.branchNumber(rT, notGo) // a number whose bits match the tag
+	a.B(c.goCallExit(ip))
 	a.Bind(notGo)
 }
 
@@ -449,8 +445,7 @@ func (c *arm64Compiler) intrinsic(ip int, i bytecode.Instruction, notGo Label) {
 	a.Cmp(rTmp, rTmp2)
 	a.BCond(NE, notGo)
 	a.Ldr(rT, fn.base, fn.off+offP)
-	a.Cmp(rT, rNumber)
-	a.BCond(EQ, notGo)
+	c.branchNumber(rT, notGo) // a number whose bits match the tag
 	a.Ldr(rT, rT, offGFNumber)
 	a.Cbz(rT, c.goCallExit(ip))
 	a.Ldr(rT, rT, offNFUnary)

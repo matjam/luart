@@ -34,8 +34,7 @@ func (c *arm64Compiler) callLua(ip int, i bytecode.Instruction, notLua Label) {
 	a.Cmp(rTmp, rTmp2)
 	a.BCond(NE, notLua)
 	a.Ldr(rT, fn.base, fn.off+offP)
-	a.Cmp(rT, rNumber) // a number whose bits match the tag
-	a.BCond(EQ, exit)
+	c.branchNumber(rT, exit) // a number whose bits match the tag
 	a.Cbnz(rBarrier, exit)
 	a.Ldr(rT2, rT, offClProto)
 	a.Ldrb(rTmp, rT2, offPVarArg)

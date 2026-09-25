@@ -16,10 +16,10 @@ func field(l *lua.State, key string, def int) int {
 		if def < 0 {
 			l.Errorf("field '%s' missing in date table", key)
 		}
-		r = def
+		r = int64(def)
 	}
 	l.Pop(1)
-	return r
+	return int(r)
 }
 
 // shellCommand runs c with the shell, as C's system and popen do.
@@ -81,7 +81,7 @@ var osLibrary = []lua.RegistryFunction{
 				status = 1
 			}
 		} else {
-			status = l.OptInteger(1, status)
+			status = optInt(l, 1, status)
 		}
 		// if l.ToBoolean(2) {
 		// 	Close(l)
@@ -95,7 +95,7 @@ var osLibrary = []lua.RegistryFunction{
 	{Name: "setlocale", Function: osSetlocale},
 	{Name: "time", Function: func(l *lua.State) int {
 		if l.IsNoneOrNil(1) {
-			l.PushNumber(float64(time.Now().Unix()))
+			l.PushInteger(time.Now().Unix())
 		} else {
 			l.CheckType(1, lua.TypeTable)
 			l.SetTop(1)
@@ -108,7 +108,7 @@ var osLibrary = []lua.RegistryFunction{
 			day := field(l, "day", -1)
 			month := field(l, "month", -1)
 			year := field(l, "year", -1)
-			l.PushNumber(float64(time.Date(year, time.Month(month), day, hour, min, sec, 0, time.Local).Unix()))
+			l.PushInteger(time.Date(year, time.Month(month), day, hour, min, sec, 0, time.Local).Unix())
 		}
 		return 1
 	}},

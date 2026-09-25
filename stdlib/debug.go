@@ -11,7 +11,7 @@ import (
 func upValueHelper(f func(*lua.State, int, int) (string, bool), returnValueCount int) lua.Function {
 	return func(l *lua.State) int {
 		l.CheckType(1, lua.TypeFunction)
-		name, ok := f(l, 1, l.CheckInteger(2))
+		name, ok := f(l, 1, checkInt(l, 2))
 		if !ok {
 			return 0
 		}
@@ -22,7 +22,7 @@ func upValueHelper(f func(*lua.State, int, int) (string, bool), returnValueCount
 }
 
 func checkUpValue(l *lua.State, f, upValueCount int) int {
-	n := l.CheckInteger(upValueCount)
+	n := checkInt(l, upValueCount)
 	l.CheckType(f, lua.TypeFunction)
 	l.PushValue(f)
 	debug, _ := l.Info(">u", lua.Frame{})
@@ -95,7 +95,7 @@ func getInfo(l *lua.State) int {
 	if l.IsNumber(arg + 1) {
 		level, _ := l.ToInteger(arg + 1)
 		var ok bool
-		if frame, ok = l1.Frame(level); !ok {
+		if frame, ok = l1.Frame(int(level)); !ok {
 			l.PushNil() // level out of range
 			return 1
 		}
@@ -166,7 +166,7 @@ func moveStackOption(l, l1 *lua.State, name string) {
 // returns, or a function, whose parameter n's name it returns.
 func getLocal(l *lua.State) int {
 	arg, l1 := threadArg(l)
-	n := l.CheckInteger(arg + 2)
+	n := checkInt(l, arg+2)
 	if l.IsFunction(arg + 1) {
 		l.PushValue(arg + 1)
 		if name, ok := l.Local(lua.Frame{}, n); ok {
@@ -176,7 +176,7 @@ func getLocal(l *lua.State) int {
 		}
 		return 1
 	}
-	frame, ok := l1.Frame(l.CheckInteger(arg + 1))
+	frame, ok := l1.Frame(checkInt(l, arg+1))
 	if !ok {
 		l.ArgumentError(arg+1, "level out of range")
 	}
@@ -195,11 +195,11 @@ func getLocal(l *lua.State) int {
 // db_setlocal: it returns the local's name, or nil if there is none.
 func setLocal(l *lua.State) int {
 	arg, l1 := threadArg(l)
-	frame, ok := l1.Frame(l.CheckInteger(arg + 1))
+	frame, ok := l1.Frame(checkInt(l, arg+1))
 	if !ok {
 		l.ArgumentError(arg+1, "level out of range")
 	}
-	n := l.CheckInteger(arg + 2)
+	n := checkInt(l, arg+2)
 	l.CheckAny(arg + 3)
 	l.SetTop(arg + 3)
 	l.XMove(l1, 1)
@@ -316,7 +316,7 @@ var debugLibrary = []lua.RegistryFunction{
 		} else {
 			s := l.CheckString(i + 2)
 			l.CheckType(i+1, lua.TypeFunction)
-			count = l.OptInteger(i+3, 0)
+			count = optInt(l, i+3, 0)
 			hook, mask = internalHook, stringToMask(s, count > 0)
 		}
 		if !hookTable(l) {
@@ -346,9 +346,9 @@ var debugLibrary = []lua.RegistryFunction{
 		if s, ok := l.ToString(i + 1); !ok && !l.IsNoneOrNil(i+1) {
 			l.PushValue(i + 1)
 		} else if l == l1 {
-			l.Traceback(l, s, l.OptInteger(i+2, 1))
+			l.Traceback(l, s, optInt(l, i+2, 1))
 		} else {
-			l.Traceback(l1, s, l.OptInteger(i+2, 0))
+			l.Traceback(l1, s, optInt(l, i+2, 0))
 		}
 		return 1
 	}},

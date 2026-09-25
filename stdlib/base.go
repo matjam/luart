@@ -3,7 +3,6 @@ package stdlib
 import (
 	"io"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/matjam/luart/lua"
@@ -19,25 +18,29 @@ func baseNext(l *lua.State) int {
 	return 1
 }
 
-// pairs returns pairs or ipairs, a Go closure whose upvalue is the
-// iterator it returns, so it returns the same function each time.
-func pairs(method string, isZero bool) lua.Function {
-	return func(l *lua.State) int {
-		if hasMetamethod := l.MetaField(1, method); !hasMetamethod {
-			l.CheckType(1, lua.TypeTable)    // argument must be a table
-			l.PushValue(lua.UpValueIndex(1)) // will return generator,
-			l.PushValue(1)                   // state,
-			if isZero {                      // and initial value
-				l.PushInteger(0)
-			} else {
-				l.PushNil()
-			}
-		} else {
-			l.PushValue(1) // argument 'self' to metamethod
-			l.Call(1, 3)   // get 3 values from metamethod
-		}
+// pairs is a Go closure whose upvalue is next, which it returns, so it
+// returns the same function each time, unless __pairs says otherwise.
+func pairs(l *lua.State) int {
+	l.CheckAny(1)
+	if l.MetaField(1, "__pairs") {
+		l.PushValue(1) // argument 'self' to metamethod
+		l.Call(1, 3)   // get 3 values from metamethod
 		return 3
 	}
+	l.PushValue(lua.UpValueIndex(1))
+	l.PushValue(1)
+	l.PushNil()
+	return 3
+}
+
+// ipairs returns its iterator, an upvalue so that it is the same function
+// each time, which indexes the value with metamethods, as Lua 5.4's does.
+func ipairs(l *lua.State) int {
+	l.CheckAny(1)
+	l.PushValue(lua.UpValueIndex(1))
+	l.PushValue(1)
+	l.PushInteger(0)
+	return 3
 }
 
 var gcOptions = []string{"stop", "restart", "collect", "count", "step", "setpause", "setstepmul", "setmajorinc", "isrunning", "generational", "incremental"}
@@ -50,13 +53,12 @@ var gcOptionValues = []lua.GCOption{lua.GCStop, lua.GCRestart, lua.GCCollect, lu
 // See State.GC for what each option does in luart.
 func collectGarbage(l *lua.State) int {
 	o := gcOptionValues[l.CheckOption(1, "collect", gcOptions)]
-	res := l.GC(o, l.OptInteger(2, 0))
+	res := l.GC(o, int(l.OptInteger(2, 0)))
 	switch o {
 	case lua.GCCount:
 		b := l.GC(lua.GCCountBytes, 0)
 		l.PushNumber(float64(res) + float64(b)/1024) // kilobytes, with the remainder
-		l.PushInteger(b)
-		return 2
+		return 1
 	case lua.GCStep, lua.GCIsRunning:
 		l.PushBoolean(res != 0)
 	default:
@@ -65,12 +67,13 @@ func collectGarbage(l *lua.State) int {
 	return 1
 }
 
+// intPairs is ipairs' iterator: the next index, and the value there,
+// through __index, until that is nil.
 func intPairs(l *lua.State) int {
-	i := l.CheckInteger(2)
-	l.CheckType(1, lua.TypeTable)
-	i++ // next value
+	i := l.CheckInteger(2) + 1
 	l.PushInteger(i)
-	l.RawGetInt(1, i)
+	l.PushInteger(i)
+	l.Table(1)
 	if l.IsNil(-1) {
 		return 1
 	}
@@ -167,7 +170,7 @@ var baseLibrary = []lua.RegistryFunction{
 		level := l.OptInteger(2, 1)
 		l.SetTop(1)
 		if l.IsString(1) && level > 0 {
-			l.Where(level)
+			l.Where(int(level))
 			l.PushValue(1)
 			l.Concat(2)
 		}
@@ -262,7 +265,7 @@ var baseLibrary = []lua.RegistryFunction{
 		return 1
 	}},
 	{Name: "select", Function: func(l *lua.State) int {
-		n := l.Top()
+		n := int64(l.Top())
 		if l.TypeOf(1) == lua.TypeString {
 			if s, _ := l.ToString(1); s[0] == '#' {
 				l.PushInteger(n - 1)
@@ -276,7 +279,7 @@ var baseLibrary = []lua.RegistryFunction{
 			i = n
 		}
 		l.ArgumentCheck(1 <= i, 1, "index out of range")
-		return n - i
+		return int(n - i)
 	}},
 	{Name: "setmetatable", Function: func(l *lua.State) int {
 		t := l.TypeOf(2)
@@ -291,17 +294,21 @@ var baseLibrary = []lua.RegistryFunction{
 	}},
 	{Name: "tonumber", Function: func(l *lua.State) int {
 		if l.IsNoneOrNil(2) { // standard conversion
-			if n, ok := l.ToNumber(1); ok {
-				l.PushNumber(n)
+			if l.TypeOf(1) == lua.TypeNumber {
+				l.SetTop(1)
+				return 1
+			}
+			if s, ok := l.ToString(1); ok && l.StringToNumber(s) {
 				return 1
 			}
 			l.CheckAny(1)
 		} else {
-			s := l.CheckString(1)
 			base := l.CheckInteger(2)
+			l.CheckType(1, lua.TypeString)
+			s, _ := l.ToString(1)
 			l.ArgumentCheck(2 <= base && base <= 36, 2, "base out of range")
-			if i, err := strconv.ParseInt(strings.TrimSpace(s), base, 64); err == nil {
-				l.PushNumber(float64(i))
+			if n, ok := stringToIntBase(s, base); ok {
+				l.PushInteger(n)
 				return 1
 			}
 		}
@@ -336,12 +343,49 @@ func OpenBase(l *lua.State) int {
 	l.SetFunctions(baseLibrary, 0)
 	// pairs returns next, and ipairs one iterator, as C Lua's do.
 	l.Field(-1, "next")
-	l.PushGoClosure(pairs("__pairs", false), 1)
+	l.PushGoClosure(pairs, 1)
 	l.SetField(-2, "pairs")
 	l.PushGoFunction(intPairs)
-	l.PushGoClosure(pairs("__ipairs", true), 1)
+	l.PushGoClosure(ipairs, 1)
 	l.SetField(-2, "ipairs")
 	l.PushString(lua.VersionString)
 	l.SetField(-2, "_VERSION")
 	return 1
+}
+
+// stringToIntBase converts s, an integer in base with optional space
+// around it and a minus sign, as lbaselib.c's b_str2int does, wrapping
+// around on overflow.
+func stringToIntBase(s string, base int64) (int64, bool) {
+	s = strings.Trim(s, " \f\n\r\t\v")
+	negative := strings.HasPrefix(s, "-")
+	if negative {
+		s = s[1:]
+	}
+	if s == "" {
+		return 0, false
+	}
+	var n uint64
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		var d int64
+		switch {
+		case '0' <= c && c <= '9':
+			d = int64(c - '0')
+		case 'a' <= c && c <= 'z':
+			d = int64(c-'a') + 10
+		case 'A' <= c && c <= 'Z':
+			d = int64(c-'A') + 10
+		default:
+			return 0, false
+		}
+		if d >= base {
+			return 0, false
+		}
+		n = n*uint64(base) + uint64(d)
+	}
+	if negative {
+		n = -n
+	}
+	return int64(n), true
 }

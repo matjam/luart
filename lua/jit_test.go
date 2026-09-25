@@ -542,7 +542,7 @@ func TestJITCalledFromGo(t *testing.T) {
 				l.PushValue(1)
 				l.PushInteger(i)
 				l.PushInteger(i)
-				l.Call(2, want)
+				l.Call(2, int(want))
 				for k := top + 1; k <= l.Top(); k++ {
 					v, _ := l.ToNumber(k)
 					sum += v
@@ -573,7 +573,7 @@ func TestJITStackGrowsInGoCall(t *testing.T) {
 	end`
 	jit, interp, _ := runBothWith(t, src, func(l *State) {
 		l.Register("grow", func(l *State) int {
-			n := l.CheckInteger(1)
+			n := int(l.CheckInteger(1))
 			l.CheckStackWithMessage(n, "grow")
 			for range n {
 				l.PushNil()
@@ -631,8 +631,9 @@ func TestJITTrigMatchesGo(t *testing.T) {
 	}
 }
 
-// Numeric loops compile to kernels that keep numbers in registers; each
-// case says how many kernels it should compile.
+// Numeric loops on floats compile to kernels that keep numbers in
+// registers; each case says how many kernels it should compile. Integer
+// loops do not compile to kernels yet.
 func TestJITKernels(t *testing.T) {
 	skipWithoutJIT(t)
 	tests := []struct {
@@ -640,23 +641,23 @@ func TestJITKernels(t *testing.T) {
 		kernels int
 		src     string
 	}{
-		{"sum", 1, `function run() local s = 0; for i = 1, 1000 do s = s + i * 0.5 end; return s end`},
-		{"modulo", 1, `function run() local s = 0; for i = 1, 1000 do s = s + (i * i) % 7 end; return s end`},
-		{"temporaries", 1, `function run() local s, t = 0, {}; for i = 1, 100 do local a = i * 2; local b = a - 1; s = s + a / b end; return s, type(t) end`},
-		{"old value in a temporary", 1, `function run() local s = 0; do local x = {} end; for i = 1, 10 do local y = i; s = s + y end; return s end`},
-		{"branches", 1, `function run() local a, b = 0, 0; for i = 1, 100 do if i % 3 == 0 then a = a + i elseif i < 50 then b = b - 1 else b = b + 2 end end; return a, b end`},
-		{"conditional write keeps old value", 1, `function run() local x, s = 5, 0; for i = 1, 10 do if i > 5 then x = i end; s = s + x end; return x, s end`},
-		{"zero iterations", 1, `function run() local s = 3; for i = 5, 1 do s = s + i end; return s end`},
+		{"sum", 1, `function run() local s = 0; for i = 1.0, 1000 do s = s + i * 0.5 end; return s end`},
+		{"modulo is left to Go", 0, `function run() local s = 0; for i = 1.0, 1000 do s = s + (i * i) % 7 end; return s end`},
+		{"temporaries", 1, `function run() local s, t = 0, {}; for i = 1.0, 100 do local a = i * 2.0; local b = a - 1.0; s = s + a / b end; return s, type(t) end`},
+		{"old value in a temporary", 1, `function run() local s = 0; do local x = {} end; for i = 1.0, 10 do local y = i; s = s + y end; return s end`},
+		{"branches", 1, `function run() local a, b = 0.0, 0.0; for i = 1.0, 100 do if i == 30.0 then a = a + i elseif i < 50.0 then b = b - 1.0 else b = b + 2.0 end end; return a, b end`},
+		{"conditional write keeps old value", 1, `function run() local x, s = 5.0, 0.0; for i = 1.0, 10 do if i > 5.0 then x = i end; s = s + x end; return x, s end`},
+		{"zero iterations", 1, `function run() local s = 3; for i = 5.0, 1 do s = s + i end; return s end`},
 		{"negative and fractional steps", 2, `function run() local s = 0; for i = 10, 1, -0.5 do s = s + i end; for j = 0, 1, 0.1 do s = s * 1.01 + j end; return s end`},
-		{"NaN step", 1, `function run() local s, z = 0, 0; for i = 1, 3, z/z do s = s + 1 end; return s end`},
-		{"non-number live-in", 1, `function run() local s = "1"; for i = 1, 3 do s = s + i end; return s end`},
-		{"number constants", 1, `function run() local s = 0; for i = 1, 10 do local k = 2.5; s = s - k + i end; return s end`},
-		{"unary minus and equality", 1, `function run() local s = 0; for i = 1, 20 do local n = -i; if n == -10 then s = s + 100 end; s = s + n end; return s end`},
-		{"long loop spends budget", 1, `function run() local s = 0; for i = 1, 300000 do s = s + 1 end; return s end`},
-		{"loop variable after the loop", 1, `function run() local last = 0; for i = 1, 7 do last = i end; return last end`},
-		{"nested: inner only", 1, `function run() local s = 0; for i = 1, 10 do for j = 1, 10 do s = s + i * j end end; return s end`},
-		{"break is not a kernel", 0, `function run() local s = 0; for i = 1, 10 do s = s + i; if s > 20 then break end end; return s end`},
-		{"calls are not kernels", 0, `function run() local s = 0; for i = 1, 10 do s = s + math.floor(i / 2) end; return s end`},
+		{"NaN step", 1, `function run() local s, z = 0.0, 0; for i = 1.0, 3, z/z do s = s + 1.0 end; return s end`},
+		{"non-number live-in", 1, `function run() local s = "1"; for i = 1.0, 3 do s = s + i end; return s end`},
+		{"number constants", 1, `function run() local s = 0; for i = 1.0, 10 do local k = 2.5; s = s - k + i end; return s end`},
+		{"unary minus and equality", 1, `function run() local s = 0.0; for i = 1.0, 20 do local n = -i; if n == -10.0 then s = s + 100.0 end; s = s + n end; return s end`},
+		{"long loop spends budget", 1, `function run() local s = 0.0; for i = 1.0, 300000 do s = s + 1.0 end; return s end`},
+		{"loop variable after the loop", 1, `function run() local last = 0; for i = 1.0, 7 do last = i end; return last end`},
+		{"nested: inner only", 1, `function run() local s = 0; for i = 1.0, 10 do for j = 1.0, 10 do s = s + i * j end end; return s end`},
+		{"break is not a kernel", 0, `function run() local s = 0; for i = 1.0, 10 do s = s + i; if s > 20 then break end end; return s end`},
+		{"calls are not kernels", 0, `function run() local s = 0; for i = 1.0, 10 do s = s + math.floor(i / 2) end; return s end`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -782,8 +783,8 @@ func TestJITCompilesHotLoops(t *testing.T) {
 	loops := map[string]string{
 		"numeric for": `for i = 1, 5000 do s = s + i end`,
 		"while":       `local i = 0; while i < 5000 do i = i + 1; s = s + i end`,
-		"repeat":      `local i = 0; repeat i = i + 1; s = s + i until i >= 5000`,
-		"generic for": `for c in string.gmatch(string.rep("a", 5000), "a") do local n = #c; s = s + n * 2 - n + 1 - 1 end`,
+		"repeat":      `local i = 0.0; repeat i = i + 1.0; s = s + i until i >= 5000.0`,
+		"generic for": `for c in string.gmatch(string.rep("a", 5000), "a") do local n = #c * 1.0; s = s + n * 2.0 - n + 1.0 - 1.0 end`,
 	}
 	for name, loop := range loops {
 		t.Run(name, func(t *testing.T) {

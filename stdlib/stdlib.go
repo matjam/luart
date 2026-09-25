@@ -1,10 +1,10 @@
 // Package stdlib holds Lua's standard libraries for luart: basic, package,
-// coroutine, string, table, math, bit32, io, os and debug. They are
+// coroutine, string, table, math, io, os and debug. They are
 // written against luart's public API only.
 //
 // Open opens them all. A host can instead open some of them with
 // State.Require and OpenBase, OpenPackage, OpenCoroutine, OpenString,
-// OpenTable, OpenMath, OpenBit32, OpenIO, OpenOS and OpenDebug. Except for the basic
+// OpenTable, OpenMath, OpenIO, OpenOS and OpenDebug. Except for the basic
 // and package libraries, each library provides its functions as fields of
 // a global table or as methods of its objects.
 package stdlib
@@ -22,7 +22,6 @@ func Open(l *lua.State, preloaded ...lua.RegistryFunction) {
 		{Name: "io", Function: OpenIO},
 		{Name: "os", Function: OpenOS},
 		{Name: "string", Function: OpenString},
-		{Name: "bit32", Function: OpenBit32},
 		{Name: "math", Function: OpenMath},
 		{Name: "debug", Function: OpenDebug},
 	}
@@ -37,3 +36,9 @@ func Open(l *lua.State, preloaded ...lua.RegistryFunction) {
 	}
 	l.Pop(1)
 }
+
+// checkInt and optInt are CheckInteger and OptInteger for arguments that
+// are positions or counts in Go ints.
+func checkInt(l *lua.State, index int) int { return int(l.CheckInteger(index)) }
+
+func optInt(l *lua.State, index, def int) int { return int(l.OptInteger(index, int64(def))) }

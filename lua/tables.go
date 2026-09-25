@@ -192,12 +192,11 @@ func (l *State) fastTagMethod(table *table, event tm) value {
 	return table.tagMethod(event, l.global.tagMethodNames[event])
 }
 
-// intKey reports whether k is a number with an integral value.
+// intKey reports whether k is an integer, or a float with an integral
+// value, that an int holds.
 func intKey(k value) (int, bool) {
-	if f, ok := k.number(); ok {
-		if i := int(f); float64(i) == f {
-			return i, true
-		}
+	if i, ok := k.integer(); ok && int64(int(i)) == i {
+		return int(i), true
 	}
 	return 0, false
 }
@@ -216,7 +215,7 @@ func (t *table) atInt(k int) value {
 	if 0 < k && k <= len(t.array) {
 		return t.array[k-1]
 	}
-	return t.hash[hashKey(numberValue(float64(k)))]
+	return t.hash[hashKey(integerValue(int64(k)))]
 }
 
 func (t *table) maybeResizeArray(key int) bool {
@@ -257,9 +256,9 @@ func (t *table) putAtInt(k int, v value) {
 	} else if k > 0 && !v.isNil() && t.maybeResizeArray(k) {
 		t.array[k-1] = v
 	} else if v.isNil() {
-		delete(t.hash, hashKey(numberValue(float64(k))))
+		delete(t.hash, hashKey(integerValue(int64(k))))
 	} else {
-		t.addOrInsertHash(hashKey(numberValue(float64(k))), v)
+		t.addOrInsertHash(hashKey(integerValue(int64(k))), v)
 	}
 }
 
@@ -271,8 +270,13 @@ func (t *table) at(k value) value {
 		s, _ := k.str()
 		return t.atString(s)
 	case vkNumber:
-		if f := k.f(); float64(int(f)) == f && 0 < int(f) && int(f) <= len(t.array) { // OPT: Inlined copy of atInt.
-			return t.array[int(f)-1]
+		if k.isFloat() {
+			k = normaliseKey(k)
+		}
+		if k.isInteger() {
+			if i := k.i(); 0 < i && i <= int64(len(t.array)) { // OPT: Inlined copy of atInt.
+				return t.array[i-1]
+			}
 		}
 	}
 	return t.hash[hashKey(k)]
@@ -288,10 +292,12 @@ func (t *table) put(l *State, k, v value) {
 		t.putString(l.global.rootShape, k, s, v)
 		return
 	case vkNumber:
-		if f := k.f(); float64(int(f)) == f {
-			t.putAtInt(int(f), v)
-			return
-		} else if math.IsNaN(f) {
+		if k = normaliseKey(k); k.isInteger() {
+			if i := k.i(); int64(int(i)) == i {
+				t.putAtInt(int(i), v)
+				return
+			}
+		} else if math.IsNaN(k.f()) {
 			l.runtimeError("table index is NaN")
 			return
 		}
@@ -323,10 +329,12 @@ func (t *table) tryPut(l *State, k, v value) bool {
 		}
 		return false
 	case vkNumber:
-		if f := k.f(); float64(int(f)) == f && 0 < int(f) && int(f) <= len(t.array) && !t.array[int(f)-1].isNil() {
-			t.array[int(f)-1] = v
-			return true
-		} else if math.IsNaN(f) {
+		if k = normaliseKey(k); k.isInteger() {
+			if i := k.i(); 0 < i && i <= int64(len(t.array)) && !t.array[i-1].isNil() {
+				t.array[i-1] = v
+				return true
+			}
+		} else if math.IsNaN(k.f()) {
 			return false
 		}
 	}
@@ -413,7 +421,7 @@ func (l *State) next(t *table, key int) bool {
 	}
 	for ; i < len(t.array); i++ {
 		if !t.array[i].isNil() {
-			l.stack[key] = numberValue(float64(i + 1))
+			l.stack[key] = integerValue(int64(i + 1))
 			l.stack[key+1] = t.array[i]
 			return true
 		}

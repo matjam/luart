@@ -24,8 +24,7 @@ func (c *amd64Compiler) callLua(ip int, i bytecode.Instruction, notLua Label) {
 	a.Cmp(rTmp, rTmp2)
 	a.J(NE, notLua)
 	a.Load(R10, fn.base, fn.off+offP) // closure
-	a.Cmp(R10, rNumber)               // a number whose bits match the tag
-	a.J(E, exit)
+	c.branchNumber(R10, exit)         // a number whose bits match the tag
 	a.CmpMem(rCtx, offBarrier, 0)
 	a.J(NE, exit)
 	a.Load(R11, R10, offClProto) // prototype

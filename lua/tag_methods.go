@@ -1,7 +1,11 @@
 package lua
 
+import "github.com/matjam/luart/internal/bytecode"
+
 type tm uint
 
+// The events, in Lua 5.4's order: tmAdd plus an ArithOp is that operator's
+// event. Tables cache the absence of the events up to tmEq in their flags.
 const (
 	tmIndex tm = iota
 	tmNewIndex
@@ -12,16 +16,27 @@ const (
 	tmAdd
 	tmSub
 	tmMul
-	tmDiv
 	tmMod
 	tmPow
+	tmDiv
+	tmIDiv
+	tmBAnd
+	tmBOr
+	tmBXor
+	tmShl
+	tmShr
 	tmUnaryMinus
+	tmBNot
 	tmLT
 	tmLE
 	tmConcat
 	tmCall
+	tmClose
 	tmCount // number of tag methods
 )
+
+// arithEvent is the event of an arithmetic or bitwise operator.
+func arithEvent(op bytecode.ArithOp) tm { return tmAdd + tm(op) }
 
 var eventNames = []string{
 	"__index",
@@ -33,14 +48,22 @@ var eventNames = []string{
 	"__add",
 	"__sub",
 	"__mul",
-	"__div",
 	"__mod",
 	"__pow",
+	"__div",
+	"__idiv",
+	"__band",
+	"__bor",
+	"__bxor",
+	"__shl",
+	"__shr",
 	"__unm",
+	"__bnot",
 	"__lt",
 	"__le",
 	"__concat",
 	"__call",
+	"__close",
 }
 
 var typeNames = []string{

@@ -274,13 +274,12 @@ func read(l *lua.State, s *stream, first int) int {
 				if k, _ := l.ToInteger(n); k == 0 {
 					success, err = testEOF(l, r)
 				} else {
-					success, err = readChars(l, r, k)
+					success, err = readChars(l, r, int(k))
 				}
 				continue
 			}
-			p, ok := l.ToString(n)
-			l.ArgumentCheck(ok && strings.HasPrefix(p, "*"), n, "invalid option")
-			switch p += "\x00"; p[1] {
+			p := strings.TrimPrefix(l.CheckString(n), "*") // optional since 5.3
+			switch p += "\x00"; p[0] {
 			case 'n':
 				success, err = readNumber(l, r)
 			case 'l':
@@ -384,14 +383,10 @@ func readNumber(l *lua.State, r *bufio.Reader) (bool, error) {
 		for accept("0123456789") {
 		}
 	}
-	l.PushString(string(b))
-	f, ok := l.ToNumber(-1)
-	l.Pop(1)
-	if !ok {
+	if !l.StringToNumber(string(b)) { // an integer numeral reads as an integer
 		l.PushNil()
 		return false, nil
 	}
-	l.PushNumber(f)
 	return true, nil
 }
 
@@ -400,7 +395,8 @@ func readNumber(l *lua.State, r *bufio.Reader) (bool, error) {
 // 3 is true.
 func linesIterator(l *lua.State) int {
 	s := l.ToUserData(lua.UpValueIndex(1)).(*stream)
-	n, _ := l.ToInteger(lua.UpValueIndex(2))
+	count, _ := l.ToInteger(lua.UpValueIndex(2))
+	n := int(count)
 	if s.close == nil {
 		l.Errorf("file is already closed")
 	}
@@ -504,13 +500,13 @@ var fileHandleMethods = []lua.RegistryFunction{
 		if err != nil {
 			return l.FileResult(err, "")
 		}
-		l.PushNumber(float64(pos))
+		l.PushInteger(pos)
 		return 1
 	}},
 	{Name: "setvbuf", Function: func(l *lua.State) int {
 		s := toFile(l)
 		mode := l.CheckOption(2, "", []string{"no", "full", "line"})
-		size := l.OptInteger(3, 1024)
+		size := optInt(l, 3, 1024)
 		if err := s.flush(); err != nil {
 			return l.FileResult(err, "")
 		}

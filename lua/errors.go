@@ -21,22 +21,35 @@ func (l *State) runtimeError(message string) {
 	l.errorMessage()
 }
 
+// typeError raises "attempt to <operation> a <type> value", with where the
+// value came from, as Lua 5.4's luaG_typeerror does.
 func (l *State) typeError(v value, operation string) {
-	typeName := l.valueToType(v).String()
-	if ci := l.callInfo; ci.isLua() {
-		p := l.prototype(ci)
-		pc := ci.savedPC - 1 // the failing instruction
-		var kind, name string
-		if up, ok := operandUpValue(p.Code[pc]); ok {
-			kind, name = "upvalue", p.upValueName(up)
-		} else if reg, ok := operandRegister(p.Code[pc], ci.frame, v); ok {
-			name, kind = p.objectName(reg, pc)
-		}
-		if kind != "" {
-			l.runtimeError(fmt.Sprintf("attempt to %s %s '%s' (a %s value)", operation, kind, name, typeName))
-		}
+	l.runtimeError(fmt.Sprintf("attempt to %s a %s value%s", operation, l.valueToType(v), l.varInfo(v)))
+}
+
+// varInfo says where the failing instruction found v, as ldebug.c's
+// varinfo does: " (global 'x')", " (local 'x')", " (upvalue 'x')", and so
+// on, or "" when it cannot tell.
+func (l *State) varInfo(v value) string {
+	ci := l.callInfo
+	if !ci.isLua() {
+		return ""
 	}
-	l.runtimeError(fmt.Sprintf("attempt to %s a %s value", operation, typeName))
+	p := l.prototype(ci)
+	pc := ci.savedPC - 1 // the failing instruction
+	if pc > 0 && p.Code[pc].OpCode() == bytecode.OpExtraArg && p.Code[pc-1].OpCode() == bytecode.OpBitwise {
+		pc-- // BITWISE has read its operator from the EXTRAARG after it
+	}
+	var kind, name string
+	if up, ok := operandUpValue(p.Code[pc]); ok {
+		kind, name = "upvalue", p.upValueName(up)
+	} else if reg, ok := operandRegister(p.Code[pc], ci.frame, v); ok {
+		name, kind = p.objectName(reg, pc)
+	}
+	if kind == "" {
+		return ""
+	}
+	return fmt.Sprintf(" (%s '%s')", kind, name)
 }
 
 // operandUpValue reports the upvalue that instruction i indexes, if any.
@@ -66,7 +79,7 @@ func operandRegister(i bytecode.Instruction, frame []value, v value) (int, bool)
 		add(i.B())
 	case bytecode.OpSetTable, bytecode.OpCall, bytecode.OpTailCall:
 		add(i.A())
-	case bytecode.OpAdd, bytecode.OpSub, bytecode.OpMul, bytecode.OpDiv, bytecode.OpMod, bytecode.OpPow:
+	case bytecode.OpAdd, bytecode.OpSub, bytecode.OpMul, bytecode.OpDiv, bytecode.OpMod, bytecode.OpPow, bytecode.OpIDiv, bytecode.OpBitwise:
 		add(i.B())
 		add(i.C())
 	case bytecode.OpConcat: // concat fails on the last two operands
@@ -94,6 +107,24 @@ func (l *State) arithError(v1, v2 value) {
 		v2 = v1
 	}
 	l.typeError(v2, "perform arithmetic on")
+}
+
+// bitwiseError blames the operand of a bitwise operator that is not a
+// number.
+func (l *State) bitwiseError(v1, v2 value) {
+	if !v1.isNumber() {
+		v2 = v1
+	}
+	l.typeError(v2, "perform bitwise operation on")
+}
+
+// integerRepresentationError blames the number operand of a bitwise
+// operator that has no integer value, as luaG_tointerror does.
+func (l *State) integerRepresentationError(v1, v2 value) {
+	if _, ok := v1.integer(); !ok {
+		v2 = v1
+	}
+	l.runtimeError("number" + l.varInfo(v2) + " has no integer representation")
 }
 
 func (l *State) concatError(v1, v2 value) {

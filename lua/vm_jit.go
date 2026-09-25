@@ -3,6 +3,7 @@
 package lua
 
 import "fmt"
+import "math"
 import "github.com/matjam/luart/internal/bytecode"
 
 // executeSwitchJIT is executeSwitch for states that compile. It runs
@@ -112,8 +113,11 @@ func (l *State) executeSwitchJIT() {
 			}
 		case bytecode.OpAdd:
 			b, c := k(i.B(), constants, frame), k(i.C(), constants, frame)
-			if b.isNumber() && c.isNumber() {
+			if b.isFloat() && c.isFloat() {
 				frame[i.A()] = numberValue(b.f() + c.f())
+				break
+			} else if b.isInteger() && c.isInteger() {
+				frame[i.A()] = integerValue(b.i() + c.i())
 				break
 			}
 			tmp := l.arith(b, c, tmAdd)
@@ -121,8 +125,11 @@ func (l *State) executeSwitchJIT() {
 			frame[i.A()] = tmp
 		case bytecode.OpSub:
 			b, c := k(i.B(), constants, frame), k(i.C(), constants, frame)
-			if b.isNumber() && c.isNumber() {
+			if b.isFloat() && c.isFloat() {
 				frame[i.A()] = numberValue(b.f() - c.f())
+				break
+			} else if b.isInteger() && c.isInteger() {
+				frame[i.A()] = integerValue(b.i() - c.i())
 				break
 			}
 			tmp := l.arith(b, c, tmSub)
@@ -130,8 +137,11 @@ func (l *State) executeSwitchJIT() {
 			frame[i.A()] = tmp
 		case bytecode.OpMul:
 			b, c := k(i.B(), constants, frame), k(i.C(), constants, frame)
-			if b.isNumber() && c.isNumber() {
+			if b.isFloat() && c.isFloat() {
 				frame[i.A()] = numberValue(b.f() * c.f())
+				break
+			} else if b.isInteger() && c.isInteger() {
+				frame[i.A()] = integerValue(b.i() * c.i())
 				break
 			}
 			tmp := l.arith(b, c, tmMul)
@@ -139,8 +149,11 @@ func (l *State) executeSwitchJIT() {
 			frame[i.A()] = tmp
 		case bytecode.OpDiv:
 			b, c := k(i.B(), constants, frame), k(i.C(), constants, frame)
-			if b.isNumber() && c.isNumber() {
+			if b.isFloat() && c.isFloat() {
 				frame[i.A()] = numberValue(b.f() / c.f())
+				break
+			} else if b.isNumber() && c.isNumber() {
+				frame[i.A()] = numberValue(b.toFloat() / c.toFloat())
 				break
 			}
 			tmp := l.arith(b, c, tmDiv)
@@ -148,8 +161,11 @@ func (l *State) executeSwitchJIT() {
 			frame[i.A()] = tmp
 		case bytecode.OpMod:
 			b, c := k(i.B(), constants, frame), k(i.C(), constants, frame)
-			if b.isNumber() && c.isNumber() {
-				frame[i.A()] = numberValue(arith(OpMod, b.f(), c.f()))
+			if b.isFloat() && c.isFloat() {
+				frame[i.A()] = numberValue(bytecode.FloatMod(b.f(), c.f()))
+				break
+			} else if b.isInteger() && c.isInteger() && c.i() != 0 {
+				frame[i.A()] = integerValue(bytecode.IntMod(b.i(), c.i()))
 				break
 			}
 			tmp := l.arith(b, c, tmMod)
@@ -158,36 +174,69 @@ func (l *State) executeSwitchJIT() {
 		case bytecode.OpPow:
 			b, c := k(i.B(), constants, frame), k(i.C(), constants, frame)
 			if b.isNumber() && c.isNumber() {
-				frame[i.A()] = numberValue(arith(OpPow, b.f(), c.f()))
+				frame[i.A()] = numberValue(bytecode.Pow(b.toFloat(), c.toFloat()))
 				break
 			}
 			tmp := l.arith(b, c, tmPow)
 			frame = ci.frame
 			frame[i.A()] = tmp
+		case bytecode.OpIDiv:
+			b, c := k(i.B(), constants, frame), k(i.C(), constants, frame)
+			if b.isInteger() && c.isInteger() && c.i() != 0 {
+				frame[i.A()] = integerValue(bytecode.IntFloorDiv(b.i(), c.i()))
+				break
+			} else if b.isFloat() && c.isFloat() {
+				frame[i.A()] = numberValue(math.Floor(b.f() / c.f()))
+				break
+			}
+			tmp := l.arith(b, c, tmIDiv)
+			frame = ci.frame
+			frame[i.A()] = tmp
+		case bytecode.OpBitwise:
+			op := bytecode.ArithOp(code[ip].Ax()) // the EXTRAARG after it
+			ip++
+			b := k(i.B(), constants, frame)
+			c := b
+			if op != bytecode.ArithBNot {
+				c = k(i.C(), constants, frame)
+			}
+			if b.isInteger() && c.isInteger() {
+				frame[i.A()] = integerValue(bytecode.IntBitwise(op, b.i(), c.i()))
+				break
+			}
+			tmp := l.arith(b, c, arithEvent(op))
+			frame = ci.frame
+			frame[i.A()] = tmp
 		case opAddRR:
-			if b, c := frame[i.B()], frame[i.C()]; b.isNumber() && c.isNumber() {
+			if b, c := frame[i.B()], frame[i.C()]; b.isFloat() && c.isFloat() {
 				frame[i.A()] = numberValue(b.f() + c.f())
+			} else if b.isInteger() && c.isInteger() {
+				frame[i.A()] = integerValue(b.i() + c.i())
 			} else {
 				frame = l.arithInto(ci, i.A(), b, c, tmAdd)
 			}
 		case opAddRK:
-			if b, c := frame[i.B()], constants[i.C()]; b.isNumber() && c.isNumber() {
+			if b, c := frame[i.B()], constants[i.C()]; b.isFloat() && c.isFloat() {
 				frame[i.A()] = numberValue(b.f() + c.f())
+			} else if b.isInteger() && c.isInteger() {
+				frame[i.A()] = integerValue(b.i() + c.i())
 			} else {
 				frame = l.arithInto(ci, i.A(), b, c, tmAdd)
 			}
 		case opAddKR:
-			if b, c := constants[i.B()], frame[i.C()]; b.isNumber() && c.isNumber() {
+			if b, c := constants[i.B()], frame[i.C()]; b.isFloat() && c.isFloat() {
 				frame[i.A()] = numberValue(b.f() + c.f())
+			} else if b.isInteger() && c.isInteger() {
+				frame[i.A()] = integerValue(b.i() + c.i())
 			} else {
 				frame = l.arithInto(ci, i.A(), b, c, tmAdd)
 			}
 		case opMulAddRKR:
-			if b, c := frame[i.B()], constants[i.C()]; b.isNumber() && c.isNumber() {
+			if b, c := frame[i.B()], constants[i.C()]; b.isFloat() && c.isFloat() {
 				r := b.f() * c.f()
 				frame[i.A()] = numberValue(r)
 				if j := code[ip]; l.hookMask&(MaskLine|MaskCount) == 0 {
-					if d := frame[j.C()]; d.isNumber() {
+					if d := frame[j.C()]; d.isFloat() {
 						frame[j.A()] = numberValue(r + d.f())
 						ip++
 					}
@@ -196,62 +245,82 @@ func (l *State) executeSwitchJIT() {
 				frame = l.arithInto(ci, i.A(), b, c, tmMul)
 			}
 		case opSubRR:
-			if b, c := frame[i.B()], frame[i.C()]; b.isNumber() && c.isNumber() {
+			if b, c := frame[i.B()], frame[i.C()]; b.isFloat() && c.isFloat() {
 				frame[i.A()] = numberValue(b.f() - c.f())
+			} else if b.isInteger() && c.isInteger() {
+				frame[i.A()] = integerValue(b.i() - c.i())
 			} else {
 				frame = l.arithInto(ci, i.A(), b, c, tmSub)
 			}
 		case opSubRK:
-			if b, c := frame[i.B()], constants[i.C()]; b.isNumber() && c.isNumber() {
+			if b, c := frame[i.B()], constants[i.C()]; b.isFloat() && c.isFloat() {
 				frame[i.A()] = numberValue(b.f() - c.f())
+			} else if b.isInteger() && c.isInteger() {
+				frame[i.A()] = integerValue(b.i() - c.i())
 			} else {
 				frame = l.arithInto(ci, i.A(), b, c, tmSub)
 			}
 		case opSubKR:
-			if b, c := constants[i.B()], frame[i.C()]; b.isNumber() && c.isNumber() {
+			if b, c := constants[i.B()], frame[i.C()]; b.isFloat() && c.isFloat() {
 				frame[i.A()] = numberValue(b.f() - c.f())
+			} else if b.isInteger() && c.isInteger() {
+				frame[i.A()] = integerValue(b.i() - c.i())
 			} else {
 				frame = l.arithInto(ci, i.A(), b, c, tmSub)
 			}
 		case opMulRR:
-			if b, c := frame[i.B()], frame[i.C()]; b.isNumber() && c.isNumber() {
+			if b, c := frame[i.B()], frame[i.C()]; b.isFloat() && c.isFloat() {
 				frame[i.A()] = numberValue(b.f() * c.f())
+			} else if b.isInteger() && c.isInteger() {
+				frame[i.A()] = integerValue(b.i() * c.i())
 			} else {
 				frame = l.arithInto(ci, i.A(), b, c, tmMul)
 			}
 		case opMulRK:
-			if b, c := frame[i.B()], constants[i.C()]; b.isNumber() && c.isNumber() {
+			if b, c := frame[i.B()], constants[i.C()]; b.isFloat() && c.isFloat() {
 				frame[i.A()] = numberValue(b.f() * c.f())
+			} else if b.isInteger() && c.isInteger() {
+				frame[i.A()] = integerValue(b.i() * c.i())
 			} else {
 				frame = l.arithInto(ci, i.A(), b, c, tmMul)
 			}
 		case opMulKR:
-			if b, c := constants[i.B()], frame[i.C()]; b.isNumber() && c.isNumber() {
+			if b, c := constants[i.B()], frame[i.C()]; b.isFloat() && c.isFloat() {
 				frame[i.A()] = numberValue(b.f() * c.f())
+			} else if b.isInteger() && c.isInteger() {
+				frame[i.A()] = integerValue(b.i() * c.i())
 			} else {
 				frame = l.arithInto(ci, i.A(), b, c, tmMul)
 			}
 		case opDivRR:
-			if b, c := frame[i.B()], frame[i.C()]; b.isNumber() && c.isNumber() {
+			if b, c := frame[i.B()], frame[i.C()]; b.isFloat() && c.isFloat() {
 				frame[i.A()] = numberValue(b.f() / c.f())
+			} else if b.isNumber() && c.isNumber() {
+				frame[i.A()] = numberValue(b.toFloat() / c.toFloat())
 			} else {
 				frame = l.arithInto(ci, i.A(), b, c, tmDiv)
 			}
 		case opDivRK:
-			if b, c := frame[i.B()], constants[i.C()]; b.isNumber() && c.isNumber() {
+			if b, c := frame[i.B()], constants[i.C()]; b.isFloat() && c.isFloat() {
 				frame[i.A()] = numberValue(b.f() / c.f())
+			} else if b.isNumber() && c.isNumber() {
+				frame[i.A()] = numberValue(b.toFloat() / c.toFloat())
 			} else {
 				frame = l.arithInto(ci, i.A(), b, c, tmDiv)
 			}
 		case opDivKR:
-			if b, c := constants[i.B()], frame[i.C()]; b.isNumber() && c.isNumber() {
+			if b, c := constants[i.B()], frame[i.C()]; b.isFloat() && c.isFloat() {
 				frame[i.A()] = numberValue(b.f() / c.f())
+			} else if b.isNumber() && c.isNumber() {
+				frame[i.A()] = numberValue(b.toFloat() / c.toFloat())
 			} else {
 				frame = l.arithInto(ci, i.A(), b, c, tmDiv)
 			}
 		case bytecode.OpUnaryMinus:
-			if b := frame[i.B()]; b.isNumber() {
+			if b := frame[i.B()]; b.isFloat() {
 				frame[i.A()] = numberValue(-b.f())
+			} else if b.isInteger() {
+				frame[i.A()] = integerValue(-b.i())
 			} else {
 				tmp := l.arith(b, b, tmUnaryMinus)
 				frame = ci.frame
@@ -286,8 +355,10 @@ func (l *State) executeSwitchJIT() {
 		case bytecode.OpLessThan:
 			b, c := k(i.B(), constants, frame), k(i.C(), constants, frame)
 			var less bool
-			if b.isNumber() && c.isNumber() {
+			if b.isFloat() && c.isFloat() {
 				less = b.f() < c.f()
+			} else if b.isInteger() && c.isInteger() {
+				less = b.i() < c.i()
 			} else {
 				less = l.lessThan(b, c)
 				frame = ci.frame
@@ -300,8 +371,10 @@ func (l *State) executeSwitchJIT() {
 		case bytecode.OpLessOrEqual:
 			b, c := k(i.B(), constants, frame), k(i.C(), constants, frame)
 			var lessOrEqual bool
-			if b.isNumber() && c.isNumber() {
+			if b.isFloat() && c.isFloat() {
 				lessOrEqual = b.f() <= c.f()
+			} else if b.isInteger() && c.isInteger() {
+				lessOrEqual = b.i() <= c.i()
 			} else {
 				lessOrEqual = l.lessOrEqual(b, c)
 				frame = ci.frame
@@ -329,7 +402,7 @@ func (l *State) executeSwitchJIT() {
 			if b > 1 && l.hookMask&(MaskCall|MaskReturn) == 0 {
 				if f := frame[a].goFunction(); f != nil && f.number != nil {
 					if nf := f.number; nf.unary != nil && b == 2 && c == 2 && frame[a+1].isNumber() {
-						frame[a] = numberValue(nf.unary(frame[a+1].f()))
+						frame[a] = numberValue(nf.unary(frame[a+1].toFloat()))
 						l.top = ci.top
 						break
 					}
@@ -440,25 +513,26 @@ func (l *State) executeSwitchJIT() {
 			frame, closure, constants = newFrame(l, ci)
 			code, ip = closure.prototype.execCode(), ci.savedPC
 		case bytecode.OpForLoop:
+			// See forPrep. An integer loop counts down the iterations left in
+			// the limit's register; a float loop compares with the limit.
 			a := i.A()
-			index, limit, step := frame[a+0].f(), frame[a+1].f(), frame[a+2].f()
-			if index += step; (0 < step && index <= limit) || (step <= 0 && limit <= index) {
+			if step := frame[a+2]; step.isInteger() {
+				if count := uint64(frame[a+1].i()); count > 0 {
+					l.pollInterrupt()
+					index := integerValue(frame[a].i() + step.i())
+					frame[a+1] = integerValue(int64(count - 1))
+					frame[a], frame[a+3] = index, index
+					ip += pc(i.SBx())
+				}
+			} else if index, limit, step := frame[a].f()+step.f(), frame[a+1].f(), step.f(); (0 < step && index <= limit) || (step <= 0 && limit <= index) {
 				l.pollInterrupt()
 				ip += pc(i.SBx())
 				frame[a+0] = numberValue(index) // update internal index...
 				frame[a+3] = numberValue(index) // ... and external index
 			}
 		case bytecode.OpForPrep:
-			a := i.A()
-			if init, ok := l.toNumber(frame[a+0]); !ok {
-				l.runtimeError("'for' initial value must be a number")
-			} else if limit, ok := l.toNumber(frame[a+1]); !ok {
-				l.runtimeError("'for' limit must be a number")
-			} else if step, ok := l.toNumber(frame[a+2]); !ok {
-				l.runtimeError("'for' step must be a number")
-			} else {
-				frame[a+0], frame[a+1], frame[a+2] = numberValue(init-step), numberValue(limit), numberValue(step)
-				ip += pc(i.SBx())
+			if l.forPrep(frame[i.A():]) {
+				ip += pc(i.SBx()) + 1 // past the FORLOOP: the loop runs no times
 			}
 		case bytecode.OpTForCall:
 			a := i.A()

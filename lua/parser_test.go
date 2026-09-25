@@ -1,11 +1,9 @@
 package lua
 
 import (
-	"os/exec"
+	"bytes"
 	"path/filepath"
 	"reflect"
-	"runtime/debug"
-	"strings"
 	"testing"
 )
 
@@ -17,12 +15,28 @@ func load(l *State, t *testing.T, fileName string) *luaClosure {
 	return l.ToValue(-1).(*luaClosure)
 }
 
+// roundTrip dumps the function on the top of the stack and loads it back,
+// leaving the stack as it was.
+func roundTrip(l *State, t *testing.T) *luaClosure {
+	t.Helper()
+	var b bytes.Buffer
+	if err := l.Dump(&b); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Load(&b, "=dumped", "b"); err != nil {
+		msg, _ := l.ToString(-1)
+		t.Fatal(err, msg)
+	}
+	c := l.ToValue(-1).(*luaClosure)
+	l.Pop(1)
+	return c
+}
+
 func TestParser(t *testing.T) {
 	l := NewState()
 	openLibraries(l)
-	bin := load(l, t, "fixtures/fib.bin")
-	l.Pop(1)
 	closure := load(l, t, "fixtures/fib.lua")
+	bin := roundTrip(l, t)
 	p := closure.prototype
 	if p == nil {
 		t.Fatal("prototype was nil")
@@ -46,44 +60,24 @@ func TestEmptyString(t *testing.T) {
 	l.Call(0, 0)
 }
 
-func TestParserExhaustively(t *testing.T) {
-	_, err := exec.LookPath("luac")
-	if err != nil {
-		t.Skipf("exhaustively testing the parser requires luac: %s", err)
+// Every file of the Lua 5.5 test suite that luart compiles survives a dump
+// and load unchanged.
+func TestDumpRoundTripsTheSuite(t *testing.T) {
+	matches, err := filepath.Glob(filepath.Join("../lua-5.5-tests", "*.lua"))
+	if err != nil || len(matches) == 0 {
+		t.Fatal("no suite files", err)
 	}
 	l := NewState()
-	matches, err := filepath.Glob(filepath.Join("../lua-tests", "*.lua"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	blackList := map[string]bool{"math.lua": true}
 	for _, source := range matches {
-		if _, ok := blackList[filepath.Base(source)]; ok {
+		if err := l.LoadFile(source, "t"); err != nil {
+			l.Pop(1) // not compilable yet: the suite's own test says why
 			continue
 		}
-		protectedTestParser(l, t, source)
+		src := l.ToValue(-1).(*luaClosure)
+		bin := roundTrip(l, t)
+		l.Pop(1)
+		compareClosures(t, src, bin)
 	}
-}
-
-func protectedTestParser(l *State, t *testing.T, source string) {
-	defer func() {
-		if x := recover(); x != nil {
-			t.Error(x)
-			t.Log(string(debug.Stack()))
-		}
-	}()
-	t.Log("Compiling " + source)
-	binary := filepath.Join(t.TempDir(), strings.TrimSuffix(filepath.Base(source), ".lua")+".bin")
-	if err := exec.Command("luac", "-o", binary, source).Run(); err != nil {
-		t.Fatalf("luac failed to compile %s: %s", source, err)
-	}
-	t.Log("Parsing " + source)
-	bin := load(l, t, binary)
-	l.Pop(1)
-	src := load(l, t, source)
-	l.Pop(1)
-	t.Log(source)
-	compareClosures(t, src, bin)
 }
 
 func expectEqual(t *testing.T, x, y any, m string) {
@@ -144,5 +138,11 @@ func comparePrototypes(t *testing.T, a, b *prototype) {
 	expectEqual(t, len(a.Prototypes), len(b.Prototypes), "prototypes length")
 	for i := range a.Prototypes {
 		comparePrototypes(t, &a.Prototypes[i], &b.Prototypes[i])
+	}
+}
+
+func validate(expected, actual any, description string, t *testing.T) {
+	if expected != actual {
+		t.Errorf("expected %v %s in main function but found %v", expected, description, actual)
 	}
 }

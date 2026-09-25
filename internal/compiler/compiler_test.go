@@ -9,30 +9,6 @@ import (
 	"github.com/matjam/luart/internal/bytecode"
 )
 
-func TestParseNumber(t *testing.T) {
-	for _, tt := range []struct {
-		s  string
-		v  float64
-		ok bool
-	}{
-		{"10", 10, true},
-		{"  -2.5e3  ", -2500, true},
-		{"+0x1p4", 16, true},
-		{"0x10", 16, true},
-		{"", 0, false},
-		{"0x", 0, false}, // a malformed numeral: a syntax error inside
-		{"1e", 0, false},
-		{"1 2", 0, false},
-		{"abc", 0, false},
-		{"1e999", 0, false}, // infinite
-	} {
-		v, ok := ParseNumber(tt.s)
-		if ok != tt.ok || ok && v != tt.v {
-			t.Errorf("ParseNumber(%q) = %v, %v; want %v, %v", tt.s, v, ok, tt.v, tt.ok)
-		}
-	}
-}
-
 func TestChunkID(t *testing.T) {
 	// As lobject.c's luaO_chunkid, with LUA_IDSIZE 60.
 	for _, tt := range []struct{ source, want string }{
@@ -65,12 +41,12 @@ func TestParse(t *testing.T) {
 	}
 	for _, k := range p.Constants {
 		switch k.(type) {
-		case nil, bool, float64, string:
+		case nil, bool, int64, float64, string:
 		default:
 			t.Errorf("constant %v of type %T", k, k)
 		}
 	}
-	if !containsConstant(p.Constants, 3.0) { // 1 + 2, folded
+	if !containsConstant(p.Constants, int64(3)) { // 1 + 2, folded
 		t.Errorf("constants %v do not hold the folded 3", p.Constants)
 	}
 
@@ -116,16 +92,24 @@ func TestSyntaxErrors(t *testing.T) {
 	}
 }
 
-// Numerals convert as Lua's do, hexadecimal fractions and exponents
-// included; one too large to represent is infinite.
+// Numerals convert as Lua 5.4's do: integers without a point or exponent,
+// hexadecimal integers wrapping around, decimal ones too large becoming
+// floats; hexadecimal fractions and exponents included; a float too large
+// to represent is infinite. Constant expressions fold with 5.4's rules.
 func TestNumerals(t *testing.T) {
 	for _, tt := range []struct {
 		source string
-		want   float64
+		want   any
 	}{
-		{"3", 3}, {"3.", 3}, {".5", 0.5}, {"3e2", 300}, {"3E-2", 0.03}, {"0012", 12},
-		{"0x10", 16}, {"0xA.8p1", 21}, {"0x.8", 0.5}, {"0x1P-2", 0.25},
+		{"3", int64(3)}, {"3.", 3.0}, {".5", 0.5}, {"3e2", 300.0}, {"3E-2", 0.03}, {"0012", int64(12)},
+		{"0x10", int64(16)}, {"0xA.8p1", 21.0}, {"0x.8", 0.5}, {"0x1P-2", 0.25},
 		{"1e999", math.Inf(1)},
+		{"0xffffffffffffffff", int64(-1)},
+		{"9223372036854775807", int64(math.MaxInt64)},
+		{"9223372036854775808", 9223372036854775808.0},
+		{"7 // 2", int64(3)}, {"-7 // 2", int64(-4)}, {"7.0 // 2", 3.0}, {"7 % -3", int64(-2)},
+		{"5.5 % 2", 1.5}, {"3 & 5", int64(1)}, {"1 << 62", int64(1 << 62)}, {"~0", int64(-1)},
+		{"2^2", 4.0}, {"1 / 2", 0.5}, {"1 + 2.0", 3.0},
 	} {
 		p, err := Parse(strings.NewReader("return "+tt.source), "=test", 0)
 		if err != nil {
@@ -166,10 +150,17 @@ func TestLoadConstantEx(t *testing.T) {
 	}
 }
 
-func containsConstant(ks []any, v float64) bool {
+// containsConstant reports whether ks holds v, of v's type: the integer 3
+// and the float 3.0 are different constants.
+func containsConstant(ks []any, v any) bool {
 	for _, k := range ks {
-		if f, ok := k.(float64); ok && (f == v || math.IsNaN(f) && math.IsNaN(v)) {
+		if k == v {
 			return true
+		}
+		if f, ok := k.(float64); ok {
+			if g, ok := v.(float64); ok && math.IsNaN(f) && math.IsNaN(g) {
+				return true
+			}
 		}
 	}
 	return false

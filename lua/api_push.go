@@ -3,6 +3,8 @@ package lua
 import (
 	"fmt"
 	"strings"
+
+	"github.com/matjam/luart/internal/bytecode"
 )
 
 // PushString pushes a string onto the stack.
@@ -50,7 +52,14 @@ func (l *State) PushFString(format string, args ...any) string {
 			l.push(stringValue(string([]byte{byte(c)})))
 			i++
 		case 'd':
-			l.push(numberValue(float64(args[i].(int))))
+			switch a := args[i].(type) {
+			case int:
+				l.push(integerValue(int64(a)))
+			case int64:
+				l.push(integerValue(a))
+			default:
+				l.push(integerValue(int64(args[i].(int32))))
+			}
 			i++
 		case 'f':
 			l.push(numberValue(args[i].(float64)))
@@ -123,20 +132,34 @@ func (l *State) PushThread() bool {
 // http://www.lua.org/manual/5.2/manual.html#lua_pushnil
 func (l *State) PushNil() { l.apiPush(nilValue) }
 
+// StringToNumber pushes the number the numeral s holds, keeping its type:
+// an integer, or a float. It reports whether s is a numeral, and pushes
+// nothing if it is not.
+//
+// http://www.lua.org/manual/5.5/manual.html#lua_stringtonumber
+func (l *State) StringToNumber(s string) bool {
+	n, ok := bytecode.ParseNumber(s)
+	if ok {
+		l.apiPush(numberOf(n))
+	}
+	return ok
+}
+
 // PushNumber pushes a number onto the stack.
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_pushnumber
 func (l *State) PushNumber(n float64) { l.apiPush(numberValue(n)) }
 
-// PushInteger pushes n onto the stack.
-//
-// http://www.lua.org/manual/5.2/manual.html#lua_pushinteger
-func (l *State) PushInteger(n int) { l.apiPush(numberValue(float64(n))) }
+// Integer lists the Go integer types PushInteger takes.
+type Integer interface {
+	~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr
+}
 
-// PushUnsigned pushes n onto the stack.
+// PushInteger pushes n onto the stack as an integer. A uint64 above the
+// largest integer wraps around, as a cast to lua_Integer does in C.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_pushunsigned
-func (l *State) PushUnsigned(n uint) { l.apiPush(numberValue(float64(n))) }
+// http://www.lua.org/manual/5.5/manual.html#lua_pushinteger
+func (l *State) PushInteger[T Integer](n T) { l.apiPush(integerValue(int64(n))) }
 
 // PushBoolean pushes a boolean value with value b onto the stack.
 //

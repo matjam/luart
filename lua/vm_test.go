@@ -49,7 +49,7 @@ func TestProtectedCall(t *testing.T) {
 		_ = stack(state.stack[ci.base():state.top])
 		_ = ci.code[ci.savedPC-1].String()
 	}, MaskCount, 1)
-	l.LoadString("assert(not pcall(bit32.band, {}))")
+	l.LoadString("assert(not pcall(string.rep, {}))")
 	l.Call(0, 0)
 }
 
@@ -62,27 +62,27 @@ func TestLua(t *testing.T) {
 	}{
 		{name: "attrib", nonPort: true},
 		{name: "big", wrapped: true},
-		{name: "bitwise"},
+		// {name: "bitwise"}, // retired: uses bit32; lua-5.5-tests has its 5.5 version
 		{name: "calls"},
 		// {name: "checktable"}, // needs the C test library (T)
 		{name: "closure"},
 		// {name: "code"}, // needs the C test library (T)
 		{name: "constructs"},
-		{name: "db", goAsC: true},
+		// {name: "db", goAsC: true}, // retired: traces 5.2 for-loop lines; lua-5.5-tests has its 5.5 version
 		{name: "errors"},
 		{name: "events"},
 		{name: "files"},
-		{name: "gc"},
+		// {name: "gc"}, // retired: expects collectgarbage("count") to return two results; lua-5.5-tests has its 5.5 version
 		{name: "coroutine"},
 		{name: "goto"},
 		{name: "literals"},
 		{name: "locals"},
 		// {name: "main"}, // tests the lua executable
-		{name: "math"},
-		{name: "nextvar"},
+		// {name: "math"}, // retired: expects 5.2 numbers: no integers; lua-5.5-tests has its 5.5 version
+		// {name: "nextvar"}, // retired: uses math.pow; lua-5.5-tests has its 5.5 version
 		{name: "pm"},
 		{name: "sort", nonPort: true}, // sort.lua depends on os.clock(), which is not yet implemented on Windows.
-		{name: "strings"},
+		// {name: "strings"}, // retired: formats 5.2 numbers; lua-5.5-tests has its 5.5 version
 		{name: "vararg"},
 		{name: "verybig"},
 	}
@@ -452,7 +452,7 @@ func TestLocIsCorrectOnFuncCall(t *testing.T) {
 	if err == nil {
 		t.Errorf("Expected error! Got none... :(")
 	} else {
-		if err.Error() != "runtime error: [string \"test\"]:4: attempt to call global 'isNotDefined' (a nil value)" {
+		if err.Error() != "runtime error: [string \"test\"]:4: attempt to call a nil value (global 'isNotDefined')" {
 			t.Errorf("Wrong error reported: %v", err)
 		}
 	}
@@ -470,7 +470,7 @@ func TestLocIsCorrectOnError(t *testing.T) {
 	if err == nil {
 		t.Errorf("Expected error! Got none... :(")
 	} else {
-		if err.Error() != "runtime error: [string \"test\"]:3: attempt to perform arithmetic on global 'q' (a nil value)" {
+		if err.Error() != "runtime error: [string \"test\"]:3: attempt to perform arithmetic on a nil value (global 'q')" {
 			t.Errorf("Wrong error reported: %v", err)
 		}
 	}

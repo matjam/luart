@@ -149,7 +149,7 @@ func TestStringFormatHexFloat(t *testing.T) {
 		eq("+0x1p+0", "%+a", 1)
 		eq("inf", "%a", math.huge)
 		local ok, err = pcall(string.format, "%y", 1)
-		assert(not ok and err:find("invalid option '%y' to 'format'", 1, true), err)
+		assert(not ok and err:find("invalid conversion '%y' to 'format'", 1, true), err)
 	`)
 }
 

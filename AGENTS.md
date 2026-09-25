@@ -7,6 +7,9 @@ today, the rules it depends on, and where performance work should go next.
 ## Working on the repository
 
 - Go 1.27.1, `CGO_ENABLED=0`. CI pins every action to a full commit SHA.
+- Go has generics: generic types, and since Go 1.27 generic methods, on
+  generic types too. Reach for them before writing one function per
+  numeric type (`PushInteger[T Integer]`, `Arg[T]`, `RawGetInt[T]`).
 - Run everything CI runs before pushing:
   - `gofmt -l .` must print nothing.
   - `go generate ./...` must leave the tree unchanged; it rewrites
@@ -23,14 +26,16 @@ today, the rules it depends on, and where performance work should go next.
   linux/amd64.
 - On linux/amd64 with qemu-user's binfmt handler installed,
   `GOARCH=arm64 go test ./...` runs the arm64 JIT under emulation.
-- Tests that need `luac` 5.2 skip locally when it is missing, but fail
-  when `luac` is another version; skip them with `-skip
-  'TestParserExhaustively|TestUndump|TestDumpThenUndump'`. CI installs 5.2, so wait for CI
-  before merging. The Lua 5.2 test suite is the `lua-tests` submodule;
-  the official Lua 5.5.1 suite, unmodified, is `lua-5.5-tests/`, run by
+- luart targets Lua 5.5. The official Lua 5.5.1 suite, unmodified, is
+  `lua-5.5-tests/`, run by
   `TestLua55` (lua/lua55_test.go). Its pending list says what each file
   still needs; `LUART_SUITE_PROGRESS=1` runs pending files and logs where
-  they stop. Take a file off the list once it passes.
+  they stop. Take a file off the list once it passes. The Lua 5.2 suite
+  (the `lua-tests` submodule, `TestLua`) still runs the files whose
+  semantics 5.5 kept; retire one, with a comment, when it tests 5.2
+  behaviour 5.5 changed. C Lua 5.5 (`brew install lua`) is the reference
+  for any behaviour the suite does not pin down: diff a script's output
+  against it.
 - Benchmarks: always pass `-ldflags=-funcalign=64`. Without it, unrelated
   changes move the interpreter loop's alignment and its timings by 5–10%.
   Compare back to back on an idle machine; on a CPU with more than one
@@ -52,16 +57,18 @@ today, the rules it depends on, and where performance work should go next.
   open `fixtures/` and `libs/` (which the Lua suite's attrib.lua uses)
   relative to `lua/`, and the suite as `../lua-tests`.
 - `internal/bytecode` is the instruction format, the opcodes, the limits
-  the compiler and VM share, `Arith` (so constant folding and the VM
-  compute alike) and `Proto`, a compiled function with Go constants (nil,
-  bool, float64, string).
+  the compiler and VM share, `Number` and its arithmetic (`Arith`, so
+  constant folding and the VM compute alike), numeral parsing
+  (`ParseNumber`, `Numeral`) and float formatting (`FormatFloat`), and
+  `Proto`, a compiled function with Go constants (nil, bool, int64,
+  float64, string).
 - `internal/compiler` compiles source to a `bytecode.Proto`; it knows
-  nothing of the VM. `Parse` returns syntax errors as Go errors, and
-  `ParseNumber` is Lua's string-to-number conversion. The core builds its
+  nothing of the VM. `Parse` returns syntax errors as Go errors. The core
+  builds its
   `prototype` from a Proto (`prototypeOf`, compile.go), keeping runtime
   state beside it: the specialised code, field caches and JIT state.
 - `internal/chunk` reads and writes binary chunks as Protos (`Load`,
-  `Dump`). `Load` returns malformed chunks as errors and bounds each
+  `Dump`), in luart's own format, which C Lua's luac cannot read. `Load` returns malformed chunks as errors and bounds each
   allocation, but, like Lua, trusts the code of a well-formed chunk.
   `protoOf` (compile.go) converts a prototype back for `Dump`.
 - `stdlib` holds the standard libraries and uses only `lua`'s public API.
@@ -102,10 +109,19 @@ today, the rules it depends on, and where performance work should go next.
 ## Interpreter
 
 - `value` (types.go) is 16 bytes: `p unsafe.Pointer` and `n float64`.
-  Numbers, booleans and none have sentinel pointers in `p`; other kinds
-  keep a kind tag in `n`'s top byte and the object in `p`. Numbers and
-  booleans never allocate. `value` is not comparable; use `rawEqual`,
-  `hashKey` and `identical`.
+  Floats, integers, booleans and none have sentinel pointers in `p`; an
+  integer keeps its int64's bits in `n`. The float and integer sentinels
+  are adjacent bytes (`numberSentinels`), so `isNumber` is one subtract
+  and compare, which compiled code repeats (`branchNumber`). Other kinds
+  keep a kind tag in `n`'s top byte and the object in `p`; since an
+  integer's bits can be any tag, a kind test must rule out both number
+  sentinels first. Numbers and booleans never allocate. `value` is not
+  comparable; use `rawEqual`, `hashKey` and `identical`. Table keys are
+  normalised: a float with an integer value is stored as the integer.
+- Numbers follow Lua 5.4: integers wrap around, `/` and `^` give floats,
+  `//` and `%` floor, comparisons between integers and floats are exact
+  (numbers.go), and a numeric for loop whose start and step are integers
+  counts on integers (`forPrep`), never wrapping.
 - `executeSwitch` (vm.go) is the interpreter loop. `prototype.exec`
   (specialise.go) holds a specialised copy of the bytecode with the same pc
   for every instruction: RR, RK and KR arithmetic, field instructions with
@@ -115,7 +131,10 @@ today, the rules it depends on, and where performance work should go next.
   `fieldCache`, which can also cache a hit through a metatable's `__index`
   table. NEWTABLE sites remember the shape their last table reached.
 - Number functions (number_function.go, `PushNumberFunction[F]`) are Go
-  functions of float64s that CALL invokes without a Go frame.
+  functions of float64s that CALL invokes without a Go frame. Any number
+  argument converts to a float, and the result is a float, so only
+  functions that always return floats (`math.sqrt`, `math.sin`) may be
+  number functions.
 
 ## Coroutines
 
@@ -254,6 +273,9 @@ nothing compiles.
   - The encoders in internal/jit/arm64 and internal/jit/amd64 are checked
     against clang's output.
 - **Coverage:**
+  - Compiled code handles floats only for now: an integer operand, and
+    `%`, exit to the interpreter, and a numeric for loop compiles only on
+    floats. Integers in compiled code are the next JIT work.
   - Moves, constants, arithmetic, comparisons, branches and numeric for
     loops. `<` and `<=` compare numbers; `==` compares any values, and
     exits only for two userdata, two tables whose first metatable is not
@@ -268,9 +290,10 @@ nothing compiles.
   - `#` of strings.
   - Native calls and returns between compiled fixed-parameter Lua
     functions.
-  - `math.floor`, `ceil`, `sqrt`, `abs`, `sin` and `cos` inline.
-- **Kernels:** an innermost numeric for loop whose body is only moves,
-  number constants, arithmetic and number comparisons keeps every Lua
+  - `math.sqrt`, `sin` and `cos` inline. (`floor`, `ceil` and `abs`
+    return integers now, and wait for integers in compiled code.)
+- **Kernels:** an innermost float for loop whose body is only moves,
+  float constants, arithmetic other than `%` and float comparisons keeps every Lua
   register it uses in an FP register for the whole loop (`emitKernel`).
 
 ### Rules compiled code depends on

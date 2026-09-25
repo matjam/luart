@@ -56,14 +56,16 @@ func prototypeOf(bp *bytecode.Proto) prototype {
 	return p
 }
 
-// constantValue converts a compiled constant: nil, a bool, a float64 or a
-// string.
+// constantValue converts a compiled constant: nil, a bool, an int64, a
+// float64 or a string.
 func constantValue(k any) value {
 	switch k := k.(type) {
 	case nil:
 		return nilValue
 	case bool:
 		return boolValue(k)
+	case int64:
+		return integerValue(k)
 	case float64:
 		return numberValue(k)
 	case string:

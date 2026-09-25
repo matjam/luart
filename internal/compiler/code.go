@@ -9,6 +9,7 @@ import (
 
 const (
 	oprMinus = iota
+	oprBNot
 	oprNot
 	oprLength
 	oprNoUnary
@@ -20,6 +21,8 @@ const (
 	maxLocalVariables = 200
 )
 
+// The binary operators. oprAdd to oprPow are in the order of the
+// arithmetic opcodes, OpAdd to OpPow.
 const (
 	oprAdd = iota
 	oprSub
@@ -27,6 +30,12 @@ const (
 	oprDiv
 	oprMod
 	oprPow
+	oprIDiv
+	oprBAnd
+	oprBOr
+	oprBXor
+	oprShl
+	oprShr
 	oprConcat
 	oprEq
 	oprLT
@@ -80,7 +89,7 @@ type exprDesc struct {
 	tableType int // whether 'table' is register (kindLocal) or upvalue (kindUpValue)
 	info      int
 	t, f      int // patch lists for 'exit when true/false'
-	value     float64
+	value     bytecode.Number
 }
 
 type assignmentTarget struct {
@@ -532,11 +541,17 @@ func (f *function) addConstant(k, v any) int {
 	return index
 }
 
-func (f *function) NumberConstant(n float64) int {
-	if n == 0.0 || math.IsNaN(n) {
-		return f.addConstant(math.Float64bits(n), n)
+// NumberConstant returns the index of the constant n. An integer and a
+// float with the same value are different constants, and so are 0.0 and
+// -0.0, and NaNs, which are looked up by their bits.
+func (f *function) NumberConstant(n bytecode.Number) int {
+	if n.IsInt {
+		return f.addConstant(n.Int, n.Int)
 	}
-	return f.addConstant(n, n)
+	if x := n.Float; x == 0.0 || math.IsNaN(x) {
+		return f.addConstant(math.Float64bits(x), x)
+	}
+	return f.addConstant(n.Float, n.Float)
 }
 
 func (f *function) CheckStack(n int) {
@@ -845,22 +860,53 @@ func (f *function) Indexed(t, k exprDesc) (r exprDesc) {
 	return
 }
 
-func foldConstants(op bytecode.OpCode, e1, e2 exprDesc) (exprDesc, bool) {
-	if !e1.isNumeral() || !e2.isNumeral() {
-		return e1, false
-	} else if (op == bytecode.OpDiv || op == bytecode.OpMod) && e2.value == 0.0 {
+// foldConstants computes op on two numerals, as lcode.c's constfolding
+// does: not when the operation would raise an error, nor when a float
+// result is NaN or zero, whose -0 and NaN constants would be awkward.
+func foldConstants(op bytecode.ArithOp, e1, e2 exprDesc) (exprDesc, bool) {
+	if !e1.isNumeral() || !op.IsUnary() && !e2.isNumeral() {
 		return e1, false
 	}
-	e1.value = bytecode.Arith(op, e1.value, e2.value)
+	r, err := bytecode.Arith(op, e1.value, e2.value)
+	if err != bytecode.ArithOK || !r.IsInt && (math.IsNaN(r.Float) || r.Float == 0) {
+		return e1, false
+	}
+	e1.value = r
 	return e1, true
 }
 
-func (f *function) encodeArithmetic(op bytecode.OpCode, e1, e2 exprDesc, line int) exprDesc {
-	if e, folded := foldConstants(op, e1, e2); folded {
-		return e
+// arithOps maps the binary operators oprAdd to oprShr to their opcode and
+// arithmetic operator; the bitwise ones share OpBitwise.
+var arithOps = [...]struct {
+	op    bytecode.OpCode
+	arith bytecode.ArithOp
+}{
+	oprAdd:  {bytecode.OpAdd, bytecode.ArithAdd},
+	oprSub:  {bytecode.OpSub, bytecode.ArithSub},
+	oprMul:  {bytecode.OpMul, bytecode.ArithMul},
+	oprDiv:  {bytecode.OpDiv, bytecode.ArithDiv},
+	oprMod:  {bytecode.OpMod, bytecode.ArithMod},
+	oprPow:  {bytecode.OpPow, bytecode.ArithPow},
+	oprIDiv: {bytecode.OpIDiv, bytecode.ArithIDiv},
+	oprBAnd: {bytecode.OpBitwise, bytecode.ArithBAnd},
+	oprBOr:  {bytecode.OpBitwise, bytecode.ArithBOr},
+	oprBXor: {bytecode.OpBitwise, bytecode.ArithBXor},
+	oprShl:  {bytecode.OpBitwise, bytecode.ArithShl},
+	oprShr:  {bytecode.OpBitwise, bytecode.ArithShr},
+}
+
+// encodeArithmetic encodes op, whose arithmetic operator is arith, on e1
+// and e2, folding numerals. OpBitwise is followed by its operator in an
+// EXTRAARG word. LEN and the unary operators take one operand.
+func (f *function) encodeArithmetic(op bytecode.OpCode, arith bytecode.ArithOp, e1, e2 exprDesc, line int) exprDesc {
+	if op != bytecode.OpLength && op != bytecode.OpConcat {
+		if e, folded := foldConstants(arith, e1, e2); folded {
+			return e
+		}
 	}
+	unary := op == bytecode.OpUnaryMinus || op == bytecode.OpLength || op == bytecode.OpBitwise && arith.IsUnary()
 	o2 := 0
-	if op != bytecode.OpUnaryMinus && op != bytecode.OpLength {
+	if !unary {
 		e2, o2 = f.expressionToRegisterOrConstant(e2)
 	}
 	e1, o1 := f.expressionToRegisterOrConstant(e1)
@@ -873,21 +919,29 @@ func (f *function) encodeArithmetic(op bytecode.OpCode, e1, e2 exprDesc, line in
 	}
 	e1.info, e1.kind = f.EncodeABC(op, 0, o1, o2), kindRelocatable
 	f.FixLine(line)
+	if op == bytecode.OpBitwise {
+		f.encodeExtraArg(int(arith))
+		f.FixLine(line)
+	}
 	return e1
 }
 
 func (f *function) Prefix(op int, e exprDesc, line int) exprDesc {
 	switch op {
 	case oprMinus:
-		if e.isNumeral() {
-			e.value = -e.value
+		if e, folded := foldConstants(bytecode.ArithUnm, e, e); folded {
 			return e
 		}
-		return f.encodeArithmetic(bytecode.OpUnaryMinus, f.ExpressionToAnyRegister(e), makeExpression(kindNumber, 0), line)
+		return f.encodeArithmetic(bytecode.OpUnaryMinus, bytecode.ArithUnm, f.ExpressionToAnyRegister(e), makeExpression(kindNumber, 0), line)
+	case oprBNot:
+		if e, folded := foldConstants(bytecode.ArithBNot, e, e); folded {
+			return e
+		}
+		return f.encodeArithmetic(bytecode.OpBitwise, bytecode.ArithBNot, f.ExpressionToAnyRegister(e), makeExpression(kindNumber, 0), line)
 	case oprNot:
 		return f.encodeNot(e)
 	case oprLength:
-		return f.encodeArithmetic(bytecode.OpLength, f.ExpressionToAnyRegister(e), makeExpression(kindNumber, 0), line)
+		return f.encodeArithmetic(bytecode.OpLength, 0, f.ExpressionToAnyRegister(e), makeExpression(kindNumber, 0), line)
 	}
 	panic("unreachable")
 }
@@ -900,7 +954,7 @@ func (f *function) Infix(op int, e exprDesc) exprDesc {
 		e = f.GoIfFalse(e)
 	case oprConcat:
 		e = f.ExpressionToNextRegister(e)
-	case oprAdd, oprSub, oprMul, oprDiv, oprMod, oprPow:
+	case oprAdd, oprSub, oprMul, oprDiv, oprMod, oprPow, oprIDiv, oprBAnd, oprBOr, oprBXor, oprShl, oprShr:
 		if !e.isNumeral() {
 			e, _ = f.expressionToRegisterOrConstant(e)
 		}
@@ -940,9 +994,9 @@ func (f *function) Postfix(op int, e1, e2 exprDesc, line int) exprDesc {
 			f.Instruction(e2).SetB(e1.info)
 			return makeExpression(kindRelocatable, e2.info)
 		}
-		return f.encodeArithmetic(bytecode.OpConcat, e1, f.ExpressionToNextRegister(e2), line)
-	case oprAdd, oprSub, oprMul, oprDiv, oprMod, oprPow:
-		return f.encodeArithmetic(bytecode.OpCode(op-oprAdd)+bytecode.OpAdd, e1, e2, line)
+		return f.encodeArithmetic(bytecode.OpConcat, 0, e1, f.ExpressionToNextRegister(e2), line)
+	case oprAdd, oprSub, oprMul, oprDiv, oprMod, oprPow, oprIDiv, oprBAnd, oprBOr, oprBXor, oprShl, oprShr:
+		return f.encodeArithmetic(arithOps[op].op, arithOps[op].arith, e1, e2, line)
 	case oprEq, oprLT, oprLE:
 		return f.encodeComparison(bytecode.OpCode(op-oprEq)+bytecode.OpEqual, 1, e1, e2)
 	case oprNE, oprGT, oprGE:

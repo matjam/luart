@@ -70,7 +70,7 @@ func ExampleState_ProtectedCall() {
 		fmt.Println(err)
 		l.Pop(1)
 	}
-	// Output: runtime error: game.lua:4: attempt to perform arithmetic on local 'speed' (a nil value)
+	// Output: runtime error: game.lua:4: attempt to perform arithmetic on a nil value (local 'speed')
 }
 
 // A Go function of numbers is called without a Go call frame when every
@@ -122,7 +122,7 @@ func ExampleState_CheckUserData() {
 	if err := l.DoString(`print(point(3, 4):norm())`); err != nil {
 		log.Fatal(err)
 	}
-	// Output: 5
+	// Output: 5.0
 }
 
 // Interrupt, from another goroutine, stops a script that runs too long.
@@ -164,5 +164,5 @@ func ExampleState_Require() {
 	}
 	// Output:
 	// 3.14
-	// runtime error: [string "io.open("secrets.txt")"]:1: attempt to index global 'io' (a nil value)
+	// runtime error: [string "io.open("secrets.txt")"]:1: attempt to index a nil value (global 'io')
 }

@@ -1,6 +1,6 @@
 package lua
 
-import "math"
+import "github.com/matjam/luart/internal/bytecode"
 
 // TypeOf returns the type of the value at index, or TypeNone for a
 // non-valid (but acceptable) index.
@@ -21,13 +21,20 @@ func (l *State) IsGoFunction(index int) bool {
 	return false
 }
 
-// IsNumber verifies that the value at index is a number.
+// IsNumber verifies that the value at index is a number, or a string
+// convertible to one.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_isnumber
+// http://www.lua.org/manual/5.5/manual.html#lua_isnumber
 func (l *State) IsNumber(index int) bool {
 	_, ok := l.toNumber(l.indexToValue(index))
 	return ok
 }
+
+// IsInteger verifies that the value at index is an integer: a number with
+// the integer subtype, not a float with an integral value.
+//
+// http://www.lua.org/manual/5.5/manual.html#lua_isinteger
+func (l *State) IsInteger(index int) bool { return l.indexToValue(index).isInteger() }
 
 // IsString verifies that the value at index is a string, or a number (which
 // is always convertible to a string).
@@ -93,37 +100,17 @@ func (l *State) IsNoneOrNil(index int) bool {
 }
 
 // ToInteger converts the Lua value at index into a signed integer. The Lua
-// value must be a number, or a string convertible to a number.
-//
-// If the number is not an integer, it is truncated in some non-specified way.
-//
-// If the operation failed, the second return value will be false.
-//
-// http://www.lua.org/manual/5.2/manual.html#lua_tointegerx
-func (l *State) ToInteger(index int) (int, bool) {
-	if n, ok := l.ToNumber(index); ok {
-		return int(n), true
-	}
-	return 0, false
-}
-
-// ToUnsigned converts the Lua value at index to a Go uint. The Lua value
-// must be a number or a string convertible to a number.
-//
-// If the number is not an unsigned integer, it is truncated in some
-// non-specified way.  If the number is outside the range of uint, it is
-// normalized to the remainder of its division by one more than the maximum
-// representable value.
+// value must be an integer, a float with an integral value, or a string
+// holding a numeral of either.
 //
 // If the operation failed, the second return value will be false.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_tounsignedx
-func (l *State) ToUnsigned(index int) (uint, bool) {
-	if n, ok := l.toNumber(l.indexToValue(index)); ok {
-		const supUnsigned = float64(^uint32(0)) + 1
-		return uint(n - math.Floor(n/supUnsigned)*supUnsigned), true
+// http://www.lua.org/manual/5.5/manual.html#lua_tointegerx
+func (l *State) ToInteger(index int) (int64, bool) {
+	if v := l.arg(index); v.isInteger() {
+		return v.i(), true
 	}
-	return 0, false
+	return toInteger(l.indexToValue(index))
 }
 
 // ToString  converts the Lua value at index to a Go string.  The Lua value
@@ -154,7 +141,7 @@ func (l *State) ToString(index int) (s string, ok bool) {
 // http://www.lua.org/manual/5.2/manual.html#lua_tonumberx
 func (l *State) ToNumber(index int) (float64, bool) {
 	if v := l.arg(index); v.isNumber() {
-		return v.f(), true
+		return v.toFloat(), true
 	}
 	return l.toNumber(l.indexToValue(index))
 }
@@ -241,12 +228,29 @@ func (l *State) ToValue(index int) any {
 		return (*lightUserData)(v.p).v
 	}
 	switch o := v.obj().(type) {
-	case string, float64, bool, *table, *luaClosure, *goClosure, *goFunction, *State:
+	case string, int64, float64, bool, *table, *luaClosure, *goClosure, *goFunction, *State:
 		return o
 	case *userData:
 		return o.data
 	}
 	return nil
+}
+
+// ToPointer returns the address of the value at index if it is a table,
+// function, userdata, thread or string, and 0 for other values. Different
+// objects give different addresses; it is for debug information and
+// hashing, as string.format's %p uses it.
+//
+// http://www.lua.org/manual/5.5/manual.html#lua_topointer
+func (l *State) ToPointer(index int) uintptr {
+	v := l.indexToValue(index)
+	switch v.kind() {
+	case vkTable, vkLuaClosure, vkGoClosure, vkGoFunction, vkUserData, vkThread, vkString, vkLightUserData:
+		if v.p != emptyStringPtr() {
+			return uintptr(v.p)
+		}
+	}
+	return 0
 }
 
 // RawEqual verifies that the values at index1 and index2 are primitively
@@ -287,18 +291,14 @@ func (l *State) Compare(index1, index2 int, op ComparisonOperator) bool {
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_arith
 func (l *State) Arith(op Operator) {
-	if op != OpUnaryMinus {
+	if op != OpUnaryMinus && op != OpBNot {
 		l.checkElementCount(2)
 	} else {
 		l.checkElementCount(1)
 		l.push(l.stack[l.top-1])
 	}
 	o1, o2 := l.stack[l.top-2], l.stack[l.top-1]
-	if n1, n2, ok := pairAsNumbers(o1, o2); ok {
-		l.stack[l.top-2] = numberValue(arith(op, n1, n2))
-	} else {
-		l.stack[l.top-2] = l.arith(o1, o2, tm(op-OpAdd)+tmAdd)
-	}
+	l.stack[l.top-2] = l.arith(o1, o2, arithEvent(bytecode.ArithOp(op)))
 	l.top--
 }
 

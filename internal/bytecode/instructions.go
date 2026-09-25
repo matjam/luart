@@ -52,6 +52,12 @@ const (
 	OpClosure
 	OpVarArg
 	OpExtraArg
+
+	// Lua 5.3's operators, after 5.2's opcodes. OpBitwise is every bitwise
+	// operator: the EXTRAARG word after it holds the ArithOp, so that seven
+	// operators take one of the few opcodes left.
+	OpIDiv
+	OpBitwise
 )
 
 var OpNames = []string{
@@ -95,6 +101,8 @@ var OpNames = []string{
 	"CLOSURE",
 	"VARARG",
 	"EXTRAARG",
+	"IDIV",
+	"BITWISE",
 }
 
 const (
@@ -266,4 +274,6 @@ var opModes []byte = []byte{
 	opmode(0, 1, ArgU, ArgN, ModeABx),  // opClosure
 	opmode(0, 1, ArgU, ArgN, ModeABC),  // opVarArg
 	opmode(0, 0, ArgU, ArgU, ModeAx),   // opExtraArg
+	opmode(0, 1, ArgK, ArgK, ModeABC),  // opIDiv
+	opmode(0, 1, ArgK, ArgK, ModeABC),  // opBitwise; C is unused for ~x
 }

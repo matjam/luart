@@ -48,10 +48,10 @@ func (l *State) RawGet(index int) {
 // value at index on the stack. The access is raw, as it doesn't invoke
 // metamethods.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_rawgeti
-func (l *State) RawGetInt(index, key int) {
+// http://www.lua.org/manual/5.5/manual.html#lua_rawgeti
+func (l *State) RawGetInt[T Integer](index int, key T) {
 	t := l.indexToValue(index).table()
-	l.apiPush(t.atInt(key))
+	l.apiPush(t.at(integerValue(int64(key))))
 }
 
 // RawGetValue pushes onto the stack value table[p] where table is the
@@ -178,11 +178,11 @@ func (l *State) RawSet(index int) {
 // This function pops the value from the stack.  The assignment is raw; it
 // doesn't invoke metamethods.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_rawseti
-func (l *State) RawSetInt(index, key int) {
+// http://www.lua.org/manual/5.5/manual.html#lua_rawseti
+func (l *State) RawSetInt[T Integer](index int, key T) {
 	l.checkElementCount(1)
 	t := l.indexToValue(index).table()
-	t.putAtInt(key, l.stack[l.top-1])
+	t.put(l, integerValue(int64(key)), l.stack[l.top-1])
 	l.top--
 }
 

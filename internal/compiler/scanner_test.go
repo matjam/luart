@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/matjam/luart/internal/bytecode"
 )
 
 type test struct {
@@ -27,18 +29,18 @@ func TestScanner(t *testing.T) {
 		{".", []token{{t: '.'}}},
 		{"..", []token{{t: tkConcat}}},
 		{"...", []token{{t: tkDots}}},
-		{".34", []token{{t: tkNumber, n: 0.34}}},
+		{".34", []token{{t: tkNumber, n: bytecode.Float(0.34)}}},
 		{"_foo", []token{{t: tkName, s: "_foo"}}},
-		{"3", []token{{t: tkNumber, n: float64(3)}}},
-		{"3.0", []token{{t: tkNumber, n: 3.0}}},
-		{"3.1416", []token{{t: tkNumber, n: 3.1416}}},
-		{"314.16e-2", []token{{t: tkNumber, n: 3.1416}}},
-		{"0.31416E1", []token{{t: tkNumber, n: 3.1416}}},
-		{"0xff", []token{{t: tkNumber, n: float64(0xff)}}},
-		{"0x0.1E", []token{{t: tkNumber, n: 0.1171875}}},
-		{"0xA23p-4", []token{{t: tkNumber, n: 162.1875}}},
-		{"0X1.921FB54442D18P+1", []token{{t: tkNumber, n: 3.141592653589793}}},
-		{"  -0xa  ", []token{{t: '-'}, {t: tkNumber, n: 10.0}}},
+		{"3", []token{{t: tkNumber, n: bytecode.Integer(3)}}},
+		{"3.0", []token{{t: tkNumber, n: bytecode.Float(3.0)}}},
+		{"3.1416", []token{{t: tkNumber, n: bytecode.Float(3.1416)}}},
+		{"314.16e-2", []token{{t: tkNumber, n: bytecode.Float(3.1416)}}},
+		{"0.31416E1", []token{{t: tkNumber, n: bytecode.Float(3.1416)}}},
+		{"0xff", []token{{t: tkNumber, n: bytecode.Integer(0xff)}}},
+		{"0x0.1E", []token{{t: tkNumber, n: bytecode.Float(0.1171875)}}},
+		{"0xA23p-4", []token{{t: tkNumber, n: bytecode.Float(162.1875)}}},
+		{"0X1.921FB54442D18P+1", []token{{t: tkNumber, n: bytecode.Float(3.141592653589793)}}},
+		{"  -0xa  ", []token{{t: '-'}, {t: tkNumber, n: bytecode.Integer(10)}}},
 	}
 	for i, v := range tests {
 		testScanner(t, i, v.source, v.tokens)
@@ -63,5 +65,5 @@ func (t token) String() string {
 	if tkAnd <= t.t && t.t <= tkString {
 		tok = tokens[t.t-firstReserved]
 	}
-	return fmt.Sprintf("{t:%s, n:%f, s:%q}", tok, t.n, t.s)
+	return fmt.Sprintf("{t:%s, n:%v, s:%q}", tok, t.n, t.s)
 }
