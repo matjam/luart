@@ -68,7 +68,7 @@ Inherited from go-lua:
 ## Performance
 
 [`bench/suite_test.go`](bench/suite_test.go) runs ten workloads in native
-Go, luart without and with the JIT, and Shopify/go-lua, with the same Lua
+Go, luart with and without the JIT, and Shopify/go-lua, with the same Lua
 source for every interpreter. `TestSuiteAgrees` checks that all of them
 compute the same result. AMD Ryzen 9 9900X3D, linux/amd64, Go 1.27.1,
 `CGO_ENABLED=0`, medians of 6 runs; [`bench/README.md`](bench/README.md)
@@ -77,18 +77,18 @@ also has Apple M1 results.
 ![How many times slower than native Go each interpreter runs each workload](bench/suite-amd64.svg)
 
 <!-- suite-table amd64 -->
-| Workload | Native Go | Luart (no JIT) | Luart (JIT) | go-lua | Luart (no JIT) vs Go | Luart (JIT) vs Go | go-lua vs Go |
+| Workload | Native Go | Luart (JIT) | Luart (no JIT) | go-lua | Luart (JIT) vs Go | Luart (no JIT) vs Go | go-lua vs Go |
 |---|---|---|---|---|---|---|---|
-| fib(25), recursive calls | 0.22 ms | 5.54 ms | 1.58 ms | 9.19 ms | 26× slower | 7.3× slower | 42× slower |
-| numeric loop, 1M iterations | 0.78 ms | 8.51 ms | 0.96 ms | 187 ms | 11× slower | 1.2× slower | 239× slower |
-| array fill and sum, 100k | 0.46 ms | 2.76 ms | 1.19 ms | 6.39 ms | 6.0× slower | 2.6× slower | 14× slower |
-| records, 10k tables | 0.09 ms | 0.88 ms | 0.65 ms | 3.02 ms | 9.8× slower | 7.2× slower | 34× slower |
-| closures, 100k | 0.22 ms | 5.48 ms | 4.63 ms | 9.72 ms | 25× slower | 21× slower | 44× slower |
-| sort 10k with comparator | 1.28 ms | 3.63 ms | 3.56 ms | 10.2 ms | 2.8× slower | 2.8× slower | 7.9× slower |
-| string build, 10k pieces | 0.37 ms | 0.71 ms | 0.60 ms | 60.2 ms | 1.9× slower | 1.6× slower | 163× slower |
-| calls into Go, 100k | 0.22 ms | 1.72 ms | 1.25 ms | 5.50 ms | 7.8× slower | 5.7× slower | 25× slower |
-| plasma frame | 0.29 ms | 1.35 ms | 0.74 ms | 4.23 ms | 4.6× slower | 2.5× slower | 15× slower |
-| particles frame | 0.005 ms | 0.25 ms | 0.08 ms | 1.23 ms | 49× slower | 16× slower | 236× slower |
+| fib(25), recursive calls | 0.22 ms | 1.58 ms | 5.54 ms | 9.19 ms | 7.3× slower | 26× slower | 42× slower |
+| numeric loop, 1M iterations | 0.78 ms | 0.96 ms | 8.51 ms | 187 ms | 1.2× slower | 11× slower | 239× slower |
+| array fill and sum, 100k | 0.46 ms | 1.19 ms | 2.76 ms | 6.39 ms | 2.6× slower | 6.0× slower | 14× slower |
+| records, 10k tables | 0.09 ms | 0.65 ms | 0.88 ms | 3.02 ms | 7.2× slower | 9.8× slower | 34× slower |
+| closures, 100k | 0.22 ms | 4.63 ms | 5.48 ms | 9.72 ms | 21× slower | 25× slower | 44× slower |
+| sort 10k with comparator | 1.28 ms | 3.56 ms | 3.63 ms | 10.2 ms | 2.8× slower | 2.8× slower | 7.9× slower |
+| string build, 10k pieces | 0.37 ms | 0.60 ms | 0.71 ms | 60.2 ms | 1.6× slower | 1.9× slower | 163× slower |
+| calls into Go, 100k | 0.22 ms | 1.25 ms | 1.72 ms | 5.50 ms | 5.7× slower | 7.8× slower | 25× slower |
+| plasma frame | 0.29 ms | 0.74 ms | 1.35 ms | 4.23 ms | 2.5× slower | 4.6× slower | 15× slower |
+| particles frame | 0.005 ms | 0.08 ms | 0.25 ms | 1.23 ms | 16× slower | 49× slower | 236× slower |
 <!-- /suite-table -->
 
 - luart allocates nothing on fib, the numeric loop, calls into Go, plasma
