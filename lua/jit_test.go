@@ -608,6 +608,49 @@ func TestJITUnderGC(t *testing.T) {
 	}
 }
 
+// Compiled == and ~= match the interpreter for every kind of operand.
+func TestJITEquality(t *testing.T) {
+	skipWithoutJIT(t)
+	src := `
+		local eqmt = {__eq = function() return true end}
+		local plain = {}
+		local noeq = setmetatable({}, {})
+		local ta, tb = setmetatable({}, eqmt), setmetatable({}, eqmt)
+		local f, g = function() end, function() end
+		local ab = "a" .. string.rep("b", 1)
+		local long = string.rep("x", 32)
+		local vals = {n = nil, false, true, 0, 1, -0.0, 0/0, "ab", ab, "ac", "abc", "",
+		  plain, {}, noeq, ta, tb, f, g, print,
+		  ("q"):sub(1), "q", "r", long, string.rep("x", 31) .. "x", string.rep("x", 31) .. "y",
+		  string.rep("z", 40), string.rep("z", 39) .. "z"}
+		local nvals = 28
+		function run()
+		  local out = {}
+		  for i = 1, nvals do
+		    for j = 1, nvals do
+		      local a, b = vals[i], vals[j]
+		      out[#out + 1] = (a == b) and "1" or "0"
+		      out[#out + 1] = (a ~= b) and "1" or "0"
+		    end
+		    local a = vals[i]
+		    out[#out + 1] = (a == nil and "n" or "-") .. (a == "ab" and "s" or "-") ..
+		      (a == true and "t" or "-") .. (a == 1 and "1" or "-") .. (nil == a and "N" or "-") ..
+		      (0 == a and "0" or "-") .. (a ~= -0.0 and "m" or "-")
+		  end
+		  -- __eq only on the second: not tried
+		  out[#out + 1] = (plain == ta) and "y" or "n"
+		  -- a loop whose back edge is an equality test
+		  local k, s = 0, nil
+		  repeat k = k + 1; if k == 7 then s = "done" end until s == "done"
+		  out[#out + 1] = tostring(k)
+		  return table.concat(out)
+		end`
+	jit, interp, _ := runBoth(t, src)
+	if jit != interp {
+		t.Fatalf("JIT %q, interpreter %q", jit, interp)
+	}
+}
+
 // A function called once compiles when a loop in it is hot, whatever the
 // kind of loop.
 func TestJITCompilesHotLoops(t *testing.T) {

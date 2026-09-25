@@ -213,7 +213,10 @@ nothing compiles.
     against clang's output.
 - **Coverage:**
   - Moves, constants, arithmetic, comparisons, branches and numeric for
-    loops.
+    loops. `<` and `<=` compare numbers; `==` compares any values, and
+    exits only for two userdata, two tables whose first metatable is not
+    known to lack `__eq`, or equal-length strings longer than
+    `maxInlineCompare`.
   - Upvalues.
   - Fields through the field caches, including `__index` tables, and
     array elements, including appends within capacity, of tables in

@@ -228,6 +228,132 @@ func (c *arm64Compiler) constant(k int) (operand, bool) {
 	return operand{rConst, uint32(k) * valueSize}, true
 }
 
+// isNumberConstant reports whether an RK field is a number constant.
+func (c *arm64Compiler) isNumberConstant(field int) bool {
+	return bytecode.IsConstant(field) && c.p.Constants[bytecode.ConstantIndex(field)].isNumber()
+}
+
+// rk returns the operand for an RK field.
+func (c *arm64Compiler) rk(field int) (operand, bool) {
+	if !bytecode.IsConstant(field) {
+		return reg(field), true
+	}
+	return c.constant(bytecode.ConstantIndex(field))
+}
+
+// equal compiles EQ, whose operands may be any values. Numbers compare as
+// floats. Other values are equal when both words are, and when they are
+// not can be equal only as strings of the same length, whose bytes it
+// compares up to maxInlineCompare, or through __eq, which only two tables or two userdata try: it exits
+// for those, unless the first table's metatable is known to lack __eq.
+func (c *arm64Compiler) equal(ip int, i bytecode.Instruction) {
+	a := &c.a
+	target, ok := c.jumpAfter(ip)
+	b, okB := c.rk(i.B())
+	cc, okC := c.rk(i.C())
+	if !ok || !okB || !okC {
+		c.exitAlways(ip)
+		return
+	}
+	// The JMP runs when the comparison's result equals A.
+	yes, no := c.pcs[target], c.pcs[ip+2]
+	back := a.NewLabel()
+	if target <= ip {
+		yes = back
+	}
+	eq, ne := yes, no
+	if i.A() == 0 {
+		eq, ne = no, yes
+	}
+	if kb, kc := c.isNumberConstant(i.B()), c.isNumberConstant(i.C()); kb || kc {
+		// Against a number, only another number can be equal.
+		if !kb {
+			a.Ldr(rP, b.base, b.off+offP)
+			a.Cmp(rP, rNumber)
+			a.BCond(NE, ne)
+		} else if !kc {
+			a.Ldr(rP, cc.base, cc.off+offP)
+			a.Cmp(rP, rNumber)
+			a.BCond(NE, ne)
+		}
+		a.LdrD(0, b.base, b.off+offN)
+		a.LdrD(1, cc.base, cc.off+offN)
+		a.Fcmp(0, 1)
+		a.BCond(EQ, eq) // NaN is unordered: not EQ
+		a.B(ne)
+		if target <= ip {
+			a.Bind(back)
+			c.backEdge(target)
+		}
+		return
+	}
+	exit := c.exit(ip)
+	notNumber, differ := a.NewLabel(), a.NewLabel()
+	a.Ldr(rP, b.base, b.off+offP)
+	a.Ldr(rTmp, cc.base, cc.off+offP)
+	a.Cmp(rP, rNumber)
+	a.BCond(NE, notNumber)
+	a.Cmp(rTmp, rNumber)
+	a.BCond(NE, ne)
+	a.LdrD(0, b.base, b.off+offN)
+	a.LdrD(1, cc.base, cc.off+offN)
+	a.Fcmp(0, 1)
+	a.BCond(EQ, eq) // NaN is unordered: not EQ
+	a.B(ne)
+	a.Bind(notNumber)
+	a.Ldr(rN, b.base, b.off+offN)
+	a.Ldr(rTmp2, cc.base, cc.off+offN)
+	a.Cmp(rP, rTmp)
+	a.BCond(NE, differ)
+	a.Cmp(rN, rTmp2)
+	a.BCond(EQ, eq)
+	a.B(ne) // one address, other bits: true and false, or strings' lengths
+	a.Bind(differ)
+	a.Cmp(rTmp, rNumber)
+	a.BCond(EQ, ne)
+	a.Lsr(rIdx, rN, kindShift)
+	a.Lsr(rT, rTmp2, kindShift)
+	a.Cmp(rIdx, rT)
+	a.BCond(NE, ne) // different kinds
+	strs, tables := a.NewLabel(), a.NewLabel()
+	a.CmpImm(rIdx, uint32(vkString))
+	a.BCond(EQ, strs)
+	a.CmpImm(rIdx, uint32(vkTable))
+	a.BCond(EQ, tables)
+	a.CmpImm(rIdx, uint32(vkUserData))
+	a.BCond(EQ, exit)
+	a.B(ne) // other objects are equal only at one address
+	// Strings: compare the bytes of short ones; Go compares long ones.
+	a.Bind(strs)
+	a.Cmp(rN, rTmp2)
+	a.BCond(NE, ne) // lengths differ
+	a.MovImm(rT, tagOf(vkString))
+	a.Sub(rIdx, rN, rT) // the length, at least 1: the empty string has one address
+	a.CmpImm(rIdx, maxInlineCompare)
+	a.BCond(HI, exit)
+	loop := a.NewLabel()
+	a.Bind(loop)
+	a.Ldrb(rT, rP, 0)
+	a.Ldrb(rT2, rTmp, 0)
+	a.Cmp(rT, rT2)
+	a.BCond(NE, ne)
+	a.AddImm(rP, rP, 1)
+	a.AddImm(rTmp, rTmp, 1)
+	a.SubsImm(rIdx, rIdx, 1)
+	a.BCond(NE, loop)
+	a.B(eq)
+	a.Bind(tables)
+	a.Ldr(rT, rP, offTMeta)
+	a.Cbz(rT, ne)
+	a.Ldrb(rIdx, rT, offTFlags)
+	a.Tbnz(rIdx, uint32(tmEq), ne) // the metatable has no __eq
+	a.B(exit)
+	if target <= ip {
+		a.Bind(back)
+		c.backEdge(target)
+	}
+}
+
 // rkNumber returns the operand for an RK field that must be a number, and
 // false for a constant that is not one.
 func (c *arm64Compiler) rkNumber(field int) (operand, bool) {
@@ -440,7 +566,9 @@ func (c *arm64Compiler) instruction(ip int) int {
 		} else {
 			a.B(c.pcs[target])
 		}
-	case bytecode.OpEqual, bytecode.OpLessThan, bytecode.OpLessOrEqual:
+	case bytecode.OpEqual:
+		c.equal(ip, orig)
+	case bytecode.OpLessThan, bytecode.OpLessOrEqual:
 		target, ok := c.jumpAfter(ip)
 		b, okB := c.rkNumber(orig.B())
 		cc, okC := c.rkNumber(orig.C())
@@ -454,13 +582,8 @@ func (c *arm64Compiler) instruction(ip int) int {
 		a.LdrD(1, cc.base, cc.off+offN)
 		a.Fcmp(0, 1)
 		// The JMP runs when the comparison's result equals A.
-		var when Cond
-		switch op {
-		case bytecode.OpEqual:
-			when = EQ
-		case bytecode.OpLessThan:
-			when = MI
-		case bytecode.OpLessOrEqual:
+		when := MI
+		if op == bytecode.OpLessOrEqual {
 			when = LS
 		}
 		if orig.A() == 0 {
