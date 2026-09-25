@@ -514,7 +514,26 @@ func numberToString(f float64) string {
 	if i := int64(f); float64(i) == f && -1e14 < f && f < 1e14 && !(f == 0 && math.Signbit(f)) {
 		return strconv.FormatInt(i, 10)
 	}
+	if s, ok := nonFinite(f); ok {
+		return s
+	}
 	return strconv.FormatFloat(f, 'g', 14, 64)
+}
+
+// nonFinite returns how C's printf, and so Lua, formats f if it is an
+// infinity or a NaN: "inf", "-inf", "nan" or "-nan", by its sign bit.
+func nonFinite(f float64) (string, bool) {
+	switch {
+	case math.IsInf(f, 1):
+		return "inf", true
+	case math.IsInf(f, -1):
+		return "-inf", true
+	case math.IsNaN(f) && math.Signbit(f):
+		return "-nan", true
+	case math.IsNaN(f):
+		return "nan", true
+	}
+	return "", false
 }
 
 func toString(r value) (string, bool) {

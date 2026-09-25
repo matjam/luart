@@ -122,7 +122,7 @@ func OpenMath(l *lua.State) int {
 	}
 	l.PushNumber(math.Pi)
 	l.SetField(-2, "pi")
-	l.PushNumber(math.MaxFloat64)
+	l.PushNumber(math.Inf(1))
 	l.SetField(-2, "huge")
 	return 1
 }

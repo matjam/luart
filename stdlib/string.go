@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -87,7 +88,11 @@ func formatHelper(l *lua.State, fs string, argCount int) string {
 				ni := uint(n)
 				fmt.Fprintf(&b, f, ni)
 			case 'e', 'E', 'f', 'g', 'G':
-				fmt.Fprintf(&b, f, l.CheckNumber(arg))
+				if n := l.CheckNumber(arg); math.IsInf(n, 0) || math.IsNaN(n) {
+					b.WriteString(formatNonFinite(f, n))
+				} else {
+					fmt.Fprintf(&b, f, n)
+				}
 			case 'q':
 				s := l.CheckString(arg)
 				b.WriteByte('"')
@@ -218,6 +223,39 @@ var stringLibrary = []lua.RegistryFunction{
 		return 1
 	}},
 	{Name: "upper", Function: func(l *lua.State) int { l.PushString(changeCase(l.CheckString(1), 'a', 'z')); return 1 }},
+}
+
+// formatNonFinite formats an infinity or NaN n as C's printf does for the
+// conversion spec, such as "%+8.2E": "inf" or "nan", signed by n's sign
+// bit or the '+' and ' ' flags, in capitals for E and G, and padded to
+// the width with spaces; the precision and the '0' flag do not apply.
+func formatNonFinite(spec string, n float64) string {
+	s := "inf"
+	if math.IsNaN(n) {
+		s = "nan"
+	}
+	flags := spec[1 : len(spec)-1] // flags, width and precision
+	switch {
+	case math.Signbit(n):
+		s = "-" + s
+	case strings.Contains(flags, "+"):
+		s = "+" + s
+	case strings.Contains(flags, " "):
+		s = " " + s
+	}
+	if verb := spec[len(spec)-1]; verb == 'E' || verb == 'G' {
+		s = strings.ToUpper(s)
+	}
+	width := strings.TrimLeft(flags, "-+ #0")
+	if i := strings.IndexByte(width, '.'); i >= 0 {
+		width = width[:i]
+	}
+	w, _ := strconv.Atoi(width)
+	pad := strings.Repeat(" ", max(0, w-len(s)))
+	if strings.Contains(flags, "-") {
+		return s + pad
+	}
+	return pad + s
 }
 
 // changeCase flips the case of the letters from lo to hi in s. string.lower
