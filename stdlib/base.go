@@ -1,4 +1,4 @@
-package luart
+package stdlib
 
 import (
 	"io"
@@ -6,10 +6,12 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+
+	"github.com/matjam/luart"
 )
 
-func next(l *State) int {
-	l.CheckType(1, TypeTable)
+func baseNext(l *luart.State) int {
+	l.CheckType(1, luart.TypeTable)
 	l.SetTop(2)
 	if l.Next(1) {
 		return 2
@@ -18,13 +20,13 @@ func next(l *State) int {
 	return 1
 }
 
-func pairs(method string, isZero bool, iter Function) Function {
-	return func(l *State) int {
+func pairs(method string, isZero bool, iter luart.Function) luart.Function {
+	return func(l *luart.State) int {
 		if hasMetamethod := l.MetaField(1, method); !hasMetamethod {
-			l.CheckType(1, TypeTable) // argument must be a table
-			l.PushGoFunction(iter)    // will return generator,
-			l.PushValue(1)            // state,
-			if isZero {               // and initial value
+			l.CheckType(1, luart.TypeTable) // argument must be a table
+			l.PushGoFunction(iter)          // will return generator,
+			l.PushValue(1)                  // state,
+			if isZero {                     // and initial value
 				l.PushInteger(0)
 			} else {
 				l.PushNil()
@@ -37,9 +39,9 @@ func pairs(method string, isZero bool, iter Function) Function {
 	}
 }
 
-func intPairs(l *State) int {
+func intPairs(l *luart.State) int {
 	i := l.CheckInteger(2)
-	l.CheckType(1, TypeTable)
+	l.CheckType(1, luart.TypeTable)
 	i++ // next value
 	l.PushInteger(i)
 	l.RawGetInt(1, i)
@@ -49,7 +51,7 @@ func intPairs(l *State) int {
 	return 2
 }
 
-func finishProtectedCall(l *State, status bool) int {
+func finishProtectedCall(l *luart.State, status bool) int {
 	if !l.CheckStack(1) {
 		l.SetTop(0) // create space for return values
 		l.PushBoolean(false)
@@ -61,12 +63,12 @@ func finishProtectedCall(l *State, status bool) int {
 	return l.Top()
 }
 
-func protectedCallContinuation(l *State) int {
+func protectedCallContinuation(l *luart.State) int {
 	_, shouldYield, _ := l.Context()
 	return finishProtectedCall(l, shouldYield)
 }
 
-func loadHelper(l *State, s error, e int) int {
+func loadHelper(l *luart.State, s error, e int) int {
 	if s == nil {
 		if e != 0 {
 			l.PushValue(e)
@@ -82,7 +84,7 @@ func loadHelper(l *State, s error, e int) int {
 }
 
 type genericReader struct {
-	l *State
+	l *luart.State
 	r *strings.Reader
 	e error
 }
@@ -114,15 +116,15 @@ func (r *genericReader) Read(b []byte) (n int, err error) {
 	return
 }
 
-var baseLibrary = []RegistryFunction{
-	{"assert", func(l *State) int {
+var baseLibrary = []luart.RegistryFunction{
+	{Name: "assert", Function: func(l *luart.State) int {
 		if !l.ToBoolean(1) {
 			l.Errorf("%s", l.OptString(2, "assertion failed!"))
 			panic("unreachable")
 		}
 		return l.Top()
 	}},
-	{"collectgarbage", func(l *State) int {
+	{Name: "collectgarbage", Function: func(l *luart.State) int {
 		switch opt, _ := l.OptString(1, "collect"), l.OptInteger(2, 0); opt {
 		case "collect":
 			runtime.GC()
@@ -141,17 +143,17 @@ var baseLibrary = []RegistryFunction{
 		}
 		return 1
 	}},
-	{"dofile", func(l *State) int {
+	{Name: "dofile", Function: func(l *luart.State) int {
 		f := l.OptString(1, "")
 		if l.SetTop(1); l.LoadFile(f, "") != nil {
 			l.Error()
 			panic("unreachable")
 		}
-		continuation := func(l *State) int { return l.Top() - 1 }
-		l.CallWithContinuation(0, MultipleReturns, 0, continuation)
+		continuation := func(l *luart.State) int { return l.Top() - 1 }
+		l.CallWithContinuation(0, luart.MultipleReturns, 0, continuation)
 		return continuation(l)
 	}},
-	{"error", func(l *State) int {
+	{Name: "error", Function: func(l *luart.State) int {
 		level := l.OptInteger(2, 1)
 		l.SetTop(1)
 		if l.IsString(1) && level > 0 {
@@ -162,7 +164,7 @@ var baseLibrary = []RegistryFunction{
 		l.Error()
 		panic("unreachable")
 	}},
-	{"getmetatable", func(l *State) int {
+	{Name: "getmetatable", Function: func(l *luart.State) int {
 		l.CheckAny(1)
 		if !l.MetaTable(1) {
 			l.PushNil()
@@ -171,15 +173,15 @@ var baseLibrary = []RegistryFunction{
 		l.MetaField(1, "__metatable")
 		return 1
 	}},
-	{"ipairs", pairs("__ipairs", true, intPairs)},
-	{"loadfile", func(l *State) int {
+	{Name: "ipairs", Function: pairs("__ipairs", true, intPairs)},
+	{Name: "loadfile", Function: func(l *luart.State) int {
 		f, m, e := l.OptString(1, ""), l.OptString(2, ""), 3
 		if l.IsNone(e) {
 			e = 0
 		}
 		return loadHelper(l, l.LoadFile(f, m), e)
 	}},
-	{"load", func(l *State) int {
+	{Name: "load", Function: func(l *luart.State) int {
 		m, e := l.OptString(3, "bt"), 4
 		if l.IsNone(e) {
 			e = 0
@@ -189,20 +191,20 @@ var baseLibrary = []RegistryFunction{
 			err = l.LoadBuffer(s, l.OptString(2, s), m)
 		} else {
 			chunkName := l.OptString(2, "=(load)")
-			l.CheckType(1, TypeFunction)
+			l.CheckType(1, luart.TypeFunction)
 			err = l.Load(&genericReader{l: l}, chunkName, m)
 		}
 		return loadHelper(l, err, e)
 	}},
-	{"next", next},
-	{"pairs", pairs("__pairs", false, next)},
-	{"pcall", func(l *State) int {
+	{Name: "next", Function: baseNext},
+	{Name: "pairs", Function: pairs("__pairs", false, baseNext)},
+	{Name: "pcall", Function: func(l *luart.State) int {
 		l.CheckAny(1)
 		l.PushNil()
 		l.Insert(1) // create space for status result
-		return finishProtectedCall(l, nil == l.ProtectedCallWithContinuation(l.Top()-2, MultipleReturns, 0, 0, protectedCallContinuation))
+		return finishProtectedCall(l, nil == l.ProtectedCallWithContinuation(l.Top()-2, luart.MultipleReturns, 0, 0, protectedCallContinuation))
 	}},
-	{"print", func(l *State) int {
+	{Name: "print", Function: func(l *luart.State) int {
 		n := l.Top()
 		l.Global("tostring")
 		for i := 1; i <= n; i++ {
@@ -224,36 +226,36 @@ var baseLibrary = []RegistryFunction{
 		os.Stdout.Sync()
 		return 0
 	}},
-	{"rawequal", func(l *State) int {
+	{Name: "rawequal", Function: func(l *luart.State) int {
 		l.CheckAny(1)
 		l.CheckAny(2)
 		l.PushBoolean(l.RawEqual(1, 2))
 		return 1
 	}},
-	{"rawlen", func(l *State) int {
+	{Name: "rawlen", Function: func(l *luart.State) int {
 		t := l.TypeOf(1)
-		l.ArgumentCheck(t == TypeTable || t == TypeString, 1, "table or string expected")
+		l.ArgumentCheck(t == luart.TypeTable || t == luart.TypeString, 1, "table or string expected")
 		l.PushInteger(l.RawLength(1))
 		return 1
 	}},
-	{"rawget", func(l *State) int {
-		l.CheckType(1, TypeTable)
+	{Name: "rawget", Function: func(l *luart.State) int {
+		l.CheckType(1, luart.TypeTable)
 		l.CheckAny(2)
 		l.SetTop(2)
 		l.RawGet(1)
 		return 1
 	}},
-	{"rawset", func(l *State) int {
-		l.CheckType(1, TypeTable)
+	{Name: "rawset", Function: func(l *luart.State) int {
+		l.CheckType(1, luart.TypeTable)
 		l.CheckAny(2)
 		l.CheckAny(3)
 		l.SetTop(3)
 		l.RawSet(1)
 		return 1
 	}},
-	{"select", func(l *State) int {
+	{Name: "select", Function: func(l *luart.State) int {
 		n := l.Top()
-		if l.TypeOf(1) == TypeString {
+		if l.TypeOf(1) == luart.TypeString {
 			if s, _ := l.ToString(1); s[0] == '#' {
 				l.PushInteger(n - 1)
 				return 1
@@ -268,10 +270,10 @@ var baseLibrary = []RegistryFunction{
 		l.ArgumentCheck(1 <= i, 1, "index out of range")
 		return n - i
 	}},
-	{"setmetatable", func(l *State) int {
+	{Name: "setmetatable", Function: func(l *luart.State) int {
 		t := l.TypeOf(2)
-		l.CheckType(1, TypeTable)
-		l.ArgumentCheck(t == TypeNil || t == TypeTable, 2, "nil or table expected")
+		l.CheckType(1, luart.TypeTable)
+		l.ArgumentCheck(t == luart.TypeNil || t == luart.TypeTable, 2, "nil or table expected")
 		if l.MetaField(1, "__metatable") {
 			l.Errorf("cannot change a protected metatable")
 		}
@@ -279,7 +281,7 @@ var baseLibrary = []RegistryFunction{
 		l.SetMetaTable(1)
 		return 1
 	}},
-	{"tonumber", func(l *State) int {
+	{Name: "tonumber", Function: func(l *luart.State) int {
 		if l.IsNoneOrNil(2) { // standard conversion
 			if n, ok := l.ToNumber(1); ok {
 				l.PushNumber(n)
@@ -298,33 +300,33 @@ var baseLibrary = []RegistryFunction{
 		l.PushNil()
 		return 1
 	}},
-	{"tostring", func(l *State) int {
+	{Name: "tostring", Function: func(l *luart.State) int {
 		l.CheckAny(1)
 		l.ToStringMeta(1)
 		return 1
 	}},
-	{"type", func(l *State) int {
+	{Name: "type", Function: func(l *luart.State) int {
 		l.CheckAny(1)
 		l.PushString(l.TypeName(1))
 		return 1
 	}},
-	{"xpcall", func(l *State) int {
+	{Name: "xpcall", Function: func(l *luart.State) int {
 		n := l.Top()
 		l.ArgumentCheck(n >= 2, 2, "value expected")
 		l.PushValue(1) // exchange function and error handler
 		l.Copy(2, 1)
 		l.Replace(2)
-		return finishProtectedCall(l, nil == l.ProtectedCallWithContinuation(n-2, MultipleReturns, 1, 0, protectedCallContinuation))
+		return finishProtectedCall(l, nil == l.ProtectedCallWithContinuation(n-2, luart.MultipleReturns, 1, 0, protectedCallContinuation))
 	}},
 }
 
-// BaseOpen opens the basic library. Usually passed to Require.
-func BaseOpen(l *State) int {
+// OpenBase opens the basic library. Usually passed to Require.
+func OpenBase(l *luart.State) int {
 	l.PushGlobalTable()
 	l.PushGlobalTable()
 	l.SetField(-2, "_G")
 	l.SetFunctions(baseLibrary, 0)
-	l.PushString(VersionString)
+	l.PushString(luart.VersionString)
 	l.SetField(-2, "_VERSION")
 	return 1
 }

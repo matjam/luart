@@ -16,7 +16,7 @@ func TestObjectAllocations(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			l := NewState()
-			OpenLibraries(l)
+			openLibraries(l)
 			if err := l.DoString(tt.src); err != nil {
 				t.Fatal(err)
 			}
@@ -37,7 +37,7 @@ func TestObjectAllocations(t *testing.T) {
 // every frame without feeding the garbage collector.
 func TestNumericFrameDoesNotAllocate(t *testing.T) {
 	l := NewState()
-	OpenLibraries(l)
+	openLibraries(l)
 	var sum float64
 	l.Register("set", func(l *State) int {
 		sum += l.Arg[float64](3)

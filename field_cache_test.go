@@ -113,7 +113,7 @@ func TestFieldCacheInvalidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			l := NewState()
-			OpenLibraries(l)
+			openLibraries(l)
 			if err := l.DoString(tt.src); err != nil {
 				t.Fatal(err)
 			}

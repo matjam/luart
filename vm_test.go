@@ -26,7 +26,7 @@ func testNoPanicString(t *testing.T, s string) {
 
 func testStringHelper(t *testing.T, s string, trace bool) {
 	l := NewState()
-	OpenLibraries(l)
+	openLibraries(l)
 	l.LoadString(s)
 	if trace {
 		l.SetHook(func(state *State, ar Debug) {
@@ -41,7 +41,7 @@ func testStringHelper(t *testing.T, s string, trace bool) {
 
 func TestProtectedCall(t *testing.T) {
 	l := NewState()
-	OpenLibraries(l)
+	openLibraries(l)
 	l.SetHook(func(state *State, ar Debug) {
 		ci := state.callInfo
 		_ = stack(state.stack[ci.base():state.top])
@@ -87,7 +87,7 @@ func TestLua(t *testing.T) {
 		}
 		t.Log(v)
 		l := NewState()
-		OpenLibraries(l)
+		openLibraries(l)
 		for _, s := range []string{"_port", "_no32", "_noformatA"} {
 			l.PushBoolean(true)
 			l.SetGlobal(s)
@@ -118,7 +118,7 @@ func TestLua(t *testing.T) {
 
 func benchmarkSort(b *testing.B, program string) {
 	l := NewState()
-	OpenLibraries(l)
+	openLibraries(l)
 	s := `a = {}
 		for i=1,%d do
 			a[i] = math.random()
@@ -235,7 +235,7 @@ func TestTableUserdataEquality(t *testing.T) {
 	end`
 
 	l := NewState()
-	OpenLibraries(l)
+	openLibraries(l)
 	l.LoadString(s)
 	if err := l.ProtectedCall(0, 1, 0); err != nil {
 		t.Error(err.Error())
@@ -255,7 +255,7 @@ func TestUserDataEqualityNil(t *testing.T) {
 	end`
 
 	l := NewState()
-	OpenLibraries(l)
+	openLibraries(l)
 	l.LoadString(s)
 	if err := l.ProtectedCall(0, 1, 0); err != nil {
 		t.Error(err.Error())
@@ -277,7 +277,7 @@ func TestTableEqualityNil(t *testing.T) {
 
 func TestTableNext(t *testing.T) {
 	l := NewState()
-	OpenLibraries(l)
+	openLibraries(l)
 	l.CreateTable(10, 0)
 	for i := 1; i <= 4; i++ {
 		l.PushInteger(i)
@@ -301,7 +301,7 @@ func TestTableNext(t *testing.T) {
 
 func TestError(t *testing.T) {
 	l := NewState()
-	BaseOpen(l)
+	openLibraries(l)
 	errorHandled := false
 	program := "error('error')"
 	l.PushGoFunction(func(l *State) int {
@@ -324,7 +324,7 @@ func TestError(t *testing.T) {
 
 func TestErrorf(t *testing.T) {
 	l := NewState()
-	BaseOpen(l)
+	openLibraries(l)
 	program := "-- script that is bigger than the max ID size\nhelper()\n" + strings.Repeat("--", idSize)
 	expectedErrorMessage := chunkID(program) + ":2: error"
 	l.PushGoFunction(func(l *State) int {

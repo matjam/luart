@@ -37,6 +37,19 @@ today, the rules it depends on, and where performance work should go next.
   suite-results-amd64.txt` redraws the chart and rewrites the READMEs'
   tables from it (bench/README.md, Reproducing).
 
+## Packages
+
+- The root package `luart` is the State, its API (api*.go, auxiliary.go,
+  debug_api.go), the VM, the object types and the JIT. They read each
+  other's unexported fields, and the JIT hard-codes their layout.
+- `stdlib` holds the standard libraries and uses only luart's public API.
+  A library that needs something the API cannot do fast gets a public
+  method in the core, as table.sort got `State.SortArray`.
+- The root's own tests cannot import stdlib (it imports luart). They open
+  the libraries with `openLibraries` from export_test.go, which
+  libs_test.go, an external test file in the same binary, sets to
+  `stdlib.Open`.
+
 ## Interpreter
 
 - `value` (types.go) is 16 bytes: `p unsafe.Pointer` and `n float64`.

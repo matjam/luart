@@ -74,11 +74,11 @@ func runBothWith(t *testing.T, src string, setup func(*State)) (jit, interp stri
 		return strings.Join(parts, ",")
 	}
 	lj = NewState()
-	OpenLibraries(lj)
+	openLibraries(lj)
 	setup(lj)
 	jit = result(lj)
 	li := NewState(WithoutJIT())
-	OpenLibraries(li)
+	openLibraries(li)
 	setup(li)
 	interp = result(li)
 	return jit, interp, lj
@@ -469,7 +469,7 @@ func TestJITTrigMatchesGo(t *testing.T) {
 	jitThreshold = 0
 	defer func() { jitThreshold = saved }()
 	l := NewState()
-	OpenLibraries(l)
+	openLibraries(l)
 	var bad int
 	l.Register("x", func(l *State) int { l.PushNumber(xs[l.CheckInteger(1)-1]); return 1 })
 	l.Register("check", func(l *State) int {

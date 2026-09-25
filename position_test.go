@@ -33,7 +33,7 @@ func TestErrorPositions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			l := NewState()
-			OpenLibraries(l)
+			openLibraries(l)
 			err := l.DoString(tt.src)
 			if err == nil {
 				t.Fatal("no error")
@@ -47,7 +47,7 @@ func TestErrorPositions(t *testing.T) {
 
 func TestLineHook(t *testing.T) {
 	l := NewState()
-	OpenLibraries(l)
+	openLibraries(l)
 	var lines []int
 	l.SetHook(func(l *State, ar Debug) {
 		lines = append(lines, ar.CurrentLine)
@@ -70,7 +70,7 @@ func TestLineHook(t *testing.T) {
 // The Lua call and return fast paths must step aside when hooks are set.
 func TestCallAndReturnHooksSeeLuaCalls(t *testing.T) {
 	l := NewState()
-	OpenLibraries(l)
+	openLibraries(l)
 	calls, returns := 0, 0
 	l.SetHook(func(l *State, ar Debug) {
 		switch ar.Event {
@@ -92,7 +92,7 @@ func TestCallAndReturnHooksSeeLuaCalls(t *testing.T) {
 
 func TestTraceback(t *testing.T) {
 	l := NewState()
-	OpenLibraries(l)
+	openLibraries(l)
 	src := "local function inner()\n  error('deep')\nend\nlocal function outer()\n  inner()\nend\nouter()"
 	l.Global("debug")
 	l.Field(-1, "traceback")

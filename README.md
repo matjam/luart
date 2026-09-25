@@ -137,11 +137,14 @@ go get github.com/matjam/luart
 ```go
 package main
 
-import "github.com/matjam/luart"
+import (
+	"github.com/matjam/luart"
+	"github.com/matjam/luart/stdlib"
+)
 
 func main() {
 	l := luart.NewState()
-	luart.OpenLibraries(l)
+	stdlib.Open(l)
 	if err := l.DoFile("hello.lua"); err != nil {
 		panic(err)
 	}

@@ -4,12 +4,13 @@ import (
 	"testing"
 
 	"github.com/matjam/luart"
+	"github.com/matjam/luart/stdlib"
 )
 
 func newLuart(b *testing.B, src string, options ...luart.Option) *luart.State {
 	b.Helper()
 	l := luart.NewState(options...)
-	luart.OpenLibraries(l)
+	stdlib.Open(l)
 	l.Register("set", func(l *luart.State) int {
 		x, _ := l.ToNumber(1)
 		y, _ := l.ToNumber(2)

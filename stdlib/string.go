@@ -1,4 +1,4 @@
-package luart
+package stdlib
 
 import (
 	"bytes"
@@ -6,6 +6,8 @@ import (
 	"math"
 	"strings"
 	"unicode"
+
+	"github.com/matjam/luart"
 )
 
 func relativePosition(pos, length int) int {
@@ -17,7 +19,7 @@ func relativePosition(pos, length int) int {
 	return length + pos + 1
 }
 
-func findHelper(l *State, isFind bool) int {
+func findHelper(l *luart.State, isFind bool) int {
 	s, p := l.CheckString(1), l.CheckString(2)
 	init := relativePosition(l.OptInteger(3, 1), len(s))
 	if init < 1 {
@@ -26,7 +28,7 @@ func findHelper(l *State, isFind bool) int {
 		l.PushNil()
 		return 1
 	}
-	isPlain := l.TypeOf(4) == TypeNone || l.ToBoolean(4)
+	isPlain := l.TypeOf(4) == luart.TypeNone || l.ToBoolean(4)
 	if isFind && (isPlain || !strings.ContainsAny(p, "^$*+?.([%-")) {
 		if start := strings.Index(s[init-1:], p); start >= 0 {
 			l.PushInteger(start + init)
@@ -34,13 +36,13 @@ func findHelper(l *State, isFind bool) int {
 			return 2
 		}
 	} else {
-		l.assert(false) // TODO implement pattern matching
+		l.Errorf("patterns are not supported yet") // TODO implement pattern matching
 	}
 	l.PushNil()
 	return 1
 }
 
-func scanFormat(l *State, fs string) string {
+func scanFormat(l *luart.State, fs string) string {
 	i := 0
 	skipDigit := func() {
 		if unicode.IsDigit(rune(fs[i])) {
@@ -68,7 +70,7 @@ func scanFormat(l *State, fs string) string {
 	return "%" + fs[:i]
 }
 
-func formatHelper(l *State, fs string, argCount int) string {
+func formatHelper(l *luart.State, fs string, argCount int) string {
 	var b bytes.Buffer
 	for i, arg := 0, 1; i < len(fs); i++ {
 		if fs[i] != '%' {
@@ -141,8 +143,8 @@ func formatHelper(l *State, fs string, argCount int) string {
 	return b.String()
 }
 
-var stringLibrary = []RegistryFunction{
-	{"byte", func(l *State) int {
+var stringLibrary = []luart.RegistryFunction{
+	{Name: "byte", Function: func(l *luart.State) int {
 		s := l.CheckString(1)
 		start := relativePosition(l.OptInteger(2, 1), len(s))
 		end := relativePosition(l.OptInteger(3, start), len(s))
@@ -165,7 +167,7 @@ var stringLibrary = []RegistryFunction{
 		}
 		return n
 	}},
-	{"char", func(l *State) int {
+	{Name: "char", Function: func(l *luart.State) int {
 		var b bytes.Buffer
 		for i, n := 1, l.Top(); i <= n; i++ {
 			c := l.CheckInteger(i)
@@ -176,21 +178,21 @@ var stringLibrary = []RegistryFunction{
 		return 1
 	}},
 	// {"dump", ...},
-	{"find", func(l *State) int { return findHelper(l, true) }},
-	{"format", func(l *State) int {
+	{Name: "find", Function: func(l *luart.State) int { return findHelper(l, true) }},
+	{Name: "format", Function: func(l *luart.State) int {
 		l.PushString(formatHelper(l, l.CheckString(1), l.Top()))
 		return 1
 	}},
 	// {"gmatch", ...},
 	// {"gsub", ...},
-	{"len", func(l *State) int { l.PushInteger(len(l.CheckString(1))); return 1 }},
-	{"lower", func(l *State) int { l.PushString(strings.ToLower(l.CheckString(1))); return 1 }},
+	{Name: "len", Function: func(l *luart.State) int { l.PushInteger(len(l.CheckString(1))); return 1 }},
+	{Name: "lower", Function: func(l *luart.State) int { l.PushString(strings.ToLower(l.CheckString(1))); return 1 }},
 	// {"match", ...},
-	{"rep", func(l *State) int {
+	{Name: "rep", Function: func(l *luart.State) int {
 		s, n, sep := l.CheckString(1), l.CheckInteger(2), l.OptString(3, "")
 		if n <= 0 {
 			l.PushString("")
-		} else if len(s)+len(sep) < len(s) || len(s)+len(sep) >= maxInt/n {
+		} else if len(s)+len(sep) < len(s) || len(s)+len(sep) >= math.MaxInt/n {
 			l.Errorf("resulting string too large")
 		} else if sep == "" {
 			l.PushString(strings.Repeat(s, n))
@@ -206,7 +208,7 @@ var stringLibrary = []RegistryFunction{
 		}
 		return 1
 	}},
-	{"reverse", func(l *State) int {
+	{Name: "reverse", Function: func(l *luart.State) int {
 		r := []rune(l.CheckString(1))
 		for i, j := 0, len(r)-1; i < j; i, j = i+1, j-1 {
 			r[i], r[j] = r[j], r[i]
@@ -214,7 +216,7 @@ var stringLibrary = []RegistryFunction{
 		l.PushString(string(r))
 		return 1
 	}},
-	{"sub", func(l *State) int {
+	{Name: "sub", Function: func(l *luart.State) int {
 		s := l.CheckString(1)
 		start, end := relativePosition(l.CheckInteger(2), len(s)), relativePosition(l.OptInteger(3, -1), len(s))
 		if start < 1 {
@@ -230,11 +232,11 @@ var stringLibrary = []RegistryFunction{
 		}
 		return 1
 	}},
-	{"upper", func(l *State) int { l.PushString(strings.ToUpper(l.CheckString(1))); return 1 }},
+	{Name: "upper", Function: func(l *luart.State) int { l.PushString(strings.ToUpper(l.CheckString(1))); return 1 }},
 }
 
-// StringOpen opens the string library. Usually passed to Require.
-func StringOpen(l *State) int {
+// OpenString opens the string library. Usually passed to Require.
+func OpenString(l *luart.State) int {
 	l.NewLibrary(stringLibrary)
 	l.CreateTable(0, 1)
 	l.PushString("")
