@@ -47,6 +47,8 @@ type arm64Compiler struct {
 	pcs    []Label // start of each pc's code
 	exits  []Label // exit to the interpreter at each pc, created on demand
 	budget []Label // budget exits by back-edge target pc, created on demand
+	goCall []Label // exits at a CALL of a Go function, created on demand
+	notLua []Label // a CALL's out-of-line code for callees other than Lua closures
 	always []bool  // instructions compiled as an unconditional exit
 }
 
@@ -58,9 +60,11 @@ func compileJIT(p *prototype) (code []byte, offsets []int32, entries []int, kern
 	c.pcs = make([]Label, len(c.code))
 	c.exits = make([]Label, len(c.code))
 	c.budget = make([]Label, len(c.code))
+	c.goCall = make([]Label, len(c.code))
+	c.notLua = make([]Label, len(c.code))
 	c.always = make([]bool, len(c.code))
 	for i := range c.pcs {
-		c.pcs[i], c.exits[i], c.budget[i] = c.a.NewLabel(), -1, -1
+		c.pcs[i], c.exits[i], c.budget[i], c.goCall[i], c.notLua[i] = c.a.NewLabel(), -1, -1, -1, -1
 	}
 	c.prologue()
 	loops := map[int]*kernel{}
@@ -118,6 +122,13 @@ func (c *arm64Compiler) stubs() {
 	a := &c.a
 	common := a.NewLabel()
 	budget := a.NewLabel()
+	for ip, l := range c.notLua {
+		if l >= 0 {
+			a.Bind(l)
+			c.goCallee(ip, c.code[ip])
+			a.B(c.exit(ip))
+		}
+	}
 	for ip, l := range c.exits {
 		if l >= 0 {
 			a.Bind(l)
@@ -132,6 +143,14 @@ func (c *arm64Compiler) stubs() {
 			a.B(budget)
 		}
 	}
+	goCall := a.NewLabel()
+	for ip, l := range c.goCall {
+		if l >= 0 {
+			a.Bind(l)
+			a.MovImm(rExitPC, uint64(ip))
+			a.B(goCall)
+		}
+	}
 	a.Bind(common)
 	a.Str(rExitPC, rCtx, offExitPC)
 	a.MovImm(0, jitExitInstruction)
@@ -140,6 +159,19 @@ func (c *arm64Compiler) stubs() {
 	a.Str(rExitPC, rCtx, offExitPC)
 	a.MovImm(0, jitExitBudget)
 	a.Ret()
+	a.Bind(goCall)
+	a.Str(rExitPC, rCtx, offExitPC)
+	a.MovImm(0, jitExitCallGo)
+	a.Ret()
+}
+
+// goCallExit returns the label that exits at the CALL at ip for runJIT to
+// call the Go function in its register.
+func (c *arm64Compiler) goCallExit(ip int) Label {
+	if c.goCall[ip] < 0 {
+		c.goCall[ip] = c.a.NewLabel()
+	}
+	return c.goCall[ip]
 }
 
 // exit returns the label that resumes the interpreter at ip.

@@ -11,12 +11,20 @@ import (
 // structures they live in rather than kept.
 
 // callLua compiles the CALL i at ip for a compiled, fixed-parameter Lua
-// closure; for anything else it exits.
-func (c *amd64Compiler) callLua(ip int, i instruction) {
+// closure. It jumps to notLua when the callee is not a Lua closure, and
+// exits for any other Lua closure.
+func (c *amd64Compiler) callLua(ip int, i instruction, notLua Label) {
 	a := &c.a
 	ra, b, results := i.a(), i.b(), i.c()-1
 	exit := c.exit(ip)
-	c.objectOf(reg(ra), vkLuaClosure, R10, ip) // closure
+	fn := reg(ra)
+	a.Load(rTmp, fn.base, fn.off+offN)
+	a.MovImm(rTmp2, tagOf(vkLuaClosure))
+	a.Cmp(rTmp, rTmp2)
+	a.J(NE, notLua)
+	a.Load(R10, fn.base, fn.off+offP) // closure
+	a.Cmp(R10, rNumber)               // a number whose bits match the tag
+	a.J(E, exit)
 	a.CmpMem(rCtx, offBarrier, 0)
 	a.J(NE, exit)
 	a.Load(R11, R10, offClProto) // prototype

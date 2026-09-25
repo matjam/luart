@@ -285,19 +285,43 @@ func (c *amd64Compiler) intrinsics() []intrinsic {
 func funcValue(f func(float64) float64) uint64 { return uint64(*(*uintptr)(unsafe.Pointer(&f))) }
 
 // call compiles CALL. A unary intrinsic applied to a number runs here, and
-// a call to a compiled Lua function enters it directly; other calls exit,
-// and runJIT makes Go calls itself.
+// a call to a compiled Lua function enters it directly. A call to any
+// other Go function exits with jitExitCallGo, and runJIT makes it; other
+// calls exit to the interpreter.
 func (c *amd64Compiler) call(ip int, i instruction) {
 	if i.b() == 0 || i.c() == 0 { // arguments or results up to l.top
 		c.exitAlways(ip)
 		return
 	}
-	lua := c.a.NewLabel()
+	notGoFunction := c.a.NewLabel()
 	if i.b() == 2 && i.c() == 2 {
-		c.intrinsic(ip, i, lua)
+		c.intrinsic(ip, i, notGoFunction)
 	}
-	c.a.Bind(lua)
-	c.callLua(ip, i)
+	c.a.Bind(notGoFunction)
+	c.notLua[ip] = c.a.NewLabel()
+	c.callLua(ip, i, c.notLua[ip])
+}
+
+// goCallee exits with jitExitCallGo when the callee of the CALL i at ip is
+// a Go function or Go closure, and otherwise falls through. stubs emits it
+// out of line, after the Lua closure check, so calls between Lua functions
+// neither run it nor have it in their way.
+func (c *amd64Compiler) goCallee(ip int, i instruction) {
+	a := &c.a
+	fn := reg(i.a())
+	notGo, goKind := a.NewLabel(), a.NewLabel()
+	a.Load(rTmp, fn.base, fn.off+offN)
+	a.MovImm(rTmp2, tagOf(vkGoFunction))
+	a.Cmp(rTmp, rTmp2)
+	a.J(E, goKind)
+	a.MovImm(rTmp2, tagOf(vkGoClosure))
+	a.Cmp(rTmp, rTmp2)
+	a.J(NE, notGo)
+	a.Bind(goKind)
+	a.Load(rT, fn.base, fn.off+offP)
+	a.Cmp(rT, rNumber) // a number whose bits match the tag
+	a.J(NE, c.goCallExit(ip))
+	a.Bind(notGo)
 }
 
 // intrinsic compiles a unary intrinsic call, jumping to notGo when the
@@ -315,7 +339,7 @@ func (c *amd64Compiler) intrinsic(ip int, i instruction, notGo Label) {
 	a.J(E, notGo)
 	a.Load(rT, rT, offGFNumber)
 	a.Test(rT, rT)
-	a.J(E, c.exit(ip))
+	a.J(E, c.goCallExit(ip))
 	a.Load(rT, rT, offNFUnary)
 	c.guardNumber(arg, ip)
 	a.LoadSD(0, arg.base, arg.off+offN)
@@ -329,7 +353,7 @@ func (c *amd64Compiler) intrinsic(ip int, i instruction, notGo Label) {
 		a.Jmp(done)
 		a.Bind(next)
 	}
-	a.Jmp(c.exit(ip))
+	a.Jmp(c.goCallExit(ip))
 	a.Bind(done)
 	c.guardStore(fn, noReg, ip)
 	c.storeNumber(fn, 0)

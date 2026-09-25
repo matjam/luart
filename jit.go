@@ -66,6 +66,7 @@ var writeBarrier struct {
 const (
 	jitExitInstruction = iota // the interpreter must run the instruction at exitPC
 	jitExitBudget             // the back-edge budget ran out
+	jitExitCallGo             // the CALL at exitPC calls a Go function or Go closure
 )
 
 // jitCode is a prototype's compiled code.
@@ -264,10 +265,15 @@ func isExtraArg(code []instruction, ip int) bool {
 // functions without the interpreter, and stops at the first instruction
 // the interpreter must run: that instruction's pc is left in the savedPC
 // of l.callInfo, which may now be another frame.
+//
+// c and p follow ci, and are reloaded only when ci changes: an exit for a
+// Go call comes back to the frame it left, and the chain of loads from ci
+// to its prototype would otherwise be repeated on every crossing.
 func (l *State) runJIT(ci *callInfo, ip pc) {
+	c := ci.closure
+	p := c.prototype
 	for {
-		c := ci.closure
-		jc := c.prototype.jit
+		jc := p.jit
 		if jc == nil || l.hookMask != 0 {
 			break
 		}
@@ -275,31 +281,40 @@ func (l *State) runJIT(ci *callInfo, ip pc) {
 		if off < 0 {
 			break
 		}
-		l.enterJIT(ci, c, jc, off)
-		ci = l.callInfo // compiled calls and returns move between frames
-		c = ci.closure
+		l.enterJIT(ci, c, p, jc, off)
+		if nci := l.callInfo; nci != ci { // compiled calls and returns move between frames
+			ci, c = nci, nci.closure
+			p = c.prototype
+		}
 		ip = pc(l.jitCtx.exitPC)
-		if l.jitCtx.reason == jitExitBudget {
+		switch l.jitCtx.reason {
+		case jitExitBudget:
 			runtime.Gosched()
+			continue
+		case jitExitCallGo:
+			l.jitCallGo(ci, p.jitOrig[ip], ip)
+			ip++
 			continue
 		}
 		if l.hookMask != 0 { // a Go function set a hook
 			break
 		}
-		switch i := c.prototype.jitOrig[ip]; i.opCode() {
+		switch i := p.jitOrig[ip]; i.opCode() {
 		case opCall:
 			if nci, ok := l.jitCall(ci, i, ip); ok {
 				if nci == ci {
 					ip++
 				} else {
-					ci, ip = nci, 0
+					ci, ip, c = nci, 0, nci.closure
+					p = c.prototype
 				}
 				continue
 			}
 		case opReturn:
 			if l.jitReturn(ci, i) {
 				ci = l.callInfo
-				ip = ci.savedPC
+				ip, c = ci.savedPC, ci.closure
+				p = c.prototype
 				continue
 			}
 		case opJump: // one that closes upvalues, which compiled code leaves to Go
@@ -400,9 +415,9 @@ func (l *State) jitStep(ci *callInfo, i instruction, ip pc) {
 
 // enterJIT runs ci's compiled code from native offset off until it exits,
 // leaving the exit's pc and reason in l.jitCtx.
-func (l *State) enterJIT(ci *callInfo, c *luaClosure, jc *jitCode, off int32) {
+func (l *State) enterJIT(ci *callInfo, c *luaClosure, p *prototype, jc *jitCode, off int32) {
 	ctx := &l.jitCtx
-	frame, constants := ci.frame, c.prototype.constants
+	frame, constants := ci.frame, p.constants
 	ctx.frame = unsafe.Pointer(&frame[0])
 	ctx.constants = nil
 	if len(constants) > 0 {
@@ -436,22 +451,12 @@ func (l *State) jitCall(ci *callInfo, i instruction, ip pc) (*callInfo, bool) {
 	if b == 0 { // arguments up to l.top, which compiled code does not track
 		return nil, false
 	}
-	frame := ci.frame
-	switch fv := frame[a]; fv.kind() {
+	switch fv := ci.frame[a]; fv.kind() {
 	case vkGoFunction, vkGoClosure:
 		if c == 0 {
 			return nil, false
 		}
-		ci.savedPC = ip + 1
-		if f := fv.goFunction(); f != nil && f.number != nil && b > 1 {
-			if r, ok := f.number.tryCall(frame[a+1 : a+b]); ok {
-				l.numberResult(ci, a, c-1, f.number.results, r)
-				return ci, true
-			}
-		}
-		l.top = ci.stackIndex(a + b)
-		l.callGo(fv, ci.stackIndex(a), c-1)
-		l.top = ci.top
+		l.jitCallGo(ci, i, ip)
 		return ci, true
 	case vkLuaClosure:
 		f := fv.luaClosure()
@@ -462,6 +467,24 @@ func (l *State) jitCall(ci *callInfo, i instruction, ip pc) (*callInfo, bool) {
 		return l.callLua(ci, f, a, b-1, c-1), true
 	}
 	return nil, false
+}
+
+// jitCallGo runs the CALL i at ip, which has fixed arguments and results
+// and calls the Go function or Go closure in its register A.
+func (l *State) jitCallGo(ci *callInfo, i instruction, ip pc) {
+	a, b, c := i.a(), i.b(), i.c()
+	frame := ci.frame
+	fv := frame[a]
+	ci.savedPC = ip + 1
+	if f := fv.goFunction(); f != nil && f.number != nil && b > 1 {
+		if r, ok := f.number.tryCall(frame[a+1 : a+b]); ok {
+			l.numberResult(ci, a, c-1, f.number.results, r)
+			return
+		}
+	}
+	l.top = ci.stackIndex(a + b)
+	l.callGo(fv, ci.stackIndex(a), c-1)
+	l.top = ci.top
 }
 
 // jitReturn runs the RETURN i that compiled code exited at, when it returns
