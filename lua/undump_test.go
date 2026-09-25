@@ -27,7 +27,7 @@ func TestUndump(t *testing.T) {
 		t.Fatal("unexpected error", err, msg)
 	}
 	p := l.stack[l.top-1].luaClosure().prototype
-	validate("@lua-tests/checktable.lua", p.Source, "as source file name", t)
+	validate("@"+source, p.Source, "as source file name", t)
 	validate(23, len(p.Code), "instructions", t)
 	validate(8, len(p.Constants), "constants", t)
 	validate(4, len(p.Prototypes), "prototypes", t)
