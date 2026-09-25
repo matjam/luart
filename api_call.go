@@ -1,6 +1,10 @@
 package luart
 
-import "io"
+import (
+	"io"
+
+	"github.com/matjam/luart/internal/chunk"
+)
 
 // Context is called by a continuation function to retrieve the status of the
 // thread and context information. When called in the origin function, it
@@ -179,7 +183,7 @@ func (l *State) Load(r io.Reader, chunkName string, mode string) error {
 func (l *State) Dump(w io.Writer) error {
 	l.checkElementCount(1)
 	if f := l.stack[l.top-1].luaClosure(); f != nil {
-		return l.dump(f.prototype, w)
+		return chunk.Dump(w, protoOf(f.prototype))
 	}
 	panic("closure expected")
 }
