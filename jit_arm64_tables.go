@@ -295,8 +295,8 @@ func (c *arm64Compiler) goCallee(ip int, i instruction) {
 	a.Ldr(rT, fn.base, fn.off+offP)
 	a.Cmp(rT, rNumber) // a number whose bits match the tag
 	a.BCond(EQ, notGo)
-	a.Ldr(rTmp, rT, offGFNumber) // number functions take the general exit,
-	a.Cbnz(rTmp, notGo)          // where runJIT may call them frameless
+	a.Ldr(rTmp, rT, offGFNumber)
+	a.Cbnz(rTmp, c.numCallExit(ip)) // runJIT may call it frameless
 	a.B(c.goCallExit(ip))
 	a.Bind(closure)
 	a.Ldr(rT, fn.base, fn.off+offP)
@@ -332,7 +332,7 @@ func (c *arm64Compiler) intrinsic(ip int, i instruction, notGo Label) {
 		a.B(done)
 		a.Bind(next)
 	}
-	a.B(c.exit(ip)) // a number function runJIT may call frameless
+	a.B(c.numCallExit(ip)) // a number function runJIT may call frameless
 	a.Bind(done)
 	c.guardStore(fn, noReg, ip)
 	c.storeNumber(fn, 0)

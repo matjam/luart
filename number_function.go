@@ -19,27 +19,31 @@ const maxNumberArgs = 4
 type numberFunction struct {
 	arity, results int
 	unary          func(float64) float64 // set for func(float64) float64
-	call           func([maxNumberArgs]float64) float64
+	// call takes the arguments, and zeros past arity, as separate
+	// float64s: Go passes them in registers. An array passed by value
+	// went through memory, and its 16-byte copies could not be forwarded
+	// from the 8-byte stores that filled it.
+	call func(a, b, c, d float64) float64
 }
 
 func newNumberFunction(f any) *numberFunction {
 	switch f := f.(type) {
 	case func(float64) float64:
-		return &numberFunction{arity: 1, results: 1, unary: f, call: func(a [maxNumberArgs]float64) float64 { return f(a[0]) }}
+		return &numberFunction{arity: 1, results: 1, unary: f, call: func(a, _, _, _ float64) float64 { return f(a) }}
 	case func(float64, float64) float64:
-		return &numberFunction{arity: 2, results: 1, call: func(a [maxNumberArgs]float64) float64 { return f(a[0], a[1]) }}
+		return &numberFunction{arity: 2, results: 1, call: func(a, b, _, _ float64) float64 { return f(a, b) }}
 	case func(float64, float64, float64) float64:
-		return &numberFunction{arity: 3, results: 1, call: func(a [maxNumberArgs]float64) float64 { return f(a[0], a[1], a[2]) }}
+		return &numberFunction{arity: 3, results: 1, call: func(a, b, c, _ float64) float64 { return f(a, b, c) }}
 	case func(float64, float64, float64, float64) float64:
-		return &numberFunction{arity: 4, results: 1, call: func(a [maxNumberArgs]float64) float64 { return f(a[0], a[1], a[2], a[3]) }}
+		return &numberFunction{arity: 4, results: 1, call: f}
 	case func(float64):
-		return &numberFunction{arity: 1, call: func(a [maxNumberArgs]float64) float64 { f(a[0]); return 0 }}
+		return &numberFunction{arity: 1, call: func(a, _, _, _ float64) float64 { f(a); return 0 }}
 	case func(float64, float64):
-		return &numberFunction{arity: 2, call: func(a [maxNumberArgs]float64) float64 { f(a[0], a[1]); return 0 }}
+		return &numberFunction{arity: 2, call: func(a, b, _, _ float64) float64 { f(a, b); return 0 }}
 	case func(float64, float64, float64):
-		return &numberFunction{arity: 3, call: func(a [maxNumberArgs]float64) float64 { f(a[0], a[1], a[2]); return 0 }}
+		return &numberFunction{arity: 3, call: func(a, b, c, _ float64) float64 { f(a, b, c); return 0 }}
 	case func(float64, float64, float64, float64):
-		return &numberFunction{arity: 4, call: func(a [maxNumberArgs]float64) float64 { f(a[0], a[1], a[2], a[3]); return 0 }}
+		return &numberFunction{arity: 4, call: func(a, b, c, d float64) float64 { f(a, b, c, d); return 0 }}
 	}
 	panic("unsupported NumberFunction type")
 }
@@ -62,7 +66,7 @@ func (f *numberFunction) tryCall(args []value) (float64, bool) {
 		}
 		a[i] = v.f()
 	}
-	return f.call(a), true
+	return f.call(a[0], a[1], a[2], a[3]), true
 }
 
 // function is the ordinary Go function form, used when the fast path does
@@ -72,7 +76,7 @@ func (f *numberFunction) function(l *State) int {
 	for i := range f.arity {
 		a[i] = CheckNumber(l, i+1)
 	}
-	r := f.call(a)
+	r := f.call(a[0], a[1], a[2], a[3])
 	if f.results == 1 {
 		l.PushNumber(r)
 	}

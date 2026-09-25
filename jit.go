@@ -85,6 +85,7 @@ const (
 	jitExitInstruction = iota // the interpreter must run the instruction at exitPC
 	jitExitBudget             // the back-edge budget ran out
 	jitExitCallGo             // the CALL at exitPC calls a Go function or Go closure
+	jitExitCallNumber         // the CALL at exitPC calls a number function
 )
 
 // jitCode is a prototype's compiled code.
@@ -315,6 +316,10 @@ func (l *State) runJIT(ci *callInfo, ip pc, bottom *callInfo) bool {
 			continue
 		case jitExitCallGo:
 			l.jitCallGoFunction(ci, p.jitOrig[ip], ip)
+			ip++
+			continue
+		case jitExitCallNumber:
+			l.jitCallNumber(ci, p.jitOrig[ip], ip)
 			ip++
 			continue
 		}
@@ -570,6 +575,32 @@ func (l *State) jitCallGoFunction(ci *callInfo, i instruction, ip pc) {
 		for ; k < wanted; k++ {
 			l.stack[function+k] = nilValue
 		}
+	}
+	l.top = ci.top
+}
+
+// jitCallNumber runs the CALL i at ip that compiled code exited at with
+// jitExitCallNumber, leaving the number function's *goFunction in
+// l.jitCtx.callee and the frame's address in l.jitCtx.frame. It calls the
+// function without a frame, as the interpreter does, when the arguments
+// fit it, and otherwise as an ordinary Go function.
+func (l *State) jitCallNumber(ci *callInfo, i instruction, ip pc) {
+	ctx := &l.jitCtx
+	nf := (*goFunction)(ctx.callee).number
+	a, b, wanted := i.a(), i.b(), i.c()-1
+	function := int((uintptr(ctx.frame)-uintptr(unsafe.Pointer(unsafe.SliceData(l.stack))))/unsafe.Sizeof(value{})) + a
+	r, ok := nf.tryCall(l.stack[function+1 : function+b])
+	if !ok {
+		l.jitCallGoFunction(ci, i, ip)
+		return
+	}
+	ctx.callee = nil
+	ci.savedPC = ip + 1
+	for k := range wanted { // a loop, not clear: see jitCallGoFunction
+		l.stack[function+k] = nilValue
+	}
+	if wanted > 0 && nf.results == 1 {
+		l.stack[function] = numberValue(r)
 	}
 	l.top = ci.top
 }
