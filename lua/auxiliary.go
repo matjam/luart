@@ -411,9 +411,14 @@ func (l *State) CheckStackWithMessage(space int, message string) {
 	}
 }
 
+// CheckOption checks that the argument at index is a string in list, or
+// is absent if def, its default, is not "", and returns its position in
+// list. Otherwise it raises an error.
+//
+// http://www.lua.org/manual/5.2/manual.html#luaL_checkoption
 func (l *State) CheckOption(index int, def string, list []string) int {
 	var name string
-	if def == "" {
+	if def != "" {
 		name = l.OptString(index, def)
 	} else {
 		name = l.CheckString(index)

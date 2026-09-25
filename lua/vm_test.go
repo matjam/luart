@@ -76,7 +76,7 @@ func TestLua(t *testing.T) {
 		{name: "locals"},
 		// {name: "main"}, // tests the lua executable
 		{name: "math"},
-		// {name: "nextvar"},
+		{name: "nextvar"},
 		{name: "pm"},
 		{name: "sort", nonPort: true}, // sort.lua depends on os.clock(), which is not yet implemented on Windows.
 		{name: "strings"},
