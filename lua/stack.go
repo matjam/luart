@@ -230,7 +230,13 @@ func (l *State) findUpValue(level int, storage *upValue) *upValue {
 	return uv
 }
 
+// newClosure makes a closure for CLOSURE, after running a Lua collection
+// if one is due, as C Lua checks at CLOSURE. That leaves the running
+// thread's stack where it is: see State.newTableAt.
 func (l *State) newClosure(p *prototype, upValues []*upValue, base int) value {
+	if l.global.gcMayBeDue() {
+		l.checkGC()
+	}
 	c := l.newLuaClosure(p)
 	p.cache = c
 	storage := &c.own

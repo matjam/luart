@@ -121,6 +121,45 @@ in `jitStep`:
 - SELF stores self in RA+1 after the lookup, not before as C does.
   `finishOp` stores it for a lookup a yield interrupted.
 
+## Garbage collection
+
+Go's collector frees luart's memory. A Lua collection (gc.go) adds what
+Lua defines beyond freeing memory: weak tables and `__gc` finalizers. It
+follows lgc.c's atomic phase.
+
+- **What a collection does.** It marks from Lua's roots: the registry,
+  the basic types' metatables, the main thread, the running thread and
+  finalizers still due. Ephemeron tables are marked to convergence. It
+  then clears weak values, moves unreached finalizable objects to
+  `toFinalize` (resurrecting them), clears weak keys and weak values
+  again, and runs the finalizers newest first. An error in one is raised
+  as "error in __gc metamethod (...)".
+- **When it runs.** On `collectgarbage("collect")` and `"step"`, and
+  automatically once a metatable with `__mode` or `__gc` is set, since a
+  state without either has nothing for it to do. The automatic pacing is
+  C Lua's: collect once the state has allocated (pause − 100)% of the live
+  heap the last collection kept. `checkGC` looks only after a Go
+  collection, which a re-arming finalizer sentinel counts, so the check
+  where C Lua steps its collector (NEWTABLE, CONCAT, CLOSURE, and calls
+  and resumes from Go) is one load and compare. A collection that frees
+  nothing doubles the wait, up to 64 times: every state's standard files
+  have `__gc`, which would otherwise make every state collect.
+- **Finalizers run on their own thread** (`finalizerThread`), not on the
+  running one. A collection therefore never moves the running thread's
+  stack, and the interpreter and `jitStep` keep their frame across
+  NEWTABLE and CLOSURE without reloading it. A finalizer sees that thread
+  as `coroutine.running()`.
+- **Why not Go finalizers.** `runtime.SetFinalizer` runs on another
+  goroutine at an unknown time, can't resurrect in Lua's order, and can't
+  tell a weak table's entries from strong ones. A Lua-level mark over
+  Lua's own roots gives 5.2's semantics: gc.lua passes.
+- **Differences.** The collection is not incremental: it marks the whole
+  Lua heap at once. An object only Go memory refers to, outside the
+  registry and the stacks, counts as unreachable, so a Go embedder must
+  keep such objects in the registry. `__mode` and `__gc` are noticed when
+  the metatable is set, as 5.2 reads `__gc`. `setstepmul`, `setmajorinc`,
+  `generational` and `incremental` are accepted and ignored.
+
 ## JIT
 
 On by default; `NewState(WithoutJIT())` or `LUART_JIT=off` turns it off.

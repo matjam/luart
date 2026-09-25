@@ -8,14 +8,15 @@ import (
 // String keys live in slots, laid out by shape (see shape.go), and all
 // remaining keys live in hash, which is allocated on first write.
 type table struct {
-	array     []value
-	shape     *shape  // nil until the first string key
-	slots     []value // len(slots) == len(shape.keys)
-	hash      map[hashValue]value
-	metaTable *table
-	site      *fieldCache // the NEWTABLE that made the table, which learns its shape
-	extra     *tableExtra // allocated on first use
-	flags     byte
+	array       []value
+	shape       *shape  // nil until the first string key
+	slots       []value // len(slots) == len(shape.keys)
+	hash        map[hashValue]value
+	metaTable   *table
+	site        *fieldCache // the NEWTABLE that made the table, which learns its shape
+	extra       *tableExtra // allocated on first use
+	flags       byte
+	finalizable bool // marked for finalization: see gc.go
 }
 
 // tableExtra holds table state that most tables never need.

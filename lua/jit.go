@@ -409,7 +409,7 @@ func (l *State) jitStep(ci *callInfo, i bytecode.Instruction, ip pc) {
 	case bytecode.OpNewTable:
 		a := i.A()
 		b, c := bytecode.IntFromFloat8(i.B()), bytecode.IntFromFloat8(i.C())
-		frame[a] = objectValue(newTableAt(&closure.prototype.fields[ip], b, c))
+		frame[a] = objectValue(l.newTableAt(&closure.prototype.fields[ip], b, c))
 		clear(frame[a+1:])
 	case bytecode.OpClosure:
 		a, p := i.A(), &closure.prototype.Prototypes[i.Bx()]

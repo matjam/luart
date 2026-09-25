@@ -64,7 +64,7 @@ func (l *State) executeSwitchJIT() {
 		case bytecode.OpNewTable:
 			a := i.A()
 			b, c := bytecode.IntFromFloat8(i.B()), bytecode.IntFromFloat8(i.C())
-			frame[a] = objectValue(newTableAt(&closure.prototype.fields[ip-1], b, c))
+			frame[a] = objectValue(l.newTableAt(&closure.prototype.fields[ip-1], b, c))
 			clear(frame[a+1:])
 		case bytecode.OpSelf:
 			a, t := i.A(), frame[i.B()]

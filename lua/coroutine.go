@@ -61,6 +61,7 @@ func (l *State) Status() ThreadStatus { return l.status }
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_resume
 func (l *State) Resume(from *State, argCount int) (yielded bool, err error) {
+	l.checkGC()
 	oldNonYieldable := l.nonYieldableCallCount
 	l.nestedGoCallCount = 1
 	if from != nil {
@@ -286,6 +287,7 @@ func (l *State) finishOp() {
 		if total > 1 {
 			l.top = top - 1
 			l.concat(total)
+			frame = ci.frame // a metamethod may have moved the stack
 		}
 		a := i.A()
 		frame[a] = l.stack[l.top-1]

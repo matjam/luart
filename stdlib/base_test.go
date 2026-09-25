@@ -24,7 +24,8 @@ func TestCollectGarbage(t *testing.T) {
 		assert(collectgarbage() == 0 and collectgarbage("collect") == 0)
 		local k, b = collectgarbage("count")
 		assert(k > 0 and b >= 0 and b < 1024 and k * 1024 == math.floor(k) * 1024 + b)
-		assert(collectgarbage("step") == true)
+		repeat until collectgarbage("step") -- true once a cycle finishes
+		assert(collectgarbage("step", 1e6) == true)
 		assert(collectgarbage("isrunning") == true)
 		assert(collectgarbage("stop") == 0 and collectgarbage("isrunning") == false)
 		assert(collectgarbage("restart") == 0 and collectgarbage("isrunning") == true)
