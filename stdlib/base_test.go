@@ -18,6 +18,35 @@ func TestPairsIterators(t *testing.T) {
 	`)
 }
 
+// collectgarbage takes Lua 5.2's options and returns what C Lua returns.
+func TestCollectGarbage(t *testing.T) {
+	run(t, `
+		assert(collectgarbage() == 0 and collectgarbage("collect") == 0)
+		local k, b = collectgarbage("count")
+		assert(k > 0 and b >= 0 and b < 1024 and k * 1024 == math.floor(k) * 1024 + b)
+		assert(collectgarbage("step") == true)
+		assert(collectgarbage("isrunning") == true)
+		assert(collectgarbage("stop") == 0 and collectgarbage("isrunning") == false)
+		assert(collectgarbage("restart") == 0 and collectgarbage("isrunning") == true)
+		assert(collectgarbage("setpause", 100) == 200 and collectgarbage("setpause", 200) == 100)
+		assert(collectgarbage("setstepmul", 400) == 200 and collectgarbage("setstepmul", 200) == 400)
+		assert(collectgarbage("setmajorinc", 50) == 100)
+		assert(collectgarbage("generational") == 0 and collectgarbage("incremental") == 0)
+		local ok, err = pcall(collectgarbage, "bogus")
+		assert(not ok and err:find("invalid option 'bogus'", 1, true), err)
+	`)
+}
+
+// An option argument with a default may be omitted, as in file:seek().
+func TestOptionDefault(t *testing.T) {
+	run(t, `
+		local f = io.tmpfile()
+		f:write("abc")
+		assert(f:seek() == 3 and f:seek("set") == 0 and f:seek("end") == 3)
+		f:close()
+	`)
+}
+
 // error raises any value, not only strings.
 func TestErrorValues(t *testing.T) {
 	run(t, `

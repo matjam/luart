@@ -41,6 +41,47 @@ func pairs(method string, isZero bool) lua.Function {
 	}
 }
 
+var gcOptions = []string{"stop", "restart", "collect", "count", "step", "setpause", "setstepmul", "setmajorinc", "isrunning", "generational", "incremental"}
+
+// collectGarbage returns a state's collectgarbage. Go's collector serves
+// the whole process, so the options that tune or stop it are remembered
+// for the state, and returned as C Lua returns them, but do not change it.
+// "count" is the Go heap in use; "collect" and "step" run a full Go
+// collection.
+func collectGarbage() lua.Function {
+	running := true
+	settings := map[string]int{"setpause": 200, "setstepmul": 200, "setmajorinc": 100}
+	return func(l *lua.State) int {
+		opt := gcOptions[l.CheckOption(1, "collect", gcOptions)]
+		arg := l.OptInteger(2, 0)
+		switch opt {
+		case "count":
+			var stats runtime.MemStats
+			runtime.ReadMemStats(&stats)
+			l.PushNumber(float64(stats.HeapAlloc) / 1024) // kilobytes, with the remainder
+			l.PushInteger(int(stats.HeapAlloc % 1024))
+			return 2
+		case "collect":
+			runtime.GC()
+		case "step":
+			runtime.GC()
+			l.PushBoolean(true) // a cycle finished
+			return 1
+		case "stop", "restart":
+			running = opt == "restart"
+		case "isrunning":
+			l.PushBoolean(running)
+			return 1
+		case "setpause", "setstepmul", "setmajorinc":
+			l.PushInteger(settings[opt]) // the previous value
+			settings[opt] = arg
+			return 1
+		}
+		l.PushInteger(0)
+		return 1
+	}
+}
+
 func intPairs(l *lua.State) int {
 	i := l.CheckInteger(2)
 	l.CheckType(1, lua.TypeTable)
@@ -127,25 +168,6 @@ var baseLibrary = []lua.RegistryFunction{
 			panic("unreachable")
 		}
 		return l.Top()
-	}},
-	{Name: "collectgarbage", Function: func(l *lua.State) int {
-		switch opt, _ := l.OptString(1, "collect"), l.OptInteger(2, 0); opt {
-		case "collect":
-			runtime.GC()
-			l.PushInteger(0)
-		case "step":
-			runtime.GC()
-			l.PushBoolean(true)
-		case "count":
-			var stats runtime.MemStats
-			runtime.ReadMemStats(&stats)
-			l.PushNumber(float64(stats.HeapAlloc >> 10))
-			l.PushInteger(int(stats.HeapAlloc & 0x3ff))
-			return 2
-		default:
-			l.PushInteger(-1)
-		}
-		return 1
 	}},
 	{Name: "dofile", Function: func(l *lua.State) int {
 		f := l.OptString(1, "")
@@ -335,6 +357,8 @@ func OpenBase(l *lua.State) int {
 	l.PushGoFunction(intPairs)
 	l.PushGoClosure(pairs("__ipairs", true), 1)
 	l.SetField(-2, "ipairs")
+	l.PushGoFunction(collectGarbage())
+	l.SetField(-2, "collectgarbage")
 	l.PushString(lua.VersionString)
 	l.SetField(-2, "_VERSION")
 	return 1
