@@ -500,6 +500,7 @@ func gsub(l *lua.State) int {
 		if e := ms.match(s, 0); e != -1 && e != last {
 			n++
 			changed = ms.addValue(&b, s, e, tr, repl) || changed
+			l.CheckAllocation(b.Len()) // the result, which replacements can make far longer than src
 			s, last = e, e
 		} else if s < len(src) {
 			b.WriteByte(src[s])

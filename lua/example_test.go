@@ -1,6 +1,7 @@
 package lua_test
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -135,6 +136,18 @@ func ExampleState_Interrupt() {
 		l.Pop(1)
 	}
 	// Output: runtime error: [string "while true do end"]:1: interrupted!
+}
+
+// A host running untrusted scripts limits what each may allocate. The
+// allocation that would pass the limit fails before it is made.
+func ExampleState_SetAllocationLimit() {
+	l := lua.NewState()
+	stdlib.Open(l)
+	l.SetAllocationLimit(8 << 20)
+	err := l.DoString(`local s = string.rep("x", 1e9)`)
+	message, _ := l.ToString(-1)
+	fmt.Println(errors.Is(err, lua.ErrMemory), message)
+	// Output: true not enough memory
 }
 
 // A host can open only the libraries a script should have. Here the script

@@ -38,8 +38,8 @@ func (h arraySorter) Swap(i, j int) {
 	i++
 	j++
 	vi, vj := h.t.atInt(i), h.t.atInt(j)
-	h.t.putAtInt(i, vj)
-	h.t.putAtInt(j, vi)
+	h.t.putAtInt(h.l, i, vj)
+	h.t.putAtInt(h.l, j, vi)
 }
 
 func (h arraySorter) Less(i, j int) bool {

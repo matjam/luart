@@ -592,7 +592,12 @@ func (p *prototype) localName(index int, at pc) (string, bool) {
 }
 
 func (l *State) toString(index int) (s string, ok bool) {
-	if s, ok = toString(l.stack[index]); ok {
+	v := l.stack[index]
+	if s, ok = v.str(); ok {
+		return s, true
+	}
+	if s, ok = toString(v); ok { // a number, converted in place
+		l.charge(len(s))
 		l.stack[index] = stringValue(s)
 	}
 	return

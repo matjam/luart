@@ -368,12 +368,34 @@ func readLine(l *lua.State, r *bufio.Reader, chop bool) (bool, error) {
 
 // readChars reads up to n bytes. It fails if there are none.
 func readChars(l *lua.State, r *bufio.Reader, n int) (bool, error) {
-	var b strings.Builder
-	if _, err := io.CopyN(&b, r, int64(n)); err != nil && err != io.EOF {
+	s, err := readUpTo(l, r, int64(n))
+	if err != nil {
 		return false, err
 	}
-	l.PushString(b.String())
-	return b.Len() > 0, nil
+	l.PushString(s)
+	return s != "", nil
+}
+
+// readUpTo reads up to n bytes from r, or to its end for n < 0, a chunk at
+// a time, so that the allocation limit stops a read of a large file.
+func readUpTo(l *lua.State, r io.Reader, n int64) (string, error) {
+	const chunk = 64 << 10
+	var b strings.Builder
+	for n != 0 {
+		size := int64(chunk)
+		if n > 0 {
+			size = min(size, n)
+			n -= size
+		}
+		got, err := io.CopyN(&b, r, size)
+		l.CheckAllocation(b.Len())
+		if err == io.EOF || got < size {
+			return b.String(), nil
+		} else if err != nil {
+			return b.String(), err
+		}
+	}
+	return b.String(), nil
 }
 
 // testEOF pushes "" and reports whether the file has more to read.
@@ -389,8 +411,8 @@ func testEOF(l *lua.State, r *bufio.Reader) (bool, error) {
 
 // readAll reads the rest of the file, "" at its end.
 func readAll(l *lua.State, r *bufio.Reader) error {
-	b, err := io.ReadAll(r)
-	l.PushString(string(b))
+	s, err := readUpTo(l, r, -1)
+	l.PushString(s)
 	return err
 }
 

@@ -21,6 +21,7 @@ func (l *State) parse(r io.ByteReader, name string) *luaClosure {
 		l.throw(ErrSyntax)
 	}
 	p := prototypeOf(bp)
+	l.charge(closureCost(&p))
 	c := l.newLuaClosure(&p)
 	l.push(objectValue(c))
 	return c
@@ -101,7 +102,7 @@ func protectedParser(l *State, r io.Reader, name, chunkMode string) error {
 		}
 		l.assert(closure.upValueCount() == len(closure.prototype.UpValues))
 		for i := range closure.upValues {
-			closure.upValues[i] = l.newUpValue()
+			closure.upValues[i] = new(upValue) // counted with the closure
 		}
 	}, l.top, l.errorFunction)
 	l.nonYieldableCallCount--
@@ -118,6 +119,7 @@ func (l *State) undump(r io.Reader, name string) *luaClosure {
 		l.throw(ErrSyntax)
 	}
 	p := prototypeOf(bp)
+	l.charge(closureCost(&p))
 	c := l.newLuaClosure(&p)
 	l.push(objectValue(c))
 	return c

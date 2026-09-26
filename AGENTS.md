@@ -208,6 +208,34 @@ builds `{n = #extras, ...}`, and `...` reads the table, checking `n`. The
 opcode space is full, which is why the view is a value, not C Lua's
 GETVARG instruction.
 
+## Allocation limit
+
+memory.go. `SetAllocationLimit(n)` bounds what a state and its threads
+allocate from then on; `charge(n)` counts n bytes before an allocation
+and raises `ErrMemory` (the preallocated "not enough memory", no message
+handler) when they do not fit. The count only rises, garbage included,
+so it is deterministic whatever Go's collector does. Without a limit,
+`allocRemaining` still counts down from `math.MaxInt`, and `outOfMemory`
+restarts it.
+
+- **Every allocation Lua can repeat charges first:** new tables
+  (`newTableAt`, `CreateTable`, vararg tables), a table's new string key,
+  hash entry or array extension (the table methods that grow take the
+  state), closures and new upvalues, CONCAT and number-to-string
+  conversions, `PushString`, userdata, Go closures, threads, stack growth,
+  and `next`'s key snapshots. A new allocation site must charge too.
+- **Estimates:** 16 bytes a value slot, a string's length, struct sizes
+  from `unsafe.Sizeof`. A substring counts its length, though Go shares
+  the bytes, as C Lua copies them.
+- **Builders check before they grow:** a stdlib function that builds a
+  string larger than its inputs (`rep`, `gsub`, `format`,
+  `table.concat`, `pack`, `upper`/`lower`/`reverse`, `io.read`) calls
+  `CheckAllocation` with the size so far; `PushString` then counts it.
+- **Compiled code never allocates:** NEWTABLE, CLOSURE, CONCAT, new keys
+  and array growth exit to Go, which charges.
+- Not counted: the compiler, `string.dump`, and what Go functions allocate
+  for themselves unless they call `Charge`.
+
 ## Garbage collection
 
 Go's collector frees apogee's memory. A Lua collection (gc.go) adds what
@@ -433,8 +461,11 @@ remains follows from running on Go.
   - An object only Go memory refers to, outside the registry and the
     stacks, counts as garbage.
   - `__mode` and `__gc` are noticed when the metatable is set.
-- **Out of memory aborts the process.** Go does, rather than raising
-  "not enough memory", so `table.create` caps what it preallocates.
+- **Out of memory aborts the process** unless the host set an allocation
+  limit: Go aborts rather than raising "not enough memory", so
+  `table.create` caps what it preallocates. The limit counts allocation,
+  not memory in use (see Allocation limit), so heavy.lua and memerr.lua
+  stay skipped.
 - **Smaller visible differences:**
   - Debug information calls Go functions "Go" unless
     `APOGEE_GO_AS_C=1` is set.

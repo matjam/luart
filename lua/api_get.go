@@ -127,6 +127,7 @@ func (l *State) ToString(index int) (s string, ok bool) {
 		return s, true
 	}
 	if s, ok = toString(v); ok { // Bug compatibility: replace a number with its string representation.
+		l.charge(len(s))
 		l.setIndexToValue(index, stringValue(s))
 	}
 	return

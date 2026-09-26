@@ -584,7 +584,7 @@ func (l *State) executeSwitchJIT() {
 			start := (c - 1) * bytecode.ListItemsPerFlush
 			last := start + n
 			if last > len(h.array) {
-				h.extendArray(last)
+				h.extendArray(l, last)
 			}
 			copy(h.array[start:last], frame[a+1:a+1+n])
 			l.top = ci.top

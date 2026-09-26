@@ -116,6 +116,7 @@ func (l *State) RawGetValue(index int, p any) Type {
 //
 // https://www.lua.org/manual/5.5/manual.html#lua_createtable
 func (l *State) CreateTable(arrayCount, recordCount int) {
+	l.chargeTable(arrayCount, recordCount)
 	l.apiPush(objectValue(newTableWithSize(arrayCount, recordCount)))
 }
 

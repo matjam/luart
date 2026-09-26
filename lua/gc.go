@@ -221,6 +221,7 @@ func (l *State) newTableAt(site *fieldCache, arraySize, hashSize int) *table {
 	if l.global.gcMayBeDue() {
 		l.checkGC()
 	}
+	l.chargeTable(arraySize, hashSize)
 	return newTableAt(site, arraySize, hashSize)
 }
 

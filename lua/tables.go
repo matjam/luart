@@ -2,6 +2,7 @@ package lua
 
 import (
 	"math"
+	"unsafe"
 )
 
 // table is a Lua table. Integer keys from 1 to len(array) live in array.
@@ -129,9 +130,9 @@ func (t *table) atString(k string) value {
 	return nilValue
 }
 
-// putString sets string key k, whose text is key, to v. root is the owning
-// state's root shape.
-func (t *table) putString(root *shape, k value, key string, v value) {
+// putString sets string key k, whose text is key, to v. l is the owning
+// state, which counts a new key's slot.
+func (t *table) putString(l *State, k value, key string, v value) {
 	if t.shape != nil {
 		if i, ok := t.shape.slot(key); ok {
 			old := t.slots[i]
@@ -151,11 +152,13 @@ func (t *table) putString(root *shape, k value, key string, v value) {
 	}
 	s := t.shape
 	if s == nil {
-		s = root
+		s = l.global.rootShape
 	} else if s.dict && t.extra != nil && t.extra.dead > minCompactSlots && t.extra.dead > len(t.slots)/2 {
+		l.charge((len(t.slots) - t.extra.dead) * 3 * slotBytes) // the new shape's keys and map, and the slots
 		t.compact()
 		s = t.shape
 	}
+	l.charge(2 * slotBytes) // the slot, and the key in a new shape
 	t.shape = s.with(k, key)
 	t.slots = append(t.slots, v)
 	t.invalidateIteration() // adding an entry invalidates iterations
@@ -202,7 +205,9 @@ func intKey(k value) (int, bool) {
 	return 0, false
 }
 
-func (t *table) extendArray(last int) {
+// extendArray grows the array part to last elements, which l counts.
+func (t *table) extendArray(l *State, last int) {
+	l.charge((last - len(t.array)) * slotBytes)
 	t.array = append(t.array, make([]value, last-len(t.array))...)
 	for k, v := range t.hash {
 		if i, ok := intKey(k.value()); ok && 0 < i && i <= len(t.array) {
@@ -219,7 +224,7 @@ func (t *table) atInt(k int) value {
 	return t.hash[hashKey(integerValue(int64(k)))]
 }
 
-func (t *table) maybeResizeArray(key int) bool {
+func (t *table) maybeResizeArray(l *State, key int) bool {
 	// Precondition: key > len(t.array).
 	occupancy := 0
 	for _, v := range t.array {
@@ -233,33 +238,34 @@ func (t *table) maybeResizeArray(key int) bool {
 		}
 	}
 	if occupancy >= key>>1 {
-		t.extendArray(max(occupancy*2, key)) // TODO Tune growth function.
+		t.extendArray(l, max(occupancy*2, key)) // TODO Tune growth function.
 		return true
 	}
 	return false
 }
 
 // addOrInsertHash stores a non-nil v at a key that is not a string and is
-// outside the array part.
-func (t *table) addOrInsertHash(k hashValue, v value) {
-	if t.hash == nil {
-		t.hash = make(map[hashValue]value)
-	}
+// outside the array part. l counts a new entry.
+func (t *table) addOrInsertHash(l *State, k hashValue, v value) {
 	if _, ok := t.hash[k]; !ok {
+		l.charge(hashEntryBytes)
+		if t.hash == nil {
+			t.hash = make(map[hashValue]value)
+		}
 		t.invalidateIteration() // adding an entry invalidates iterations
 	}
 	t.hash[k] = v
 }
 
-func (t *table) putAtInt(k int, v value) {
+func (t *table) putAtInt(l *State, k int, v value) {
 	if 0 < k && k <= len(t.array) {
 		t.array[k-1] = v
-	} else if k > 0 && !v.isNil() && t.maybeResizeArray(k) {
+	} else if k > 0 && !v.isNil() && t.maybeResizeArray(l, k) {
 		t.array[k-1] = v
 	} else if v.isNil() {
 		delete(t.hash, hashKey(integerValue(int64(k))))
 	} else {
-		t.addOrInsertHash(hashKey(integerValue(int64(k))), v)
+		t.addOrInsertHash(l, hashKey(integerValue(int64(k))), v)
 	}
 }
 
@@ -290,12 +296,12 @@ func (t *table) put(l *State, k, v value) {
 		return
 	case vkString:
 		s, _ := k.str()
-		t.putString(l.global.rootShape, k, s, v)
+		t.putString(l, k, s, v)
 		return
 	case vkNumber:
 		if k = normaliseKey(k); k.isInteger() {
 			if i := k.i(); int64(int(i)) == i {
-				t.putAtInt(int(i), v)
+				t.putAtInt(l, int(i), v)
 				return
 			}
 		} else if math.IsNaN(k.f()) {
@@ -306,7 +312,7 @@ func (t *table) put(l *State, k, v value) {
 	if v.isNil() {
 		delete(t.hash, hashKey(k))
 	} else {
-		t.addOrInsertHash(hashKey(k), v)
+		t.addOrInsertHash(l, hashKey(k), v)
 	}
 }
 
@@ -439,7 +445,7 @@ func (l *State) next(t *table, key int) bool {
 		return false
 	}
 	if t.extra == nil || t.extra.iterationKeys == nil {
-		t.snapshotKeys()
+		t.snapshotKeys(l)
 	}
 	return l.nextMapKey(t, key, 0)
 }
@@ -450,7 +456,7 @@ func (l *State) nextHashKey(t *table, key int, kv value) bool {
 		if _, ok := t.hash[k]; !ok {
 			l.runtimeError("invalid key to 'next'")
 		}
-		t.snapshotKeys()
+		t.snapshotKeys(l)
 	}
 	x := t.extra
 	if j := x.iterationNext - 1; 0 <= j && j < len(x.iterationKeys) && x.iterationKeys[j] == k {
@@ -465,7 +471,9 @@ func (l *State) nextHashKey(t *table, key int, kv value) bool {
 	return false
 }
 
-func (t *table) snapshotKeys() {
+// snapshotKeys lists the hash part's keys for next to walk, which l counts.
+func (t *table) snapshotKeys(l *State) {
+	l.charge(len(t.hash) * int(unsafe.Sizeof(hashValue{})))
 	keys := make([]hashValue, 0, len(t.hash))
 	for hk := range t.hash {
 		keys = append(keys, hk)

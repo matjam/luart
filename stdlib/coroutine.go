@@ -1,6 +1,10 @@
 package stdlib
 
-import "github.com/matjam/apogee/lua"
+import (
+	"errors"
+
+	"github.com/matjam/apogee/lua"
+)
 
 // The coroutine library, after lcorolib.c.
 
@@ -11,34 +15,35 @@ func toCoroutine(l *lua.State) *lua.State {
 }
 
 // auxResume resumes co with n arguments from l, moves its results or
-// error to l, and returns how many results it moved, or -1 for an error.
-func auxResume(l, co *lua.State, n int) int {
+// error to l, and returns how many results it moved, or -1 for an error,
+// with the error from Resume if it raised one.
+func auxResume(l, co *lua.State, n int) (int, error) {
 	if !co.CheckStack(n) {
 		l.PushString("too many arguments to resume")
-		return -1
+		return -1, nil
 	}
 	if co.Status() == lua.ThreadOK && co.Top() == 0 {
 		l.PushString("cannot resume dead coroutine")
-		return -1
+		return -1, nil
 	}
 	l.XMove(co, n)
 	if _, err := co.Resume(l, n); err != nil {
 		co.XMove(l, 1) // the error
-		return -1
+		return -1, err
 	}
 	results := co.Top()
 	if !l.CheckStack(results + 1) {
 		co.Pop(results)
 		l.PushString("too many results to resume")
-		return -1
+		return -1, nil
 	}
 	co.XMove(l, results)
-	return results
+	return results, nil
 }
 
 func coroutineResume(l *lua.State) int {
 	co := toCoroutine(l)
-	r := auxResume(l, co, l.Top()-1)
+	r, _ := auxResume(l, co, l.Top()-1)
 	if r < 0 {
 		l.PushBoolean(false)
 		l.Insert(-2)
@@ -51,15 +56,17 @@ func coroutineResume(l *lua.State) int {
 
 func coroutineWrapped(l *lua.State) int {
 	co := l.ToThread(lua.UpValueIndex(1))
-	r := auxResume(l, co, l.Top())
+	r, err := auxResume(l, co, l.Top())
 	if r < 0 {
 		if co.Status() == lua.ThreadError { // it died: close its variables, as auxwrap does
-			if err := co.CloseThread(l); err != nil {
+			if err = co.CloseThread(l); err != nil {
 				l.Pop(1)
 				co.XMove(l, 1) // the error, perhaps from a __close
 			}
 		}
-		if l.TypeOf(-1) == lua.TypeString { // add where the error was raised, to a string only
+		// Add where the error was raised, to a string only, and not to a
+		// memory error's message.
+		if !errors.Is(err, lua.ErrMemory) && l.TypeOf(-1) == lua.TypeString {
 			l.Where(1)
 			l.Insert(-2)
 			l.Concat(2)

@@ -189,6 +189,7 @@ func stringPack(l *lua.State) int {
 		opt, size, pad := h.details(total)
 		l.ArgumentCheck(size+pad <= maxPackSize-total, arg, "result too long")
 		total += pad + size
+		l.CheckAllocation(total) // before a large size pads with zeros
 		for range pad {
 			b = append(b, 0)
 		}
