@@ -404,6 +404,103 @@ nothing compiles.
 - To prove a test exercises generated code, break the generated code on
   purpose (for example, emit a subtract for ADD) and check the tests fail.
 
+## Gaps with C Lua 5.5 and LuaJIT
+
+What apogee does not do, and why, as of September 2026. Keep this list
+current: remove an entry when a change closes it, and add one when a
+change opens a difference.
+
+### C Lua 5.5
+
+The language and standard library are complete: the 5.5.1 suite passes
+apart from the files that need C Lua's internal test library (T). What
+remains follows from running on Go.
+
+- **Binary chunks are apogee's own format** (internal/chunk). `luac`
+  output does not load, and `string.dump` output does not load in C Lua.
+  `calls.lua` is pending for this alone: it checks C's chunk header.
+- **No C modules.** There is no C API, so `package.loadlib` and binary
+  `require` searchers cannot work; Lua and Go modules can.
+- **Only the C locale.** `os.setlocale` accepts `"C"`, `"POSIX"` and
+  `""`, and fails otherwise.
+- **The collector** (see Garbage collection):
+  - Go frees memory; a Lua collection marks the whole Lua heap at once,
+    for weak tables and `__gc`.
+  - "incremental" and "generational" are remembered and reported;
+    "step" in generational mode collects.
+  - Of the "param" parameters, only "pause" paces collections.
+  - `collectgarbage("count")` is Go's heap.
+  - An object only Go memory refers to, outside the registry and the
+    stacks, counts as garbage.
+  - `__mode` and `__gc` are noticed when the metatable is set.
+- **Out of memory aborts the process.** Go does, rather than raising
+  "not enough memory", so `table.create` caps what it preallocates.
+- **Smaller visible differences:**
+  - Debug information calls Go functions "Go" unless
+    `APOGEE_GO_AS_C=1` is set.
+  - A numeric `for` has one more hidden variable than 5.5's, which
+    `debug.getlocal` shows.
+  - `^` uses Go's `math.Pow`, which can differ from C's `pow` in the
+    last bit.
+- **The JIT compiles only on linux and darwin, arm64 and amd64.**
+  Elsewhere, Windows included, states interpret.
+- **Speed.** With the JIT, apogee takes about 0.75 times C Lua 5.4's
+  time on the standard benchmarks; without it, about 1.5 times. The
+  tables are still against 5.4; re-measure against 5.5
+  (bench/README.md, "Reproducing", with `-tags clua55`).
+
+### LuaJIT
+
+**Speed is the main gap.** On the standard benchmarks LuaJIT takes about
+0.20 times C Lua 5.4's time on the M1, against apogee's 0.75: roughly
+four times faster.
+- Numeric loops: 10–30 times faster (spectral-norm, NBody, Permute,
+  Towers).
+- Object-heavy code: two to four times faster (DeltaBlue, Richards,
+  Havlak).
+- apogee is faster on CD (58 ms against 329 ms) and Json (6 ms against
+  19 ms).
+- On the embedding workloads LuaJIT takes 2.6 times native Go's time,
+  apogee 6.9.
+
+The gap is architectural:
+- LuaJIT is a tracing JIT. It keeps values unboxed in registers across
+  a trace, hoists loop invariants, sinks allocations, and calls within
+  compiled code.
+- apogee's JIT compiles a function at a time on the interpreter's own
+  frames. Every value is a 16-byte stack slot. Kernels (simple numeric
+  loops) are the only code that keeps values in registers.
+- apogee's compiled code exits to Go for:
+  - calls into Go;
+  - NEWTABLE and CLOSURE;
+  - TAILCALL, CONCAT and table LEN;
+  - GETTABLE and SETTABLE with keys other than constant strings and
+    array indices;
+  - the generic for's TFORCALL.
+
+Closing most of the speed gap means a tracing or register-allocating
+JIT: a project, not tuning. The cheaper steps are in Next below (exits,
+kernels with calls, registers across ordinary code).
+
+**Language and libraries favour apogee.** LuaJIT is Lua 5.1 with a few
+5.2 extensions. apogee has what it lacks:
+- an integer subtype, bitwise operators and `//`;
+- `<const>`, `<close>` and `global`;
+- `utf8`, `string.pack`, `table.move` and `table.create`;
+- 5.5's metamethod rules.
+
+LuaJIT has what apogee lacks:
+- the FFI (C types and calls);
+- the `bit` and `jit.*` modules;
+- `string.buffer` and `table.new`.
+
+**Embedding favours apogee.** It is pure Go with no cgo, it
+cross-compiles freely, and its Go API is typed, with generics. LuaJIT
+needs cgo, which `CGO_ENABLED=0` builds such as EncomPlayer's rule out.
+
+**Platforms favour LuaJIT.** Its JIT covers more CPU architectures, and
+Windows. apogee's JIT covers linux and darwin on arm64 and amd64.
+
 ## Performance today
 
 bench/README.md has the current tables and charts, generated from the raw
@@ -480,6 +577,12 @@ Measured against the standard benchmarks, which found most of them:
   `__newindex` (#73; Towers −28%).
 - String length and string methods in compiled code (#76; Json −22%), and
   the API's argument fast paths (#77; string scan −14%).
+- After the 5.5 port (#101): `+ - * /` of an integer and a float
+  without `FloatArith`'s dispatch; a raw array read first in `FieldInt`,
+  which the ported ltablib uses; and a generic for's TBC with a nil
+  closing value and RETURN in functions that have one, in compiled code
+  (`jitContext.tbc`). Before, such functions exited at every RETURN.
+  Bounce −8%, CD and binary-trees −5% with the JIT.
 - Before these: calls into Go through `jitExitCallGo` and
   `jitExitCallNumber` (16.6 to 12.5 ns), Go calling compiled Lua
   (`callJIT`, `jitReturnToGo`; sort 5.6 to 3.6 ms), `sin` and `cos`
@@ -532,3 +635,15 @@ runs the same with `set` global or local), putting `sin` and `cos`
 first in the intrinsic dispatch (0.9% on plasma, at a cost to every other
 intrinsic), and running TAILCALL in `runJIT` rather than the interpreter
 (no change: the exit is the cost).
+
+- **Closing JMPs in compiled code**, when nothing at or above the level
+  is open: +2% on the geometric mean, closures +20%, even with the jump
+  still marked `always` for `worthEntering`.
+- **Inline integer-times-float-constant branches in `executeSwitch`'s
+  RK opcodes:** plasma −7% interpreted, but others +1–2.5% from layout;
+  −0.1% net.
+
+The go-calls workload's JIT time swings 20–30% with whether its argument
+and result are integers or floats, in no consistent direction. It looks
+micro-architectural (store forwarding, placement), not a code path in
+apogee.
