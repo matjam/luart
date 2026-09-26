@@ -1111,7 +1111,6 @@ func TestJITRandomArithmetic(t *testing.T) {
 	}
 }
 
-
 // Compiled code runs a generic for's TBC when its closing value is nil,
 // and returns from a function with one unless a variable in its frame is
 // to be closed: those Go closes.
