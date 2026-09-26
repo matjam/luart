@@ -228,13 +228,16 @@ run of each suite workload.
 
 ## C interpreters
 
-C Lua 5.4 and LuaJIT are linked with cgo, so they need a C compiler and
-their development packages, found with pkg-config (`lua5.4` and
-`luajit`). Both define the Lua C API, so a test binary can link only one.
-Each has a build tag: `clua54` or `luajit`. Without either, the benchmarks
-build with `CGO_ENABLED=0` and run luart and go-lua only. On macOS,
-Homebrew's `lua` is now 5.5; install `lua@5.4`, which is keg-only, and
-set `PKG_CONFIG_PATH=$(brew --prefix lua@5.4)/lib/pkgconfig`.
+C Lua 5.5, C Lua 5.4 and LuaJIT are linked with cgo, so they need a C
+compiler and their development packages, found with pkg-config (`lua5.5`,
+`lua5.4` and `luajit`). All define the Lua C API, so a test binary can
+link only one. Each has a build tag: `clua55`, `clua54` or `luajit`.
+Without one, the benchmarks build with `CGO_ENABLED=0` and run luart and
+go-lua only. C Lua 5.5, the language luart speaks, is the reference: the
+charts compare with it when a results file has it, and with 5.4
+otherwise. On macOS, Homebrew's `lua` is 5.5; for 5.4 install `lua@5.4`,
+which is keg-only, and set
+`PKG_CONFIG_PATH=$(brew --prefix lua@5.4)/lib/pkgconfig`.
 
 ## Reproducing
 
@@ -243,7 +246,7 @@ then each C interpreter, into one file:
 
 ```sh
 CGO_ENABLED=0 go test -run x -bench . -benchmem -count 6 -timeout 3h -ldflags=-funcalign=64 > suite-results-amd64.txt
-go test -tags clua54 -run x -bench '.*/.*/lua54$' -benchmem -count 6 -timeout 3h >> suite-results-amd64.txt
+go test -tags clua55 -run x -bench '.*/.*/lua55$' -benchmem -count 6 -timeout 3h >> suite-results-amd64.txt
 go test -tags luajit -run x -bench '.*/.*/luajit$' -benchmem -count 6 -timeout 3h >> suite-results-amd64.txt
 go run ./chart -svg suite-amd64.svg -readme README.md -name amd64 suite-results-amd64.txt
 go run ./chart -suite standard -svg standard-amd64.svg -readme README.md -name standard-amd64 suite-results-amd64.txt
