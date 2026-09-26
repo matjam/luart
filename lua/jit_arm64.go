@@ -3,6 +3,8 @@
 package lua
 
 import (
+	"errors"
+
 	"github.com/matjam/apogee/internal/bytecode"
 	. "github.com/matjam/apogee/internal/jit/arm64"
 )
@@ -75,7 +77,21 @@ func compileJIT(p *prototype, g *globalState, cl *luaClosure) (code []byte, offs
 	if len(p.Code) > 1<<16 || uint32(p.MaxStackSize+3)*valueSize >= maxOffset {
 		return nil, nil, nil, 0
 	}
+	code, offsets, entries, kernels, err := compileARM64(p, g, cl, false)
+	if errors.Is(err, ErrTestRange) {
+		// Over 32 KB of code, which a function of a hundred instructions
+		// can be: test branches take two instructions to reach.
+		code, offsets, entries, kernels, err = compileARM64(p, g, cl, true)
+	}
+	if err != nil {
+		return nil, nil, nil, 0
+	}
+	return code, offsets, entries, kernels
+}
+
+func compileARM64(p *prototype, g *globalState, cl *luaClosure, longTests bool) (code []byte, offsets []int32, entries []int, kernels int, err error) {
 	c := &arm64Compiler{p: p, g: g, cl: cl, code: p.jitOrig, kernelExit: -1}
+	c.a.LongTests = longTests
 	c.pcs = make([]Label, len(c.code))
 	c.exits = make([]Label, len(c.code))
 	c.budget = make([]Label, len(c.code))
@@ -107,9 +123,9 @@ func compileJIT(p *prototype, g *globalState, cl *luaClosure) (code []byte, offs
 		ip += c.instruction(ip)
 	}
 	c.stubs()
-	code, err := c.a.Code()
+	code, err = c.a.Code()
 	if err != nil {
-		return nil, nil, nil, 0
+		return nil, nil, nil, 0, err
 	}
 	offsets = make([]int32, len(c.code))
 	for i, l := range c.pcs {
@@ -126,7 +142,7 @@ func compileJIT(p *prototype, g *globalState, cl *luaClosure) (code []byte, offs
 	for _, ks := range loops {
 		kernels += len(ks)
 	}
-	return code, offsets, jitEntries(c.p, exits, c.always), kernels
+	return code, offsets, jitEntries(c.p, exits, c.always), kernels, nil
 }
 
 // prologue loads the fixed registers and branches to ctx.target.

@@ -363,6 +363,10 @@ nothing compiles.
     analysis (jit_kernel.go) and the trig constants (jit_trig.go).
   - The encoders in internal/jit/arm64 and internal/jit/amd64 are checked
     against clang's output.
+  - arm64's TBZ and TBNZ reach ±32 KB, which a function of a hundred
+    instructions can outgrow (cd's `RedBlackTree:put`, havlak's
+    `find_loops`). On `ErrTestRange` the function compiles again with
+    `LongTests`: the opposite test over a B.
 - **Coverage:**
   - Moves, constants, arithmetic, comparisons, branches and numeric for
     loops, on integers and floats. Two integers take the integer path (the

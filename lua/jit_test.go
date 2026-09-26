@@ -882,6 +882,26 @@ func TestJITKernelIntrinsicChanged(t *testing.T) {
 	}
 }
 
+// A function of a few hundred instructions compiles to more than the 32 KB
+// arm64's test branches reach, and still compiles.
+func TestJITLargeFunction(t *testing.T) {
+	skipWithoutJIT(t)
+	var b strings.Builder
+	b.WriteString("function run()\n  local t, s = {a = 1, b = 2.5, c = 3}, 0\n  for i = 1, 3 do\n")
+	for k := range 200 {
+		fmt.Fprintf(&b, "    if t.a < t.c then s = s + t.b * %d - t.c else s = s - t.a end\n", k)
+	}
+	b.WriteString("  end\n  return s\nend\n")
+	jit, interp, lj := runBoth(t, b.String())
+	if jit != interp {
+		t.Fatalf("JIT %q, interpreter %q", jit, interp)
+	}
+	lj.Global("run")
+	if p := lj.ToValue(-1).(*luaClosure).prototype; p.jit == nil {
+		t.Fatal("run was not compiled")
+	}
+}
+
 // A loop longer than the budget returns to Go on the way.
 func TestJITBudget(t *testing.T) {
 	skipWithoutJIT(t)
