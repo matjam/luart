@@ -311,6 +311,13 @@ var debugLibrary = []lua.RegistryFunction{
 		var hook lua.Hook
 		var mask byte
 		var count int
+		if !l.SubTable(lua.RegistryIndex, "_HOOKKEY") { // as ldblib.c keeps hooks: a weak-keyed table
+			l.PushString("k")
+			l.SetField(-2, "__mode")
+			l.PushValue(-1)
+			l.SetMetaTable(-2)
+		}
+		l.Pop(1)
 		i, l1 := threadArg(l)
 		if l.IsNoneOrNil(i + 1) {
 			l.SetTop(i + 1)

@@ -59,7 +59,7 @@ func coroutineWrapped(l *lua.State) int {
 				co.XMove(l, 1) // the error, perhaps from a __close
 			}
 		}
-		if l.IsString(-1) { // add where the error was raised
+		if l.TypeOf(-1) == lua.TypeString { // add where the error was raised, to a string only
 			l.Where(1)
 			l.Insert(-2)
 			l.Concat(2)
