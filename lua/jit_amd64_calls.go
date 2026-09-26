@@ -124,16 +124,34 @@ func (c *amd64Compiler) callLua(ip int, i bytecode.Instruction, notLua Label) {
 	a.JmpReg(AX)
 }
 
+// exitIfUpValuesOpen exits at ip if any upvalue is open at or above the base
+// of the frame whose callInfo is in R8, of the state in R12: a function with
+// nested functions returns or tail calls in compiled code only when there
+// are none for Go to close. The open upvalues are sorted highest first. It
+// uses AX and CX.
+func (c *amd64Compiler) exitIfUpValuesOpen(ip int) {
+	a := &c.a
+	none := a.NewLabel()
+	a.Load(AX, R12, offLUpValues)
+	a.Test(AX, AX)
+	a.J(E, none)
+	a.Load(AX, AX, offUVIndex)
+	a.Load(CX, R8, offCIFunction)
+	a.Cmp(AX, CX)
+	a.J(G, c.exit(ip)) // index >= base, which is function + 1
+	a.Bind(none)
+}
+
 // tailCallLua compiles the TAILCALL i at ip for a compiled, fixed-parameter
 // Lua closure as the interpreter's TAILCALL replaces the frame: the callee
 // and its arguments move down to the frame's function slot, and the frame,
 // its base unchanged, runs the callee. It exits for any other callee, for
-// arguments up to l.top, and when p has nested functions, whose upvalues
-// Go closes first.
+// arguments up to l.top, and when upvalues are open in the frame of a
+// function with nested functions, for Go to close them first.
 func (c *amd64Compiler) tailCallLua(ip int, i bytecode.Instruction) {
 	a := &c.a
 	ra, b := i.A(), i.B()
-	if b == 0 || len(c.p.Prototypes) > 0 {
+	if b == 0 {
 		c.exitAlways(ip)
 		return
 	}
@@ -156,6 +174,9 @@ func (c *amd64Compiler) tailCallLua(ip int, i bytecode.Instruction) {
 	a.J(E, exit)
 	a.Load(R12, rCtx, offCtxS)    // state
 	a.Load(R8, R12, offLCallInfo) // ci
+	if len(c.p.Prototypes) > 0 {
+		c.exitIfUpValuesOpen(ip)
+	}
 	// checkStack(p.maxStackSize) with l.top at ci.function + b.
 	a.Load(CX, R12, offLStackLast)
 	a.Load(DX, R8, offCIFunction)
@@ -231,7 +252,7 @@ func (c *amd64Compiler) tailCallLua(ip int, i bytecode.Instruction) {
 func (c *amd64Compiler) returnLua(ip int, i bytecode.Instruction) {
 	a := &c.a
 	ra, b := i.A(), i.B()
-	if b == 0 || len(c.p.Prototypes) > 0 {
+	if b == 0 {
 		c.exitAlways(ip)
 		return
 	}
@@ -240,6 +261,9 @@ func (c *amd64Compiler) returnLua(ip int, i bytecode.Instruction) {
 	a.J(NE, exit)
 	a.Load(R12, rCtx, offCtxS)    // state
 	a.Load(R8, R12, offLCallInfo) // ci
+	if len(c.p.Prototypes) > 0 {
+		c.exitIfUpValuesOpen(ip)
+	}
 	a.Load8(AX, R8, offCIStatus)
 	a.Bt(AX, uint8(bitOf(callStatusReentry)))
 	a.J(AE, exit)
