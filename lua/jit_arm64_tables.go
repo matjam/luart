@@ -360,7 +360,7 @@ func (c *arm64Compiler) indexedObject(n int, up bool, ip int, buf Label) {
 	a.BCond(NE, notTable)
 	a.Ldr(rT, o.base, o.off+offP)
 	c.branchNumber(rT, c.exit(ip)) // a number whose bits match the tag
-	c.bufferPaths = append(c.bufferPaths, func() {
+	c.outOfLine = append(c.outOfLine, func() {
 		a.Bind(notTable)
 		a.MovImm(rTmp2, tagOf(vkUserData))
 		a.Cmp(rTmp, rTmp2)
@@ -409,7 +409,7 @@ func (c *arm64Compiler) getIndex(ip int, i bytecode.Instruction, up bool) {
 	buf, store, stored := a.NewLabel(), a.NewLabel(), a.NewLabel()
 	dst := reg(i.A())
 	c.indexedObject(i.B(), up, ip, buf)
-	c.bufferPaths = append(c.bufferPaths, func() {
+	c.outOfLine = append(c.outOfLine, func() {
 		a.Bind(buf)
 		f64, f32, i32, u8 := c.bufferElement(ip)
 		integer := a.NewLabel()
@@ -477,7 +477,7 @@ func (c *arm64Compiler) setIndex(ip int, i bytecode.Instruction, up bool) {
 	buf, done := a.NewLabel(), a.NewLabel()
 	src, _ := c.rk(i.C()) // loadRK reached it
 	c.indexedObject(i.A(), up, ip, buf)
-	c.bufferPaths = append(c.bufferPaths, func() {
+	c.outOfLine = append(c.outOfLine, func() {
 		exit := c.exit(ip)
 		a.Bind(buf)
 		f64, f32, i32, u8 := c.bufferElement(ip)

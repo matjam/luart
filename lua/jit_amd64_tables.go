@@ -345,7 +345,7 @@ func (c *amd64Compiler) arrayIndex(field, ip int) bool {
 		}
 		a.LoadSD(0, k.base, k.off+offN)
 		a.Cvttsd2si(rIdx, 0)
-		a.Cvtsi2sd(1, rIdx)
+		c.toFloat(1, rIdx)
 		a.Ucomisd(0, 1)
 		a.J(P, c.exit(ip))
 		a.J(NE, c.exit(ip))
@@ -372,7 +372,7 @@ func (c *amd64Compiler) indexedObject(n int, up bool, ip int, buf Label) {
 	a.J(NE, notTable)
 	a.Load(rT, o.base, o.off+offP)
 	c.branchNumber(rT, c.exit(ip)) // a number whose bits match the tag
-	c.bufferPaths = append(c.bufferPaths, func() {
+	c.outOfLine = append(c.outOfLine, func() {
 		a.Bind(notTable)
 		a.MovImm(rTmp2, tagOf(vkUserData))
 		a.Cmp(rTmp, rTmp2)
@@ -423,7 +423,7 @@ func (c *amd64Compiler) getIndex(ip int, i bytecode.Instruction, up bool) {
 	buf, store, stored := a.NewLabel(), a.NewLabel(), a.NewLabel()
 	dst := reg(i.A())
 	c.indexedObject(i.B(), up, ip, buf)
-	c.bufferPaths = append(c.bufferPaths, func() {
+	c.outOfLine = append(c.outOfLine, func() {
 		a.Bind(buf)
 		f64, f32, i32, u8 := c.bufferElement(ip)
 		a.Bind(f64)
@@ -492,7 +492,7 @@ func (c *amd64Compiler) setIndex(ip int, i bytecode.Instruction, up bool) {
 	buf, done := a.NewLabel(), a.NewLabel()
 	src, _ := c.rk(i.C()) // loadRK reached it
 	c.indexedObject(i.A(), up, ip, buf)
-	c.bufferPaths = append(c.bufferPaths, func() {
+	c.outOfLine = append(c.outOfLine, func() {
 		exit := c.exit(ip)
 		a.Bind(buf)
 		f64, f32, i32, u8 := c.bufferElement(ip)
@@ -517,7 +517,7 @@ func (c *amd64Compiler) setIndex(ip int, i bytecode.Instruction, up bool) {
 		a.Jmp(stored)
 		a.Bind(integer64)
 		isInteger()
-		a.Cvtsi2sd(0, rN)
+		c.toFloat(0, rN)
 		a.StoreSD(rSlot, 0, 0)
 		a.Jmp(stored)
 		a.Bind(f32)
@@ -528,7 +528,7 @@ func (c *amd64Compiler) setIndex(ip int, i bytecode.Instruction, up bool) {
 		a.Jmp(convert)
 		a.Bind(integer32)
 		isInteger()
-		a.Cvtsi2sd(0, rN)
+		c.toFloat(0, rN)
 		a.Bind(convert)
 		a.Cvtsd2ss(0, 0)
 		a.Lea(rSlot, rSlot, rIdx, 2, 0)

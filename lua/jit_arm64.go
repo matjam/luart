@@ -46,6 +46,7 @@ type arm64Compiler struct {
 	a       Asm
 	p       *prototype
 	g       *globalState // the state p runs in, whose string metatable SELF reads
+	cl      *luaClosure  // the closure being compiled, whose upvalues kernels speculate on
 	code    []bytecode.Instruction
 	pcs     []Label // start of each pc's code
 	exits   []Label // exit to the interpreter at each pc, created on demand
@@ -54,17 +55,27 @@ type arm64Compiler struct {
 	numCall []Label // exits at a CALL of a number function, created on demand
 	notLua  []Label // a CALL's out-of-line code for callees other than Lua closures
 	strSelf []Label // a SELF's out-of-line code for receivers other than tables
-	// bufferPaths emit table instructions' out-of-line code for buffers
-	// and other userdata, after the function's code.
-	bufferPaths []func()
-	always      []bool // instructions compiled as an unconditional exit
+	// outOfLine emit code instructions branch to rarely, after the
+	// function's: buffers in table instructions, and kernels' side exits.
+	outOfLine  []func()
+	always     []bool // instructions compiled as an unconditional exit
+	kernelExit Label  // in a kernel's intrinsic call, its side exit; otherwise -1
 }
 
-func compileJIT(p *prototype, g *globalState) (code []byte, offsets []int32, entries []int, kernels int) {
+// intrinsicExit is where an intrinsic's code at ip exits: the
+// instruction's exit, or in a kernel the side exit its call set.
+func (c *arm64Compiler) intrinsicExit(ip int) Label {
+	if c.kernelExit >= 0 {
+		return c.kernelExit
+	}
+	return c.exit(ip)
+}
+
+func compileJIT(p *prototype, g *globalState, cl *luaClosure) (code []byte, offsets []int32, entries []int, kernels int) {
 	if len(p.Code) > 1<<16 || uint32(p.MaxStackSize+3)*valueSize >= maxOffset {
 		return nil, nil, nil, 0
 	}
-	c := &arm64Compiler{p: p, g: g, code: p.jitOrig}
+	c := &arm64Compiler{p: p, g: g, cl: cl, code: p.jitOrig, kernelExit: -1}
 	c.pcs = make([]Label, len(c.code))
 	c.exits = make([]Label, len(c.code))
 	c.budget = make([]Label, len(c.code))
@@ -152,7 +163,7 @@ func (c *arm64Compiler) stubs() {
 			a.B(c.pcs[ip+1])
 		}
 	}
-	for _, emit := range c.bufferPaths {
+	for _, emit := range c.outOfLine {
 		emit()
 	}
 	for ip, l := range c.exits {

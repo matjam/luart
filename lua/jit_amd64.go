@@ -41,6 +41,7 @@ type amd64Compiler struct {
 	a       Asm
 	p       *prototype
 	g       *globalState // the state p runs in, whose string metatable SELF reads
+	cl      *luaClosure  // the closure being compiled, whose upvalues kernels speculate on
 	code    []bytecode.Instruction
 	pcs     []Label
 	exits   []Label
@@ -49,19 +50,29 @@ type amd64Compiler struct {
 	numCall []Label // exits at a CALL of a number function, created on demand
 	notLua  []Label // a CALL's out-of-line code for callees other than Lua closures
 	strSelf []Label // a SELF's out-of-line code for receivers other than tables
-	// bufferPaths emit table instructions' out-of-line code for buffers
-	// and other userdata, after the function's code.
-	bufferPaths []func()
-	always      []bool
-	sse41       bool // ROUNDSD is available, for floor and modulo
-	ip          int  // the instruction being compiled, for intrinsics' exits
+	// outOfLine emit code instructions branch to rarely, after the
+	// function's: buffers in table instructions, and kernels' side exits.
+	outOfLine  []func()
+	always     []bool
+	sse41      bool  // ROUNDSD is available, for floor and modulo
+	ip         int   // the instruction being compiled, for intrinsics' exits
+	kernelExit Label // in a kernel's intrinsic call, its side exit; otherwise -1
 }
 
-func compileJIT(p *prototype, g *globalState) (code []byte, offsets []int32, entries []int, kernels int) {
+// intrinsicExit is where an intrinsic's code exits: the instruction's
+// exit, or in a kernel the side exit its call set.
+func (c *amd64Compiler) intrinsicExit() Label {
+	if c.kernelExit >= 0 {
+		return c.kernelExit
+	}
+	return c.exit(c.ip)
+}
+
+func compileJIT(p *prototype, g *globalState, cl *luaClosure) (code []byte, offsets []int32, entries []int, kernels int) {
 	if len(p.Code) > 1<<16 {
 		return nil, nil, nil, 0
 	}
-	c := &amd64Compiler{p: p, g: g, code: p.jitOrig, sse41: HasSSE41()}
+	c := &amd64Compiler{p: p, g: g, cl: cl, code: p.jitOrig, sse41: HasSSE41(), kernelExit: -1}
 	c.pcs = make([]Label, len(c.code))
 	c.exits = make([]Label, len(c.code))
 	c.budget = make([]Label, len(c.code))
@@ -142,7 +153,7 @@ func (c *amd64Compiler) stubs() {
 			a.Jmp(c.pcs[ip+1])
 		}
 	}
-	for _, emit := range c.bufferPaths {
+	for _, emit := range c.outOfLine {
 		emit()
 	}
 	for ip, l := range c.exits {
@@ -273,6 +284,14 @@ func (c *amd64Compiler) branchUnlessInteger(o operand, kind numKind, l Label) {
 	}
 }
 
+// toFloat converts the integer in r to a float in x. CVTSI2SD writes only
+// x's low half, so waits for whatever last wrote x; clearing x first cuts
+// that dependency, which otherwise chains unrelated calculations together.
+func (c *amd64Compiler) toFloat(x XReg, r Reg) {
+	c.a.XorPD(x, x)
+	c.a.Cvtsi2sd(x, r)
+}
+
 // loadFloat loads the number at o, of type kind, into x as a float,
 // converting an integer, and exits at ip for anything else. With exact
 // set it exits for an integer the conversion would round, so that a
@@ -290,7 +309,7 @@ func (c *amd64Compiler) loadFloat(x XReg, o operand, kind numKind, exact bool, i
 			return
 		}
 		a.Load(rTmp, o.base, o.off+offN)
-		a.Cvtsi2sd(x, rTmp)
+		c.toFloat(x, rTmp)
 		return
 	}
 	isFloat, done := a.NewLabel(), a.NewLabel()
@@ -307,7 +326,7 @@ func (c *amd64Compiler) loadFloat(x XReg, o operand, kind numKind, exact bool, i
 		a.Cmp(rTmp2, rN)
 		a.J(A, c.exit(ip))
 	}
-	a.Cvtsi2sd(x, rTmp)
+	c.toFloat(x, rTmp)
 	a.Jmp(done)
 	a.Bind(isFloat)
 	a.LoadSD(x, o.base, o.off+offN)
