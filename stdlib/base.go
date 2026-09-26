@@ -359,7 +359,7 @@ func OpenBase(l *lua.State) int {
 func stringToIntBase(s string, base int64) (int64, bool) {
 	s = strings.Trim(s, " \f\n\r\t\v")
 	negative := strings.HasPrefix(s, "-")
-	if negative {
+	if negative || strings.HasPrefix(s, "+") {
 		s = s[1:]
 	}
 	if s == "" {

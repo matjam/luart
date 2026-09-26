@@ -178,7 +178,10 @@ func (l *State) findLocal(ci *callInfo, n int) (string, int) {
 		if n <= 0 || limit-base < n { // outside the function's slots
 			return "", 0
 		}
-		name = "(*temporary)"
+		name = "(temporary)"
+		if !ci.isLua() {
+			name = "(C temporary)"
+		}
 	}
 	return name, base + n - 1
 }
@@ -189,14 +192,15 @@ func (l *State) findVarArg(ci *callInfo, n int) (string, int) {
 	if n >= ci.base()-ci.function-parameters { // no such vararg
 		return "", 0
 	}
-	return "(*vararg)", ci.function + parameters + n
+	return "(vararg)", ci.function + parameters + n
 }
 
 // Local gets a local variable of the function running in frame: it pushes
 // the variable's value and returns its name. Parameter 1 is the first
 // local, then the other locals in the order they are declared, while they
-// are active. Negative n are the varargs, named "(*vararg)", and the
-// function's other slots are named "(*temporary)".
+// are active. Negative n are the varargs, named "(vararg)", and the
+// function's other slots are named "(temporary)", or "(C temporary)" in a
+// Go function, as in Lua 5.4.
 //
 // With the zero Frame, Local instead returns the name of parameter n of
 // the Lua function on the top of the stack, and pushes nothing.

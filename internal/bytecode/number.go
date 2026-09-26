@@ -257,6 +257,13 @@ func ParseNumber(s string) (Number, bool) {
 	if body[0] == '-' || body[0] == '+' {
 		negative, body = body[0] == '-', body[1:]
 	}
+	if negative && strings.Trim(body, "0123456789") == "" {
+		// -2^63 is an integer, though 2^63 is not: l_str2int reads the
+		// sign first.
+		if u, err := strconv.ParseUint(body, 10, 64); err == nil && u == 1<<63 {
+			return Integer(math.MinInt64), true
+		}
+	}
 	n, ok := Numeral(body)
 	if !ok {
 		return Number{}, false

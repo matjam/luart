@@ -337,8 +337,8 @@ func (p *parser) index() exprDesc {
 }
 
 func (p *parser) assignment(t *assignmentTarget, variableCount int) {
+	p.function.CheckReadOnly(t.exprDesc) // a compile-time constant is not a variable, but this error
 	p.checkCondition(t.isVariable(), "syntax error")
-	p.function.CheckReadOnly(t.exprDesc)
 	if p.testNext(',') {
 		e := p.suffixedExpression()
 		if e.kind != kindIndexed {
@@ -375,6 +375,7 @@ func (p *parser) forNumeric(name string, line int) {
 	p.function.MakeLocalVariable("(for limit)")
 	p.function.MakeLocalVariable("(for step)")
 	p.function.MakeLocalVariable(name)
+	p.function.MarkReadOnly() // the control variable, since Lua 5.5
 	p.checkNext('=')
 	expr()
 	p.checkNext(',')
@@ -394,6 +395,7 @@ func (p *parser) forList(name string) {
 	p.function.MakeLocalVariable("(for state)")
 	p.function.MakeLocalVariable("(for control)")
 	p.function.MakeLocalVariable(name)
+	p.function.MarkReadOnly() // the control variable, since Lua 5.5
 	for ; p.testNext(','); n++ {
 		p.function.MakeLocalVariable(p.checkName())
 	}
@@ -590,20 +592,39 @@ func (p *parser) localFunction() {
 	p.function.LocalVariable(p.body(false, p.lineNumber).info).StartPC = len(p.function.f.Code)
 }
 
+// localStatement compiles local NAME attrib {',' NAME attrib} ['='
+// explist], where Lua 5.5 also allows an attribute before the first name
+// for them all. A <const> variable is read-only, and the last one, given
+// a constant value, is a compile-time constant with no register.
 func (p *parser) localStatement() {
-	v := 0
+	f := p.function
+	def := p.attribute("")
+	v, last := 0, ""
 	for first := true; first || p.testNext(','); v++ {
-		p.function.MakeLocalVariable(p.checkName())
+		f.MakeLocalVariable(p.checkName())
+		switch last = p.attribute(def); last {
+		case "const":
+			f.MarkReadOnly()
+		case "close":
+			f.semanticError("to-be-closed variables are not supported yet")
+		}
 		first = false
 	}
 	if p.testNext('=') {
 		e, n := p.expressionList()
-		p.function.AdjustAssignment(v, n, e)
+		if n == v && last == "const" {
+			if c, ok := f.ConstantValue(e); ok {
+				f.AdjustLocalVariables(v - 1)
+				f.MakeConstant(c)
+				return
+			}
+		}
+		f.AdjustAssignment(v, n, e)
 	} else {
 		var e exprDesc
-		p.function.AdjustAssignment(v, 0, e)
+		f.AdjustAssignment(v, 0, e)
 	}
-	p.function.AdjustLocalVariables(v)
+	f.AdjustLocalVariables(v)
 }
 
 // attribute reads an optional attribute, <const> or <close>, reporting
