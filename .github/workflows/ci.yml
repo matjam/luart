@@ -35,9 +35,10 @@ jobs:
         working-directory: bench
         run: go test -run x -bench . -benchtime 1x ./...
       - name: cross-build
+        # vet, not build, so that the tests compile for every target too.
         run: |
           for target in windows/amd64 windows/arm64 linux/386 darwin/amd64 darwin/arm64 linux/arm64; do
-            GOOS=${target%/*} GOARCH=${target#*/} go build ./... || exit 1
+            GOOS=${target%/*} GOARCH=${target#*/} go vet ./... || exit 1
           done
 
   # The command is its own module, built against the apogee version its

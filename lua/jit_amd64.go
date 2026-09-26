@@ -49,9 +49,12 @@ type amd64Compiler struct {
 	numCall []Label // exits at a CALL of a number function, created on demand
 	notLua  []Label // a CALL's out-of-line code for callees other than Lua closures
 	strSelf []Label // a SELF's out-of-line code for receivers other than tables
-	always  []bool
-	sse41   bool // ROUNDSD is available, for floor and modulo
-	ip      int  // the instruction being compiled, for intrinsics' exits
+	// bufferPaths emit table instructions' out-of-line code for buffers
+	// and other userdata, after the function's code.
+	bufferPaths []func()
+	always      []bool
+	sse41       bool // ROUNDSD is available, for floor and modulo
+	ip          int  // the instruction being compiled, for intrinsics' exits
 }
 
 func compileJIT(p *prototype, g *globalState) (code []byte, offsets []int32, entries []int, kernels int) {
@@ -138,6 +141,9 @@ func (c *amd64Compiler) stubs() {
 			c.selfString(ip, c.code[ip])
 			a.Jmp(c.pcs[ip+1])
 		}
+	}
+	for _, emit := range c.bufferPaths {
+		emit()
 	}
 	for ip, l := range c.exits {
 		if l >= 0 {

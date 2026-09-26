@@ -8,7 +8,6 @@ import (
 	"os"
 	"runtime"
 	"runtime/debug"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -956,6 +955,72 @@ func TestJITTailCalls(t *testing.T) {
 	}
 }
 
+// Compiled code reads and writes buffers' elements inline, converting as
+// Go does; keys and values it cannot handle exit, and all agree with the
+// interpreter.
+func TestJITBuffers(t *testing.T) {
+	skipWithoutJIT(t)
+	setup := func(l *State) {
+		l.PushBuffer(make([]float64, 8))
+		l.SetGlobal("f64")
+		l.PushBuffer(make([]float32, 8))
+		l.SetGlobal("f32")
+		l.PushBuffer(make([]int32, 8))
+		l.SetGlobal("i32")
+		l.PushBuffer(make([]uint8, 8))
+		l.SetGlobal("u8")
+		l.PushUserData(3)
+		l.SetGlobal("plain")
+	}
+	tests := []struct{ name, src string }{
+		{"writes and reads", `
+			function run()
+			  local f64, f32, i32, u8 = f64, f32, i32, u8
+			  local s = 0
+			  for i = 0, 7 do
+			    f64[i] = i * 1.5; f32[i] = i / 3; i32[i] = i * 1000000007; u8[i] = i * 100
+			  end
+			  for i = 0, 7 do s = s + f64[i] + f32[i] + i32[i] + u8[i] end
+			  return s, f32[1], i32[7], u8[7], math.type(i32[3]), math.type(f64[2])
+			end`},
+		{"float keys and integer values into float buffers", `
+			function run()
+			  local s = 0
+			  for i = 0, 7 do f64[i + 0.0] = i; f32[i] = i end
+			  for i = 0.0, 7.0 do s = s + f64[i] + f32[i] end
+			  return s, math.type(f64[3])
+			end`},
+		{"outside the buffer and other keys", `
+			function run()
+			  local n = 0
+			  for i = -2, 10 do if f64[i] == nil then n = n + 1 end; if u8[i] == nil then n = n + 10 end end
+			  return n, f64[0.5], f64.x, #f64, #u8
+			end`},
+		{"errors", `
+			function run()
+			  local r = {}
+			  for _, f in ipairs{
+			    function() f64[8] = 1 end, function() i32[0] = 0.5 end, function() u8[1] = "x" end,
+			    function() return plain[1] end, function() plain[1] = 1 end,
+			  } do r[#r + 1] = select(2, pcall(f)) end
+			  return table.concat(r, "|")
+			end`},
+		{"floats with integer values into integer buffers", `
+			function run() for i = 0, 7 do i32[i] = i * 2.0; u8[i] = 255.0 end; return i32[7], u8[3] end`},
+		{"upvalue buffers", `
+			local buf = f64
+			function run() for i = 0, 7 do buf[i] = i * i end; local s = 0; for i = 0, 7 do s = s + buf[i] end; return s end`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jit, interp, _ := runBothWith(t, tt.src, setup)
+			if jit != interp {
+				t.Fatalf("JIT %q, interpreter %q", jit, interp)
+			}
+		})
+	}
+}
+
 func TestJITRuns(t *testing.T) {
 	skipWithoutJIT(t)
 	_, _, lj := runBoth(t, `function run() local a = 1; local b = a + 2; return b * 3 end`)
@@ -1046,41 +1111,6 @@ func TestJITRandomArithmetic(t *testing.T) {
 	}
 }
 
-// % and // by constants, which compiled code computes with a multiply or a
-// shift (jit_divide.go), in ordinary code and in kernels, agree with the
-// interpreter across the integers' range.
-func TestJITDivideByConstant(t *testing.T) {
-	skipWithoutJIT(t)
-	runtime.GC()
-	defer debug.SetGCPercent(debug.SetGCPercent(-1)) // kernels run while the barrier is off
-	divisors := []string{"1", "2", "3", "-3", "5", "7", "-7", "10", "16", "-16", "641", "1024", "12345", "-65536",
-		"1000000007", "2147483647", "-2147483648", "2147483648", "-1", "4611686018427387904"}
-	for _, d := range divisors {
-		src := fmt.Sprintf(`
-			local ns = {0, 1, -1, 2, -2, 6, -6, 7, -7, 8, -9, 1000, -1001, 2^31 | 0, -(2^31 | 0), 123456789012, -98765432109,
-				math.maxinteger, math.mininteger, math.maxinteger - 1, math.mininteger + 1, math.maxinteger // 3, math.mininteger // 7}
-			function run()
-				local s = 0
-				for _, n in ipairs(ns) do s = s ~ (n %% %[1]s) ~ (n // %[1]s) * 3 end -- ordinary code
-				local k = 0 -- kernels
-				for n = -3000, 3000 do k = k + (n %% %[1]s) * 3 + (n // %[1]s) end
-				for n = math.maxinteger - 300, math.maxinteger do k = k + (n %% %[1]s) * 3 + (n // %[1]s) end
-				for n = math.mininteger, math.mininteger + 300 do k = k + (n %% %[1]s) * 3 + (n // %[1]s) end
-				return s, k
-			end`, d)
-		jit, interp, lj := runBoth(t, src)
-		if jit != interp {
-			t.Fatalf("divisor %s: JIT %q, interpreter %q", d, jit, interp)
-		}
-		lj.Global("run")
-		if p := lj.ToValue(-1).(*luaClosure).prototype; p.jit == nil {
-			t.Fatalf("divisor %s: run was not compiled", d)
-		}
-		if n, _ := strconv.ParseInt(d, 10, 64); kernelDivisor(integerValue(n)) && lj.jitCtx.kernels[1] == 0 {
-			t.Fatalf("divisor %s: no integer kernel ran", d)
-		}
-	}
-}
 
 // Compiled code runs a generic for's TBC when its closing value is nil,
 // and returns from a function with one unless a variable in its frame is

@@ -197,6 +197,20 @@ TBC with B set swaps it below the control variable (5.5's TFORPREP).
   TBC); compiling TBC for a nil closing value, and RETURN and closing
   JMPs when nothing is pending, would win it back.
 
+## Buffers
+
+buffer.go, after LuaJIT's FFI arrays: `PushBuffer[T]` gives Lua a Go
+slice of float64, float32, int32 or uint8 as a userdata whose `buf`
+points at a `buffer` (address, length, kind), with no metatable. Indexing
+counts from 0; reads outside, or with keys that are not integers, give
+nil; writes there raise an error; stores convert to the element type as
+Go does, integers wrapping, and fractions refused for integer buffers.
+`tableAt`, `setTableAt` and `objectLength` handle buffers before the
+userdata metatable path; compiled code handles them inline. Elements hold
+no pointers, so no write barrier is involved. What transfers from
+LuaJIT's FFI is typed memory, not direct calls: generated code never
+calls Go.
+
 ## Named vararg tables
 
 Lua 5.5's `function f(...t)` (vararg.go). The compiler tracks the name:
@@ -381,6 +395,12 @@ nothing compiles.
   - SETLIST of a fixed count into the array NEWTABLE sized
     (`setList`), and nil for an integer key past the array of a table
     with no hash part or metatable.
+  - Buffers' elements (see Buffers): GETTABLE and SETTABLE branch out of
+    line (`bufferPaths`, emitted with the stubs) when the object is not a
+    table, so table code pays one untaken branch. A float's bits go to
+    and from memory through general registers, or straight from memory
+    into an SSE register: moving them between the register files just
+    before the store measured three times slower on amd64, fed by sin.
   - `math.sqrt`, `sin` and `cos` inline. (`floor`, `ceil` and `abs`
     return integers now, and wait for integers in compiled code.)
 - **Kernels:** an innermost numeric for loop whose body is only moves,

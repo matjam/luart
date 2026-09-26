@@ -461,7 +461,8 @@ type userData struct {
 	metaTable   *table
 	userValues  []value // Lua 5.4's user values, any values, from 1
 	data        any
-	finalizable bool // marked for finalization: see gc.go
+	finalizable bool    // marked for finalization: see gc.go
+	buf         *buffer // a buffer's memory, or nil: see buffer.go
 }
 
 type prototype struct {

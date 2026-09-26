@@ -91,6 +91,23 @@ func TestIntegerArithmetic(t *testing.T) {
 	})
 }
 
+// Buffer elements: float32 and sign-extended 32-bit loads and stores.
+func TestNarrowElements(t *testing.T) {
+	var a Asm
+	a.LdrS(3, 14, 0)   // ldr s3, [x14]
+	a.LdrS(0, 21, 16)  // ldr s0, [x21, #16]
+	a.StrS(1, 21, 0)   // str s1, [x21]
+	a.StrS(31, 2, 8)   // str s31, [x2, #8]
+	a.FcvtSD(0, 3)     // fcvt d0, s3
+	a.FcvtSD(17, 2)    // fcvt d17, s2
+	a.FcvtDS(0, 0)     // fcvt s0, d0
+	a.FcvtDS(5, 9)     // fcvt s5, d9
+	a.Ldrsw(13, 21, 0) // ldrsw x13, [x21]
+	a.Ldrsw(2, 4, 12)  // ldrsw x2, [x4, #12]
+	check(t, &a, []uint32{0xbd4001c3, 0xbd4012a0, 0xbd0002a1, 0xbd00085f, 0x1e22c060, 0x1e22c051,
+		0x1e624000, 0x1e624125, 0xb98002ad, 0xb9800c82})
+}
+
 func TestDivideByConstant(t *testing.T) {
 	var a Asm
 	a.Smulh(3, 20, 9) // smulh x3, x20, x9

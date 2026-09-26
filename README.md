@@ -245,6 +245,25 @@ l.RegisterNumberFunction("set", func(x, y, v float64) {
 })
 ```
 
+**Buffers.** Faster still, as LuaJIT's FFI arrays are: `PushBuffer` hands
+Lua a Go slice of `float64`, `float32`, `int32` or `uint8` itself. Lua
+indexes it from 0, as Go does, and Go and Lua share its memory, so a
+script's writes land in the slice with no call at all; compiled code reads
+and writes elements inline. Indexing outside the slice reads nil and
+raises an error on writing, and each store converts to the element type
+(an integer buffer wraps integers to its width and refuses fractions):
+
+```go
+canvas := make([]float64, width*height)
+l.PushBuffer(canvas)
+l.SetGlobal("canvas")
+// Lua: canvas[y*width + x] = v; #canvas is its length
+```
+
+Plasma writing into a buffer takes 0.51 ms a frame with the JIT, against
+0.89 ms calling a Go function per pixel
+([bench/README.md](bench/README.md)).
+
 **Objects with methods.** A Go value becomes a Lua object through
 userdata and a metatable whose `__index` table holds its methods, and
 `CheckUserData[T]` reads it back with its Go type:

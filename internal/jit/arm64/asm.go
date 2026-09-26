@@ -266,6 +266,26 @@ func (a *Asm) StrD(ft FReg, rn Reg, off uint32) {
 	a.emit(0xfd000000 | scaled(off, 8)<<10 | rn.u()<<5 | ft.u())
 }
 
+// LdrS loads the float32 at rn+off into the low bits of ft.
+func (a *Asm) LdrS(ft FReg, rn Reg, off uint32) {
+	a.emit(0xbd400000 | scaled(off, 4)<<10 | rn.u()<<5 | ft.u())
+}
+
+// StrS stores the float32 in the low bits of ft at rn+off.
+func (a *Asm) StrS(ft FReg, rn Reg, off uint32) {
+	a.emit(0xbd000000 | scaled(off, 4)<<10 | rn.u()<<5 | ft.u())
+}
+
+// Ldrsw loads the 32-bit word at rn+off into rt, sign-extended.
+func (a *Asm) Ldrsw(rt, rn Reg, off uint32) {
+	a.emit(0xb9800000 | scaled(off, 4)<<10 | rn.u()<<5 | rt.u())
+}
+
+// FcvtSD converts the float32 in fn to a double in fd; FcvtDS rounds the
+// double in fn to a float32 in fd.
+func (a *Asm) FcvtSD(fd, fn FReg) { a.emit(0x1e22c000 | fn.u()<<5 | fd.u()) }
+func (a *Asm) FcvtDS(fd, fn FReg) { a.emit(0x1e624000 | fn.u()<<5 | fd.u()) }
+
 // B branches to l.
 func (a *Asm) B(l Label) { a.branch(0x14000000, l, fixB26) }
 

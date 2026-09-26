@@ -221,8 +221,10 @@ run of each suite workload.
   in particles, so the gap to Go is widest where Go inlines most.
 - Plasma here registers `set` as an ordinary Go function. Registered as a
   number function, which compiled code calls without a Go frame, it takes
-  0.71 ms with the JIT (`BenchmarkApogeeNumberFunction`), against 0.76 ms
-  (`BenchmarkApogee`).
+  0.86 ms with the JIT (`BenchmarkApogeeNumberFunction`), against 0.89 ms
+  (`BenchmarkApogee`). Given the canvas as a buffer, which compiled code
+  stores into inline, it takes 0.51 ms (`BenchmarkApogeeBuffer`), against
+  0.30 ms in native Go (amd64, 2026-09-26).
 - The C interpreters' calls into Go are calls to C functions, and their
   plasma draws into a C array; the suite's other workloads are the same
   Lua in every interpreter. Their results use integers where Lua 5.4 does,
