@@ -232,6 +232,10 @@ func (c *amd64Compiler) kernelInstruction(k *kernel, ip int, latch Label) int {
 			}
 			break
 		}
+		if plan, ok := planDivide(divisor); ok {
+			a.Mov(d, c.divideByConstant(op, plan, b))
+			break
+		}
 		o, _ := c.constant(kk)
 		a.Mov(AX, b)
 		a.Cqo()

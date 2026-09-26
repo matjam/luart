@@ -102,6 +102,22 @@ func TestIntegerArithmetic(t *testing.T) {
 		"4921d9 4c09e8 4931c8 49f7d1 48f7d0 49d3e0 48d3e8 49f7fd 48f7f9 4899 48f7be00100000 49f7bc2400100000")
 }
 
+// Dividing by a constant: a wide multiply, arithmetic shifts, and a
+// multiply and a mask by immediates. Immediates are large so that clang
+// uses 32-bit ones, and the mask avoids RAX's short form.
+func TestDivideByConstant(t *testing.T) {
+	var a Asm
+	a.ImulImm(DX, R11, 0x12345678) // imul rdx, r11, 0x12345678
+	a.ImulImm(R10, AX, -0x12345)   // imul r10, rax, -0x12345
+	a.ImulWide(R13)                // imul r13
+	a.ImulWide(CX)                 // imul rcx
+	a.Sar(DX, 3)                   // sar rdx, 3
+	a.Sar(R12, 63)                 // sar r12, 63
+	a.AndImm(R9, 0x1000)           // and r9, 0x1000
+	a.AndImm(DX, -0x10000)         // and rdx, -0x10000
+	check(t, &a, "4969d378563412 4c69d0bbdcfeff 49f7ed 48f7e9 48c1fa03 49c1fc3f 4981e100100000 4881e20000ffff")
+}
+
 func TestShl(t *testing.T) {
 	var a Asm
 	a.Shl(R13, 4) // shl r13, 4

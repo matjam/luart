@@ -220,6 +220,7 @@ var (
 	opAdd = arith{0x01, 0}
 	opSub = arith{0x29, 5}
 	opCmp = arith{0x39, 7}
+	opAnd = arith{0x21, 4}
 )
 
 func (a *Asm) aluImm(op arith, rd Reg, imm int32) {
@@ -238,6 +239,9 @@ func (a *Asm) SubImm(rd Reg, imm int32) { a.aluImm(opSub, rd, imm) }
 // CmpImm compares rd with imm.
 func (a *Asm) CmpImm(rd Reg, imm int32) { a.aluImm(opCmp, rd, imm) }
 
+// AndImm computes rd &= imm, sign-extended.
+func (a *Asm) AndImm(rd Reg, imm int32) { a.aluImm(opAnd, rd, imm) }
+
 // Add computes rd += rs.
 func (a *Asm) Add(rd, rs Reg) { a.opRR([]byte{opAdd.rr}, uint8(rs), uint8(rd)) }
 
@@ -249,6 +253,16 @@ func (a *Asm) Cmp(rd, rs Reg) { a.opRR([]byte{opCmp.rr}, uint8(rs), uint8(rd)) }
 
 // Imul computes rd *= rs, keeping the low 64 bits.
 func (a *Asm) Imul(rd, rs Reg) { a.opRR([]byte{0x0f, 0xaf}, uint8(rd), uint8(rs)) }
+
+// ImulImm computes rd = rs * imm, sign-extended, wrapping around.
+func (a *Asm) ImulImm(rd, rs Reg, imm int32) {
+	a.opRR([]byte{0x69}, uint8(rd), uint8(rs))
+	a.u32(uint32(imm))
+}
+
+// ImulWide multiplies RAX by rs, signed, leaving the 128-bit product's high
+// half in RDX and its low half in RAX.
+func (a *Asm) ImulWide(rs Reg) { a.opRR([]byte{0xf7}, 5, uint8(rs)) }
 
 // Neg computes rd = -rd.
 func (a *Asm) Neg(rd Reg) { a.opRR([]byte{0xf7}, 3, uint8(rd)) }
@@ -308,6 +322,14 @@ func (a *Asm) Shr(rd Reg, n uint8) {
 	a.rex(true, 0, uint8(rd), false)
 	a.byte(0xc1)
 	a.modrmReg(5, uint8(rd))
+	a.byte(n)
+}
+
+// Sar shifts rd right, signed, by n.
+func (a *Asm) Sar(rd Reg, n uint8) {
+	a.rex(true, 0, uint8(rd), false)
+	a.byte(0xc1)
+	a.modrmReg(7, uint8(rd))
 	a.byte(n)
 }
 

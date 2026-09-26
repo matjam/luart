@@ -355,7 +355,11 @@ nothing compiles.
     integer sentinel is `rInteger` on arm64 and `p - rNumber == 1` on
     amd64, which has no register to spare); a float operand converts the
     other (`loadFloat`). Integer `%`, `//` and the bitwise operators
-    compile (jit_*_integer.go); a zero divisor, float `%` (fmod), a
+    compile (jit_*_integer.go). `%` and `//` by an integer constant
+    that fits 32 bits divide without a divide instruction, in kernels
+    too (jit_divide.go): a shift and mask for a power of two, otherwise
+    a multiply by Hacker's Delight's magic number. `divRef` mirrors the
+    emitted code for `TestDivideByConstant`. A zero divisor, float `%` (fmod), a
     bitwise float operand, and `<` between a float and an integer beyond
     2^53 exit to Go. Integer for loops count down in the limit's register,
     as `forPrep` sets them up; a float limit with an integer start exits
