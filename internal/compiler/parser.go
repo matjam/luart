@@ -741,7 +741,9 @@ func (p *parser) expressionStatement() {
 
 func (p *parser) returnStatement() {
 	if f := p.function; p.blockFollow(true) || p.t == ';' {
-		f.ReturnNone()
+		// From the first free register, as lparser.c's retstat: a return
+		// hook's frame then leaves the locals alone.
+		f.EncodeABC(bytecode.OpReturn, f.activeVariableCount, 1, 0)
 	} else {
 		f.Return(p.expressionList())
 	}

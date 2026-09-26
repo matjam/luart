@@ -67,6 +67,7 @@ const (
 	offCIPrev     = uint32(unsafe.Offsetof(callInfo{}.previous))
 	offCINext     = uint32(unsafe.Offsetof(callInfo{}.next))
 	offCIStatus   = uint32(unsafe.Offsetof(callInfo{}.callStatus))
+	offCIMeta     = uint32(unsafe.Offsetof(callInfo{}.callMetamethods))
 	offCILua      = uint32(unsafe.Offsetof(callInfo{}.luaCallInfo))
 	offLFrame     = uint32(unsafe.Offsetof(luaCallInfo{}.frame))
 	offLSavedPC   = uint32(unsafe.Offsetof(luaCallInfo{}.savedPC))

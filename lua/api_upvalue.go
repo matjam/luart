@@ -9,7 +9,9 @@ func (l *State) UpValue(function, index int) (name string, ok bool) {
 	if c := l.indexToValue(function).closure(); c != nil {
 		if ok = 1 <= index && index <= c.upValueCount(); ok {
 			if c, isLua := c.(*luaClosure); isLua {
-				name = c.prototype.UpValues[index-1].Name
+				if name = c.prototype.UpValues[index-1].Name; name == "" {
+					name = "(no name)" // stripped, as ldebug.c names it
+				}
 			}
 			l.apiPush(c.upValue(index - 1))
 		}
@@ -29,7 +31,9 @@ func (l *State) SetUpValue(function, index int) (name string, ok bool) {
 	if c := l.indexToValue(function).closure(); c != nil {
 		if ok = 1 <= index && index <= c.upValueCount(); ok {
 			if c, isLua := c.(*luaClosure); isLua {
-				name = c.prototype.UpValues[index-1].Name
+				if name = c.prototype.UpValues[index-1].Name; name == "" {
+					name = "(no name)" // stripped, as ldebug.c names it
+				}
 			}
 			l.top--
 			c.setUpValue(index-1, l.stack[l.top])

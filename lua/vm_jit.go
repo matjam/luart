@@ -434,7 +434,7 @@ func (l *State) executeSwitchJIT() {
 					}
 				case vkGoFunction, vkGoClosure:
 					l.top = ci.stackIndex(a + b)
-					l.callGo(fv, ci.stackIndex(a), c-1)
+					l.callGo(fv, ci.stackIndex(a), c-1, 0)
 					if c != 0 {
 						l.top = ci.top // adjust results
 					}
@@ -484,6 +484,7 @@ func (l *State) executeSwitchJIT() {
 				oci.frame = l.stack[base:oci.top]
 				oci.savedPC, oci.code, oci.closure = nci.savedPC, nci.code, nci.closure // correct code (savedPC indexes nci->code)
 				oci.setCallStatus(callStatusTail)                                       // function was tail called
+				oci.callMetamethods = nci.callMetamethods
 				l.top, l.callInfo, ci = oci.top, oci, oci
 				// TODO l.assert(l.top == oci.base()+l.stack[ofn].(*luaClosure).prototype.maxStackSize)
 				// TODO l.assert(&oci.frame[0] == &l.stack[oci.base()] && len(oci.frame) == oci.top-oci.base())

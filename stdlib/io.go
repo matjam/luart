@@ -71,7 +71,7 @@ func toFile(l *lua.State) *stream {
 // newPreFile pushes a new stream, closed until a file is opened for it.
 func newPreFile(l *lua.State) *stream {
 	s := &stream{}
-	l.PushUserData(s)
+	l.PushUserDataUV(s, 0) // a file has no user values, as in C Lua
 	l.SetMetaTableNamed(fileHandle)
 	return s
 }

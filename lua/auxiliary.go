@@ -14,13 +14,13 @@ import (
 // does in Lua 5.5: by the calling code ("global 'f'", "method 'm'",
 // "metamethod 'index'"), as the main chunk, by a global name, or by its
 // source.
-func functionName(l *State, d Debug) string {
+func functionName(l, l1 *State, d Debug) string {
 	switch {
 	case d.NameKind != "":
 		return fmt.Sprintf("%s '%s'", d.NameKind, d.Name)
 	case d.What == "main":
 		return "main chunk"
-	case pushGlobalFunctionName(l, Frame{d.callInfo}):
+	case pushGlobalFunctionName(l, l1, Frame{d.callInfo}):
 		s, _ := l.ToString(-1)
 		l.Pop(1)
 		return fmt.Sprintf("function '%s'", s)
@@ -50,12 +50,14 @@ func countLevels(l *State) int {
 // Traceback creates and pushes a traceback of the stack l1. If message is not
 // nil it is appended at the beginning of the traceback. The level parameter
 // tells at which level to start the traceback.
+//
+// Past 21 levels it shows the first 10 and the last 11, as Lua 5.5 does.
 func (l *State) Traceback(l1 *State, message string, level int) {
-	const levels1, levels2 = 12, 10
-	levels := countLevels(l1)
-	mark := 0
-	if levels > levels1+levels2 {
-		mark = levels1
+	const levels1, levels2 = 10, 11
+	last := countLevels(l1)
+	limit := -1 // levels to show before skipping, or -1 for all
+	if last-level > levels1+levels2 {
+		limit = levels1
 	}
 	buf := message
 	if buf != "" {
@@ -63,16 +65,18 @@ func (l *State) Traceback(l1 *State, message string, level int) {
 	}
 	buf += "stack traceback:"
 	for f, ok := l1.Frame(level); ok; f, ok = l1.Frame(level) {
-		if level++; level == mark {
-			buf += "\n\t..."
-			level = levels - levels2
+		level++
+		if limit--; limit == -1 {
+			n := last - level - levels2 + 1 // levels to skip
+			buf += fmt.Sprintf("\n\t...\t(skipping %d levels)", n)
+			level += n
 		} else {
 			d, _ := l1.Info("Slnt", f)
 			buf += "\n\t" + d.ShortSource + ":"
 			if d.CurrentLine > 0 {
 				buf += fmt.Sprintf("%d:", d.CurrentLine)
 			}
-			buf += " in " + functionName(l, d)
+			buf += " in " + functionName(l, l1, d)
 			if d.IsTailCall {
 				buf += "\n\t(...tail calls...)"
 			}
@@ -136,7 +140,7 @@ func (l *State) ArgumentError(argCount int, extraMessage string) {
 		}
 	}
 	if d.Name == "" {
-		if pushGlobalFunctionName(l, f) {
+		if pushGlobalFunctionName(l, l, f) {
 			d.Name, _ = l.ToString(-1)
 		} else {
 			d.Name = "?"
@@ -171,12 +175,16 @@ func findField(l *State, objectIndex, level int) bool {
 	return false
 }
 
-// pushGlobalFunctionName pushes the name the function running in f has in
-// package.loaded ("string.rep", or "print" for "_G.print"), and reports
-// whether it has one, as lauxlib.c's pushglobalfuncname does.
-func pushGlobalFunctionName(l *State, f Frame) bool {
+// pushGlobalFunctionName pushes onto l the name the function running in f,
+// a frame of l1, has in package.loaded ("string.rep", or "print" for
+// "_G.print"), and reports whether it has one, as lauxlib.c's
+// pushglobalfuncname does.
+func pushGlobalFunctionName(l, l1 *State, f Frame) bool {
 	top := l.Top()
-	l.Info("f", f) // push function
+	l1.Info("f", f) // push function, from its own thread's stack
+	if l1 != l {
+		l1.XMove(l, 1)
+	}
 	l.Field(RegistryIndex, "_LOADED")
 	if findField(l, top+1, 2) {
 		if name, _ := l.ToString(-1); strings.HasPrefix(name, "_G.") {

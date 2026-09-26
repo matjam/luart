@@ -458,9 +458,10 @@ func isFalse(s value) bool {
 }
 
 type userData struct {
-	metaTable, env *table
-	data           any
-	finalizable    bool // marked for finalization: see gc.go
+	metaTable   *table
+	userValues  []value // Lua 5.4's user values, any values, from 1
+	data        any
+	finalizable bool // marked for finalization: see gc.go
 }
 
 type prototype struct {
