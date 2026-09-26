@@ -75,8 +75,15 @@ var suites = map[string]suite{
 		{"binary-trees", "binary-trees"},
 		{"fannkuch-redux", "fannkuch-redux"},
 		{"spectral-norm", "spectral-norm"},
-	}, impl{"lua54", "Lua 5.4", 3}, "Benchmark", "C Lua 5.4"},
+	}, lua55, "Benchmark", "C Lua 5.5"},
 }
+
+// The C Lua interpreters the standard benchmarks are compared with: 5.5,
+// the language apogee speaks, or 5.4 for results that predate it.
+var (
+	lua55 = impl{"lua55", "Lua 5.5", 3}
+	lua54 = impl{"lua54", "Lua 5.4", 3}
+)
 
 // An impl is an interpreter, by the name of its sub-benchmark. slot is its
 // color, the chart's .sN class, which stays with the interpreter whatever
@@ -92,25 +99,9 @@ var allImpls = []impl{
 	{"apogee-jit", "Apogee (JIT)", 1},
 	{"apogee", "Apogee (no JIT)", 0},
 	{"shopify", "go-lua", 2},
-	{"lua54", "Lua 5.4", 3},
+	lua55,
+	lua54,
 	{"luajit", "LuaJIT", 4},
-}
-
-// useCLua55 makes C Lua 5.5 the C interpreter, in place of 5.4, for
-// results that have it.
-func useCLua55() {
-	lua55 := impl{"lua55", "Lua 5.5", 3}
-	for i, im := range allImpls {
-		if im.name == "lua54" {
-			allImpls[i] = lua55
-		}
-	}
-	for name, s := range suites {
-		if s.base.name == "lua54" {
-			s.base, s.against = lua55, "C Lua 5.5"
-			suites[name] = s
-		}
-	}
 }
 
 type results struct {
@@ -118,19 +109,33 @@ type results struct {
 	ns                map[string][]float64 // by "bench/workload/impl"
 }
 
+// has reports whether r has timings for im in s.
+func (r *results) has(s suite, im impl) bool {
+	for key := range r.ns {
+		if strings.HasPrefix(key, s.bench+"/") && strings.HasSuffix(key, "/"+im.name) {
+			return true
+		}
+	}
+	return false
+}
+
+// resolve returns s as r measured it: compared with C Lua 5.4 where s's
+// base is 5.5 and r ran 5.4 but not 5.5. Each results file resolves on
+// its own, so a summary can hold a machine not yet measured with 5.5.
+func (r *results) resolve(s suite) suite {
+	if s.base == lua55 && !r.has(s, lua55) && r.has(s, lua54) {
+		s.base, s.against = lua54, "C Lua 5.4"
+	}
+	return s
+}
+
 // impls returns the interpreters r has timings for in s, other than its
 // base.
 func (r *results) impls(s suite) []impl {
 	var in []impl
 	for _, im := range allImpls {
-		if im.name == s.base.name {
-			continue
-		}
-		for key := range r.ns {
-			if strings.HasPrefix(key, s.bench+"/") && strings.HasSuffix(key, "/"+im.name) {
-				in = append(in, im)
-				break
-			}
+		if im != s.base && r.has(s, im) {
+			in = append(in, im)
 		}
 	}
 	return in
@@ -295,7 +300,7 @@ func summary(w io.Writer, rs []*results) {
 	for _, im := range allImpls {
 		for _, r := range rs {
 			if slices.ContainsFunc(summaryOrder, func(name string) bool {
-				s := suites[name]
+				s := r.resolve(suites[name])
 				return im == s.base || slices.Contains(r.impls(s), im)
 			}) {
 				impls = append(impls, im)
@@ -310,8 +315,8 @@ func summary(w io.Writer, rs []*results) {
 	fmt.Fprintln(w, " |")
 	fmt.Fprintln(w, "|---"+strings.Repeat("|---:", len(impls))+"|")
 	for _, name := range summaryOrder {
-		s := suites[name]
 		for _, r := range rs {
+			s := r.resolve(suites[name])
 			fmt.Fprintf(w, "| %s against %s, %s", s.title, s.against, r.machine())
 			for _, im := range impls {
 				switch {
@@ -360,14 +365,6 @@ func main() {
 		}
 		rs = append(rs, r)
 	}
-	for _, r := range rs {
-		for k := range r.ns {
-			if strings.HasSuffix(k, "/lua55") {
-				useCLua55()
-			}
-		}
-	}
-	s = suites[*suiteName]
 	if *sum {
 		var t strings.Builder
 		summary(&t, rs)
@@ -385,6 +382,7 @@ func main() {
 		return
 	}
 	r := rs[0]
+	s = r.resolve(s)
 	if *tbl {
 		table(os.Stdout, s, r)
 	}
