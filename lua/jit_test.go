@@ -902,6 +902,60 @@ func TestJITTailCallToFunctionNotYetRun(t *testing.T) {
 	}
 }
 
+// Tail calls between compiled Lua functions replace the frame in compiled
+// code; others exit. Both agree with the interpreter.
+func TestJITTailCalls(t *testing.T) {
+	skipWithoutJIT(t)
+	tests := []struct{ name, src string }{
+		{"mutual recursion without growing the stack", `
+			local even, odd
+			function even(n) if n == 0 then return true end return odd(n - 1) end
+			function odd(n) if n == 0 then return false end return even(n - 1) end
+			function run() return even(1000001), odd(7) end`},
+		{"accumulator", `
+			local function sum(n, acc) if n == 0 then return acc end return sum(n - 1, acc + n) end
+			function run() return sum(100000, 0) end`},
+		{"fewer and more arguments than parameters", `
+			local function f(a, b, c) return (a or 0) + (b or 10) + (c or 100) end
+			local function g(x) return f(x) end
+			local function h(x) return f(x, x, x, x, x) end
+			function run() local s = 0; for i = 1, 20 do s = s + g(i) + h(i) end; return s end`},
+		{"multiple results", `
+			local function three(x) return x, x * 2, x * 3 end
+			local function tail(x) return three(x) end
+			function run() local s = 0; for i = 1, 20 do local a, b = tail(i); local c, d, e, f = tail(i); s = s + a + b + c + d + e + (f or 0) end; return s end`},
+		{"methods", `
+			local P = {}; P.__index = P
+			function P:get(k) return self.v * k end
+			function P:via(k) return self:get(k + 1) end
+			function run() local o = setmetatable({v = 3}, P); local s = 0; for i = 1, 30 do s = s + o:via(i) end; return s end`},
+		{"to Go, vararg and not yet compiled functions", `
+			local function va(...) return select("#", ...) end
+			local function f(x) if x % 3 == 0 then return math.max(x, 5) elseif x % 3 == 1 then return va(x, x) end return tostring(x) end
+			function run() local s = ""; for i = 1, 12 do s = s .. f(i) end; return s end`},
+		{"from a function with nested functions", `
+			local function k(x) return x + 1 end
+			local function f(x) local g = function() return x end; return k(g()) end
+			function run() local s = 0; for i = 1, 20 do s = s + f(i) end; return s end`},
+		{"tail called status", `
+			local function inner() local info = debug.getinfo(1, "t"); return info.istailcall end
+			local function outer() return inner() end
+			function run() local r; for i = 1, 20 do r = outer() end; return r end`},
+		{"called from Go", `
+			local function add(a, b) return a + b end
+			local function via(a, b) return add(a, b) end
+			function run() local t = {5, 3, 9, 1}; table.sort(t, function(x, y) return via(x, 0) < via(y, 0) end); return t[1], t[4] end`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jit, interp, _ := runBoth(t, tt.src)
+			if jit != interp {
+				t.Fatalf("JIT %q, interpreter %q", jit, interp)
+			}
+		})
+	}
+}
+
 func TestJITRuns(t *testing.T) {
 	skipWithoutJIT(t)
 	_, _, lj := runBoth(t, `function run() local a = 1; local b = a + 2; return b * 3 end`)

@@ -374,8 +374,13 @@ nothing compiles.
     including appends within capacity, of tables in registers or
     upvalues.
   - `#` of strings.
-  - Native calls and returns between compiled fixed-parameter Lua
-    functions.
+  - Native calls, tail calls and returns between compiled
+    fixed-parameter Lua functions. A tail call replaces the frame as the
+    interpreter's does (`tailCallLua`), keeping its base; a function with
+    nested functions, whose upvalues must close first, exits instead.
+  - SETLIST of a fixed count into the array NEWTABLE sized
+    (`setList`), and nil for an integer key past the array of a table
+    with no hash part or metatable.
   - `math.sqrt`, `sin` and `cos` inline. (`floor`, `ceil` and `abs`
     return integers now, and wait for integers in compiled code.)
 - **Kernels:** an innermost numeric for loop whose body is only moves,

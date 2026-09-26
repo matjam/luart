@@ -127,6 +127,98 @@ func (c *arm64Compiler) spend(ip int) {
 	c.a.BCond(EQ, c.budget[ip])
 }
 
+// tailCallLua compiles the TAILCALL i at ip for a compiled, fixed-parameter
+// Lua closure as the interpreter's TAILCALL replaces the frame: the callee
+// and its arguments move down to the frame's function slot, and the frame,
+// its base unchanged, runs the callee. It exits for any other callee, for
+// arguments up to l.top, and when p has nested functions, whose upvalues
+// Go closes first.
+func (c *arm64Compiler) tailCallLua(ip int, i bytecode.Instruction) {
+	a := &c.a
+	ra, b := i.A(), i.B()
+	if b == 0 || len(c.p.Prototypes) > 0 {
+		c.exitAlways(ip)
+		return
+	}
+	fn := reg(ra)
+	exit := c.exit(ip)
+	a.Ldr(rTmp, fn.base, fn.off+offN)
+	a.MovImm(rTmp2, tagOf(vkLuaClosure))
+	a.Cmp(rTmp, rTmp2)
+	a.BCond(NE, exit)
+	a.Ldr(rT, fn.base, fn.off+offP)
+	c.branchNumber(rT, exit) // a number whose bits match the tag
+	a.Cbnz(rBarrier, exit)
+	a.Ldr(rT2, rT, offClProto)
+	a.Ldrb(rTmp, rT2, offPVarArg)
+	a.Cbnz(rTmp, exit)
+	a.Ldr(rCache, rT2, offPJit)
+	a.Cbz(rCache, exit)
+	a.Ldr(rState, rCtx, offCtxS)
+	a.Ldr(rCI, rState, offLCallInfo)
+	// checkStack(p.maxStackSize) with l.top at ci.function + b.
+	a.Ldr(rIdx, rCI, offCIFunction)
+	a.Ldr(rLen, rT2, offPMaxStack)
+	a.Ldr(rNext, rState, offLStackLast)
+	a.Sub(rNext, rNext, rIdx)
+	a.SubImm(rNext, rNext, uint32(b))
+	a.Cmp(rNext, rLen)
+	a.BCond(LE, exit)
+	c.spend(ip) // a loop of tail calls has no back-edge
+	// Move the callee and its arguments down to stack[ci.function:], one
+	// slot below the frame.
+	a.SubImm(rSlot, rFrame, valueSize)
+	for k := range b {
+		src := reg(ra + k)
+		a.Ldr(rTmp, rFrame, src.off+offP)
+		a.Str(rTmp, rSlot, uint32(k)*valueSize+offP)
+		a.Ldr(rTmp, rFrame, src.off+offN)
+		a.Str(rTmp, rSlot, uint32(k)*valueSize+offN)
+	}
+	// Clear the parameters the call does not pass.
+	loop, cleared := a.NewLabel(), a.NewLabel()
+	a.Ldr(rN, rT2, offPParams)
+	a.MovImm(rTmp, uint64(b-1))
+	a.Bind(loop)
+	a.Cmp(rTmp, rN)
+	a.BCond(GE, cleared)
+	a.AddShifted(rTmp2, rFrame, rTmp, 4)
+	a.Str(ZR, rTmp2, offP)
+	a.Str(ZR, rTmp2, offN)
+	a.AddImm(rTmp, rTmp, 1)
+	a.B(loop)
+	a.Bind(cleared)
+
+	// The frame now runs the callee: its code, closure, top, and frame
+	// slice, which keeps its base; it was tail called.
+	a.Ldr(rP, rCI, offCILua)
+	a.Str(ZR, rP, offLSavedPC)
+	for w := uint32(0); w < 24; w += 8 {
+		a.Ldr(rTmp2, rT2, offPCode+w)
+		a.Str(rTmp2, rP, offLCode+w)
+	}
+	a.Str(rT, rP, offLClosure)
+	a.AddImm(rSlot, rIdx, 1) // base
+	a.Str(rLen, rP, offLFrame+offSliceLen)
+	a.AddShifted(rLen, rSlot, rLen, 0) // top = base + maxStackSize
+	a.Str(rLen, rCI, offCITop)
+	a.Str(rLen, rState, offLTop)
+	a.Ldr(rTmp2, rState, offStack+offSliceCap)
+	a.Sub(rTmp2, rTmp2, rSlot)
+	a.Str(rTmp2, rP, offLFrame+offSliceCap)
+	a.Ldrb(rTmp, rCI, offCIStatus)
+	a.MovImm(rTmp2, uint64(callStatusTail))
+	a.Orr(rTmp, rTmp, rTmp2)
+	a.Strb(rTmp, rCI, offCIStatus)
+	a.Strb(ZR, rCI, offCIMeta) // no __call metamethods
+
+	// Enter the callee.
+	a.Ldr(rConst, rT2, offPConsts)
+	a.Ldr(rUpVals, rT, offClUpVals)
+	a.Ldr(rTmp, rCache, offJCEntry)
+	a.Br(rTmp)
+}
+
 // returnLua compiles RETURN i at ip returning a fixed number of results to
 // a compiled Lua caller in the same interpreter loop that wants a fixed
 // number; anything else exits.

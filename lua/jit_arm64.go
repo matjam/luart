@@ -928,6 +928,8 @@ func (c *arm64Compiler) instruction(ip int) int {
 		c.tableAccess(ip, c.code[ip])
 	case bytecode.OpCall:
 		c.call(ip, orig)
+	case bytecode.OpTailCall:
+		c.tailCallLua(ip, orig)
 	case bytecode.OpReturn:
 		if hasTBC(c.p) { // Go closes the frame's to-be-closed variables first
 			a.Ldr(rTmp, rCtx, offCtxTBC)
