@@ -94,7 +94,7 @@ var osLibrary = []lua.RegistryFunction{
 
 	// From the Lua manual:
 	// "This function is equivalent to the ISO C function system"
-	// https://www.lua.org/manual/5.2/manual.html#pdf-os.execute
+	// https://www.lua.org/manual/5.5/manual.html#pdf-os.execute
 	{Name: "execute", Function: func(l *lua.State) int {
 		c := l.OptString(1, "")
 

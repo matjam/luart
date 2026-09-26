@@ -1,4 +1,4 @@
-// Command apogee runs Lua 5.2 on apogee. It takes lua.c's options, and on a
+// Command apogee runs Lua 5.5 on apogee. It takes lua.c's options, and on a
 // terminal its REPL highlights and completes code, prints values as
 // trees, and can be interrupted.
 //

@@ -81,7 +81,7 @@ func TestFinalizers(t *testing.T) {
 		collectgarbage()
 		assert(#log == 3) -- only once
 
-		-- __gc is read when the metatable is set, as in 5.2
+		-- __gc is read when the metatable is set, as in C Lua
 		local late = {}
 		setmetatable({}, late)
 		late.__gc = function() log[#log + 1] = "late" end

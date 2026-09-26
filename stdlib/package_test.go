@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// The package library has 5.2's fields and four searchers. C modules are
+// The package library has 5.5's fields and four searchers. C modules are
 // found on package.cpath but cannot load: apogee has no dynamic libraries.
 func TestPackage(t *testing.T) {
 	dir := t.TempDir()
@@ -50,12 +50,39 @@ func TestPackage(t *testing.T) {
 	`)
 }
 
-// LUA_PATH_5_2 sets package.path, with ;; standing for the default.
+// LUA_PATH_5_5 sets package.path, its first ;; standing for the default,
+// as C Lua 5.5's setpath does; LUA_CPATH sets package.cpath when
+// LUA_CPATH_5_5 is unset. Another version's variable is ignored.
 func TestPackagePathEnv(t *testing.T) {
-	t.Setenv("LUA_PATH_5_2", "first/?.lua;;")
-	t.Setenv("LUA_CPATH", "c/?.so")
+	for _, c := range []struct{ env, want string }{
+		{"first/?.lua;;", "first/?.lua;<default>"},
+		{";;x/?.lua;;y", "<default>;x/?.lua;;y"},
+		{";;", "<default>"},
+		{"a/?.lua", "a/?.lua"},
+	} {
+		t.Setenv("LUA_PATH_5_5", c.env)
+		t.Setenv("LUA_CPATH", "c/?.so")
+		t.Setenv("LUA_CPATH_5_2", "old/?.so")
+		t.Setenv("APOGEE_TEST_WANT", c.want)
+		run(t, `
+			local lua, c = "/usr/local/share/lua/5.5/", "/usr/local/lib/lua/5.5/"
+			local default = lua .. "?.lua;" .. lua .. "?/init.lua;" .. c .. "?.lua;" .. c .. "?/init.lua;./?.lua;./?/init.lua"
+			local want = os.getenv("APOGEE_TEST_WANT"):gsub("<default>", function() return default end)
+			assert(package.path == want, package.path)
+			assert(package.cpath == "c/?.so", package.cpath)
+		`)
+	}
+}
+
+// Without the variables, the paths are 5.5's luaconf.h's defaults.
+func TestPackagePathDefault(t *testing.T) {
+	for _, v := range []string{"LUA_PATH", "LUA_PATH_5_5", "LUA_CPATH", "LUA_CPATH_5_5"} {
+		t.Setenv(v, "")
+		os.Unsetenv(v)
+	}
 	run(t, `
-		assert(package.path:find("^first/%?%.lua;.+%./%?%.lua;$"), package.path)
-		assert(package.cpath == "c/?.so", package.cpath)
+		local lua, c = "/usr/local/share/lua/5.5/", "/usr/local/lib/lua/5.5/"
+		assert(package.path == lua .. "?.lua;" .. lua .. "?/init.lua;" .. c .. "?.lua;" .. c .. "?/init.lua;./?.lua;./?/init.lua", package.path)
+		assert(package.cpath == c .. "?.so;" .. c .. "loadall.so;./?.so", package.cpath)
 	`)
 }

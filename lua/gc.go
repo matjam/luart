@@ -25,7 +25,7 @@ import (
 //
 //   - Objects referenced only from Go memory, outside the registry and the
 //     stacks, count as unreachable.
-//   - __mode and __gc are read when the metatable is set, as 5.2 reads
+//   - __mode and __gc are read when the metatable is set, as C Lua reads
 //     __gc; a Lua collection also reads __mode as it marks.
 //   - The collector is not incremental: a Lua collection marks the whole
 //     Lua heap at once.

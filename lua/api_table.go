@@ -114,7 +114,7 @@ func (l *State) RawGetValue(index int, p any) Type {
 // advance how many elements the table will have.  Otherwise, you can use the
 // function NewTable.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_createtable
+// https://www.lua.org/manual/5.5/manual.html#lua_createtable
 func (l *State) CreateTable(arrayCount, recordCount int) {
 	l.apiPush(objectValue(newTableWithSize(arrayCount, recordCount)))
 }
@@ -122,14 +122,14 @@ func (l *State) CreateTable(arrayCount, recordCount int) {
 // NewTable creates a new empty table and pushes it onto the stack. It is
 // equivalent to l.CreateTable(0, 0).
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_newtable
+// https://www.lua.org/manual/5.5/manual.html#lua_newtable
 func (l *State) NewTable() { l.CreateTable(0, 0) }
 
 // MetaTable pushes onto the stack the metatable of the value at index.  If
 // the value at index does not have a metatable, the function returns
 // false and nothing is put onto the stack.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_getmetatable
+// https://www.lua.org/manual/5.5/manual.html#lua_getmetatable
 func (l *State) MetaTable(index int) bool {
 	var mt *table
 	v := l.indexToValue(index)
@@ -166,7 +166,7 @@ func (l *State) UserValue(index, n int) Type {
 // SetGlobal pops a value from the stack and sets it as the new value of
 // global name.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_setglobal
+// https://www.lua.org/manual/5.5/manual.html#lua_setglobal
 func (l *State) SetGlobal(name string) {
 	l.checkElementCount(1)
 	g := l.global.registry.atInt(RegistryIndexGlobals)
@@ -181,7 +181,7 @@ func (l *State) SetGlobal(name string) {
 // This function pops the value from the stack. As in Lua, this function may
 // trigger a metamethod for the __newindex event.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_setfield
+// https://www.lua.org/manual/5.5/manual.html#lua_setfield
 func (l *State) SetField(index int, key string) {
 	l.checkElementCount(1)
 	t := l.indexToValue(index)
@@ -198,7 +198,7 @@ func (l *State) SetField(index int, key string) {
 // The function pops both the key and the value from the stack.  As in Lua,
 // this function may trigger a metamethod for the __newindex event.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_settable
+// https://www.lua.org/manual/5.5/manual.html#lua_settable
 func (l *State) SetTable(index int) {
 	l.checkElementCount(2)
 	l.setTableAt(l.indexToValue(index), l.stack[l.top-2], l.stack[l.top-1])
@@ -208,7 +208,7 @@ func (l *State) SetTable(index int) {
 // RawSet is similar to SetTable, but does a raw assignment (without
 // metamethods).
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_rawset
+// https://www.lua.org/manual/5.5/manual.html#lua_rawset
 func (l *State) RawSet(index int) {
 	l.checkElementCount(2)
 	t := l.indexToValue(index).table()
@@ -250,7 +250,7 @@ func (l *State) SetUserValue(index, n int) bool {
 // SetMetaTable pops a table from the stack and sets it as the new metatable
 // for the value at index.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_setmetatable
+// https://www.lua.org/manual/5.5/manual.html#lua_setmetatable
 func (l *State) SetMetaTable(index int) {
 	l.checkElementCount(1)
 	mt := l.stack[l.top-1].table()
@@ -284,7 +284,7 @@ func (l *State) SetMetaTable(index int) {
 //		l.Pop(1) // Remove val, but need key for the next iter.
 //	}
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_next
+// https://www.lua.org/manual/5.5/manual.html#lua_next
 func (l *State) Next(index int) bool {
 	t := l.indexToValue(index).table()
 	if l.next(t, l.top-1) {
@@ -299,7 +299,7 @@ func (l *State) Next(index int) bool {
 // Register sets the Go function f as the new value of global name. If
 // name was already defined, it is overwritten.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_register
+// https://www.lua.org/manual/5.5/manual.html#lua_register
 func (l *State) Register(name string, f Function) {
 	l.PushGoFunction(f)
 	l.SetGlobal(name)

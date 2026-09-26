@@ -69,7 +69,7 @@ func (l *State) HookMask() byte { return l.hookMask }
 
 // HookCount returns the hook count SetHook set.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_gethookcount
+// https://www.lua.org/manual/5.5/manual.html#lua_gethookcount
 func (l *State) HookCount() int { return l.baseHookCount }
 
 // Frame gets information about the interpreter runtime stack.
@@ -233,7 +233,7 @@ func (l *State) findVarArg(ci *callInfo, n int) (string, int) {
 //
 // Local returns false, pushing nothing, if there is no such variable.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_getlocal
+// https://www.lua.org/manual/5.5/manual.html#lua_getlocal
 func (l *State) Local(frame Frame, n int) (string, bool) {
 	if frame.ci == nil {
 		if c := l.stack[l.top-1].luaClosure(); c != nil && n <= c.prototype.ParameterCount {
@@ -258,7 +258,7 @@ func (l *State) Local(frame Frame, n int) (string, bool) {
 // its name. It pops the value, and returns false if there is no such
 // variable.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_setlocal
+// https://www.lua.org/manual/5.5/manual.html#lua_setlocal
 func (l *State) SetLocal(frame Frame, n int) (string, bool) {
 	l.checkElementCount(1)
 	name, pos := l.findLocal(frame.ci, n)

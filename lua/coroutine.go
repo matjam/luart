@@ -6,7 +6,7 @@ import (
 	"github.com/matjam/apogee/internal/bytecode"
 )
 
-// Coroutines work as C Lua 5.2's do (ldo.c's lua_resume and lua_yieldk,
+// Coroutines work as C Lua's do (ldo.c's lua_resume and lua_yieldk,
 // lvm.c's luaV_finishOp). A yield unwinds the Go stack back to Resume by
 // panicking, as an error does; the coroutine's Lua frames stay on its own
 // stack. Resume then finishes the instruction the yield interrupted and
@@ -33,7 +33,7 @@ var (
 // NewThread creates a thread, pushes it onto the stack, and returns it.
 // The thread shares l's global state and hook, with its own stack.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_newthread
+// https://www.lua.org/manual/5.5/manual.html#lua_newthread
 func (l *State) NewThread() *State {
 	l1 := &State{global: l.global, allowHook: true}
 	l1.initializeStack()
@@ -45,7 +45,7 @@ func (l *State) NewThread() *State {
 
 // Status returns the status of thread l.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_status
+// https://www.lua.org/manual/5.5/manual.html#lua_status
 func (l *State) Status() ThreadStatus { return l.status }
 
 // Resume starts or continues the coroutine l. from is the thread resuming
@@ -59,7 +59,7 @@ func (l *State) Status() ThreadStatus { return l.status }
 // the coroutine, it is dead. An error resuming it at all, such as resuming
 // a dead coroutine, leaves it as it was.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_resume
+// https://www.lua.org/manual/5.5/manual.html#lua_resume
 func (l *State) Resume(from *State, argCount int) (yielded bool, err error) {
 	l.checkGC()
 	oldNonYieldable := l.nonYieldableCallCount
@@ -232,7 +232,7 @@ func (l *State) IsYieldable() bool { return l.nonYieldableCallCount == 0 }
 //
 // Yield does not return, except inside a hook: see YieldWithContinuation.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_yield
+// https://www.lua.org/manual/5.5/manual.html#lua_yield
 func (l *State) Yield(resultCount int) int {
 	return l.YieldWithContinuation(resultCount, 0, nil)
 }
@@ -247,7 +247,7 @@ func (l *State) Yield(resultCount int) int {
 // to the hook, which must return at once; the coroutine resumes at the
 // instruction the hook was called for.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_yieldk
+// https://www.lua.org/manual/5.5/manual.html#lua_yieldk
 func (l *State) YieldWithContinuation(resultCount, context int, continuation Function) int {
 	ci := l.callInfo
 	l.checkElementCount(resultCount)

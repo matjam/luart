@@ -5,14 +5,14 @@ import "github.com/matjam/apogee/internal/bytecode"
 // TypeOf returns the type of the value at index, or TypeNone for a
 // non-valid (but acceptable) index.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_type
+// https://www.lua.org/manual/5.5/manual.html#lua_type
 func (l *State) TypeOf(index int) Type {
 	return l.valueToType(l.indexToValue(index))
 }
 
 // IsGoFunction verifies that the value at index is a Go function.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_iscfunction
+// https://www.lua.org/manual/5.5/manual.html#lua_iscfunction
 func (l *State) IsGoFunction(index int) bool {
 	switch l.indexToValue(index).kind() {
 	case vkGoFunction, vkGoClosure:
@@ -39,7 +39,7 @@ func (l *State) IsInteger(index int) bool { return l.indexToValue(index).isInteg
 // IsString verifies that the value at index is a string, or a number (which
 // is always convertible to a string).
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_isstring
+// https://www.lua.org/manual/5.5/manual.html#lua_isstring
 func (l *State) IsString(index int) bool {
 	v := l.indexToValue(index)
 	_, ok := v.str()
@@ -48,7 +48,7 @@ func (l *State) IsString(index int) bool {
 
 // IsUserData verifies that the value at index is a userdata.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_isuserdata
+// https://www.lua.org/manual/5.5/manual.html#lua_isuserdata
 func (l *State) IsUserData(index int) bool {
 	return l.indexToValue(index).userData() != nil
 }
@@ -56,42 +56,42 @@ func (l *State) IsUserData(index int) bool {
 // IsFunction verifies that the value at index is a function, either Go or
 // Lua function.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_isfunction
+// https://www.lua.org/manual/5.5/manual.html#lua_isfunction
 func (l *State) IsFunction(index int) bool { return l.TypeOf(index) == TypeFunction }
 
 // IsTable verifies that the value at index is a table.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_istable
+// https://www.lua.org/manual/5.5/manual.html#lua_istable
 func (l *State) IsTable(index int) bool { return l.TypeOf(index) == TypeTable }
 
 // IsLightUserData verifies that the value at index is a light userdata.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_islightuserdata
+// https://www.lua.org/manual/5.5/manual.html#lua_islightuserdata
 func (l *State) IsLightUserData(index int) bool { return l.TypeOf(index) == TypeLightUserData }
 
 // IsNil verifies that the value at index is nil.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_isnil
+// https://www.lua.org/manual/5.5/manual.html#lua_isnil
 func (l *State) IsNil(index int) bool { return l.TypeOf(index) == TypeNil }
 
 // IsBoolean verifies that the value at index is a boolean.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_isboolean
+// https://www.lua.org/manual/5.5/manual.html#lua_isboolean
 func (l *State) IsBoolean(index int) bool { return l.TypeOf(index) == TypeBoolean }
 
 // IsThread verifies that the value at index is a thread.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_isthread
+// https://www.lua.org/manual/5.5/manual.html#lua_isthread
 func (l *State) IsThread(index int) bool { return l.TypeOf(index) == TypeThread }
 
 // IsNone verifies that the value at index is not valid.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_isnone
+// https://www.lua.org/manual/5.5/manual.html#lua_isnone
 func (l *State) IsNone(index int) bool { return l.TypeOf(index) == TypeNone }
 
 // IsNoneOrNil verifies that the value at index is either nil or invalid.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_isnonornil.
+// https://www.lua.org/manual/5.5/manual.html#lua_isnoneornil
 func (l *State) IsNoneOrNil(index int) bool {
 	if index > 0 { // an argument: arg returns nil for none
 		return l.arg(index).isNil()
@@ -117,7 +117,7 @@ func (l *State) ToInteger(index int) (int64, bool) {
 // must also be a string or a number; otherwise the function returns
 // false for its second return value.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_tolstring
+// https://www.lua.org/manual/5.5/manual.html#lua_tolstring
 func (l *State) ToString(index int) (s string, ok bool) {
 	if s, ok = l.arg(index).str(); ok { // a string argument, the usual case
 		return s, true
@@ -138,7 +138,7 @@ func (l *State) ToString(index int) (s string, ok bool) {
 //
 // If the operation failed, the second return value will be false.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_tonumberx
+// https://www.lua.org/manual/5.5/manual.html#lua_tonumberx
 func (l *State) ToNumber(index int) (float64, bool) {
 	if v := l.arg(index); v.isNumber() {
 		return v.toFloat(), true
@@ -152,7 +152,7 @@ func (l *State) ToNumber(index int) (float64, bool) {
 //
 // To accept only actual boolean values, use the test IsBoolean.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_toboolean
+// https://www.lua.org/manual/5.5/manual.html#lua_toboolean
 func (l *State) ToBoolean(index int) bool { return !isFalse(l.indexToValue(index)) }
 
 // RawLength returns the length of the value at index.  For strings, this is
@@ -160,7 +160,7 @@ func (l *State) ToBoolean(index int) bool { return !isFalse(l.indexToValue(index
 // metamethods.  For userdata, this is the size of the block of memory
 // allocated for the userdata (not implemented yet). For other values, it is 0.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_rawlen
+// https://www.lua.org/manual/5.5/manual.html#lua_rawlen
 func (l *State) RawLength(index int) int {
 	v := l.indexToValue(index)
 	if s, ok := v.str(); ok {
@@ -174,7 +174,7 @@ func (l *State) RawLength(index int) int {
 // ToGoFunction converts a value at index into a Go function.  That value
 // must be a Go function, otherwise it returns nil.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_tocfunction
+// https://www.lua.org/manual/5.5/manual.html#lua_tocfunction
 func (l *State) ToGoFunction(index int) Function {
 	v := l.indexToValue(index)
 	if f := v.goFunction(); f != nil {
@@ -188,7 +188,7 @@ func (l *State) ToGoFunction(index int) Function {
 // ToUserData returns the Go value held by the userdata at index.
 // Otherwise, it returns nil.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_touserdata
+// https://www.lua.org/manual/5.5/manual.html#lua_touserdata
 func (l *State) ToUserData(index int) any {
 	if d := l.indexToValue(index).userData(); d != nil {
 		return d.data
@@ -206,7 +206,7 @@ func (l *State) UserData[T any](index int) (T, bool) {
 // ToThread converts the value at index to a Lua thread (a State). This
 // value must be a thread, otherwise the return value will be nil.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_tothread
+// https://www.lua.org/manual/5.5/manual.html#lua_tothread
 func (l *State) ToThread(index int) *State {
 	return l.indexToValue(index).thread()
 }
@@ -221,7 +221,7 @@ func (l *State) ToThread(index int) *State {
 //
 // Typically, this function is used only for debug information.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_tovalue
+// https://www.lua.org/manual/5.5/manual.html#lua_topointer
 func (l *State) ToValue(index int) any {
 	v := l.indexToValue(index)
 	if v.kind() == vkLightUserData {
@@ -267,7 +267,7 @@ const maxShortString = 40
 // RawEqual verifies that the values at index1 and index2 are primitively
 // equal (that is, without calling their metamethods).
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_rawequal
+// https://www.lua.org/manual/5.5/manual.html#lua_rawequal
 func (l *State) RawEqual(index1, index2 int) bool {
 	if o1, o2 := l.indexToValue(index1), l.indexToValue(index2); !o1.isNil() && !o2.isNil() {
 		return rawEqual(o1, o2)
@@ -277,7 +277,7 @@ func (l *State) RawEqual(index1, index2 int) bool {
 
 // Compare compares two values.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_compare
+// https://www.lua.org/manual/5.5/manual.html#lua_compare
 func (l *State) Compare(index1, index2 int, op ComparisonOperator) bool {
 	if o1, o2 := l.indexToValue(index1), l.indexToValue(index2); !o1.isNil() && !o2.isNil() {
 		switch op {
@@ -300,7 +300,7 @@ func (l *State) Compare(index1, index2 int, op ComparisonOperator) bool {
 // The function follows the semantics of the corresponding Lua operator
 // (that is, it may call metamethods).
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_arith
+// https://www.lua.org/manual/5.5/manual.html#lua_arith
 func (l *State) Arith(op Operator) {
 	if op != OpUnaryMinus && op != OpBNot {
 		l.checkElementCount(2)
@@ -316,7 +316,7 @@ func (l *State) Arith(op Operator) {
 // Length of the value at index; it is equivalent to the # operator in
 // Lua. The result is pushed on the stack.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_len
+// https://www.lua.org/manual/5.5/manual.html#lua_len
 func (l *State) Length(index int) { l.apiPush(l.objectLength(l.indexToValue(index))) }
 
 // Concat concatenates the n values at the top of the stack, pops them, and
@@ -325,7 +325,7 @@ func (l *State) Length(index int) { l.apiPush(l.objectLength(l.indexToValue(inde
 // is the empty string. Concatenation is performed following the usual
 // semantic of Lua.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_concat
+// https://www.lua.org/manual/5.5/manual.html#lua_concat
 func (l *State) Concat(n int) {
 	l.checkElementCount(n)
 	if n >= 2 {

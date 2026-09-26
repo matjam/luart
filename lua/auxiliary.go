@@ -453,7 +453,7 @@ func (l *State) CheckStackWithMessage(space int, message string) {
 // is absent if def, its default, is not "", and returns its position in
 // list. Otherwise it raises an error.
 //
-// http://www.lua.org/manual/5.2/manual.html#luaL_checkoption
+// https://www.lua.org/manual/5.5/manual.html#luaL_checkoption
 func (l *State) CheckOption(index int, def string, list []string) int {
 	var name string
 	if def != "" {

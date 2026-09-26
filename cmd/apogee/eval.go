@@ -11,8 +11,8 @@ import (
 
 // compile loads code typed at the REPL as the chunk "=stdin", leaving the
 // function, or the error message, on the stack. It tries "return <code>"
-// first, so that an expression prints its value as Lua 5.3's REPL does,
-// and takes 5.2's "=expr" too.
+// first, so that an expression prints its value as lua.c's REPL does, and
+// still takes the "=expr" of Lua 5.2's REPL.
 func compile(l *lua.State, code string) error {
 	if l.LoadBuffer("return "+code, "=stdin", "t") == nil {
 		return nil

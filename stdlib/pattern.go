@@ -6,7 +6,7 @@ import (
 	"github.com/matjam/apogee/lua"
 )
 
-// Lua 5.2's pattern matching, ported from lstrlib.c. Positions are byte
+// Lua 5.5's pattern matching, ported from lstrlib.c. Positions are byte
 // offsets into the subject and the pattern, and -1 is C's NULL: no match.
 // Reading at the end of either string gives 0, as C reads the terminating
 // NUL there.

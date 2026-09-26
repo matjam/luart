@@ -52,7 +52,7 @@ func TestOptionDefault(t *testing.T) {
 	`)
 }
 
-// Runtime errors word and name things as Lua 5.2's do, as errors.lua
+// Runtime errors word and name things as Lua 5.5's do, as errors.lua
 // checks.
 func TestErrorMessages(t *testing.T) {
 	run(t, `

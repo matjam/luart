@@ -9,7 +9,7 @@ import (
 
 // PushString pushes a string onto the stack.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_pushstring
+// https://www.lua.org/manual/5.5/manual.html#lua_pushstring
 func (l *State) PushString(s string) {
 	l.apiPush(stringValue(s))
 }
@@ -21,7 +21,7 @@ func (l *State) PushString(s string) {
 // in the string), %s, %f (a Lua number), %p (a pointer as a hexadecimal
 // numeral), %d and %c (an integer as a byte).
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_pushfstring
+// https://www.lua.org/manual/5.5/manual.html#lua_pushfstring
 func (l *State) PushFString(format string, args ...any) string {
 	n, i := 0, 0
 	for {
@@ -98,7 +98,7 @@ func (l *State) PushFString(format string, args ...any) string {
 // When upValueCount is 0, this function creates a light Go function, which is just a
 // Go function.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_pushcclosure
+// https://www.lua.org/manual/5.5/manual.html#lua_pushcclosure
 func (l *State) PushGoClosure(function Function, upValueCount uint8) {
 	if upValueCount == 0 {
 		l.apiPush(objectValue(&goFunction{Function: function}))
@@ -115,13 +115,13 @@ func (l *State) PushGoClosure(function Function, upValueCount uint8) {
 
 // PushGoFunction pushes a Function implemented in Go onto the stack.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_pushcfunction
+// https://www.lua.org/manual/5.5/manual.html#lua_pushcfunction
 func (l *State) PushGoFunction(f Function) { l.PushGoClosure(f, 0) }
 
 // PushThread pushes the thread l onto the stack.  It returns true if l is
 // the main thread of its state.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_pushthread
+// https://www.lua.org/manual/5.5/manual.html#lua_pushthread
 func (l *State) PushThread() bool {
 	l.apiPush(objectValue(l))
 	return l.global.mainThread == l
@@ -129,7 +129,7 @@ func (l *State) PushThread() bool {
 
 // PushNil pushes a nil value onto the stack.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_pushnil
+// https://www.lua.org/manual/5.5/manual.html#lua_pushnil
 func (l *State) PushNil() { l.apiPush(nilValue) }
 
 // StringToNumber pushes the number the numeral s holds, keeping its type:
@@ -147,7 +147,7 @@ func (l *State) StringToNumber(s string) bool {
 
 // PushNumber pushes a number onto the stack.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_pushnumber
+// https://www.lua.org/manual/5.5/manual.html#lua_pushnumber
 func (l *State) PushNumber(n float64) { l.apiPush(numberValue(n)) }
 
 // Integer lists the Go integer types PushInteger takes.
@@ -163,14 +163,14 @@ func (l *State) PushInteger[T Integer](n T) { l.apiPush(integerValue(int64(n))) 
 
 // PushBoolean pushes a boolean value with value b onto the stack.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_pushboolean
+// https://www.lua.org/manual/5.5/manual.html#lua_pushboolean
 func (l *State) PushBoolean(b bool) { l.apiPush(boolValue(b)) }
 
 // PushLightUserData pushes a light user data onto the stack. Userdata
 // represents Go values in Lua. A light userdata is any Go value. Its
 // equality matches the Go rules (http://golang.org/ref/spec#Comparison_operators).
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_pushlightuserdata
+// https://www.lua.org/manual/5.5/manual.html#lua_pushlightuserdata
 func (l *State) PushLightUserData(d any) { l.apiPush(l.valueOf(d)) }
 
 // PushUserData is similar to PushLightUserData, but pushes a full userdata
@@ -191,5 +191,5 @@ func (l *State) PushUserDataUV(d any, n int) {
 
 // PushGlobalTable pushes the global environment onto the stack.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_pushglobaltable
+// https://www.lua.org/manual/5.5/manual.html#lua_pushglobaltable
 func (l *State) PushGlobalTable() { l.RawGetInt(RegistryIndex, RegistryIndexGlobals) }

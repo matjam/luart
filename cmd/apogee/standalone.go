@@ -1,6 +1,6 @@
 package main
 
-// The command line, after Lua 5.2's lua.c: its options, LUA_INIT, the arg
+// The command line, after Lua 5.5's lua.c: its options, LUA_INIT, the arg
 // table, error reports with a traceback, and the plain REPL used when
 // stdin or stdout is not a terminal.
 

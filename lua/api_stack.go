@@ -5,7 +5,7 @@ import "fmt"
 // XMove pops n values from l's stack and pushes them onto to's. Moving
 // within one state leaves the stack as it is.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_xmove
+// https://www.lua.org/manual/5.5/manual.html#lua_xmove
 func (l *State) XMove(to *State, n int) {
 	if l == to {
 		return
@@ -116,13 +116,13 @@ func isPseudoIndex(i int) bool { return i <= RegistryIndex }
 // UpValueIndex returns the pseudo-index that represents the i-th upvalue of
 // the running function.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_upvalueindex
+// https://www.lua.org/manual/5.5/manual.html#lua_upvalueindex
 func UpValueIndex(i int) int { return RegistryIndex - i }
 
 // AbsIndex converts the acceptable index index to an absolute index (that
 // is, one that does not depend on the stack top).
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_absindex
+// https://www.lua.org/manual/5.5/manual.html#lua_absindex
 func (l *State) AbsIndex(index int) int {
 	if index > 0 || isPseudoIndex(index) {
 		return index
@@ -137,7 +137,7 @@ func (l *State) AbsIndex(index int) int {
 // If index is negative, the stack will be decremented by that much. If
 // the decrement is larger than the stack, SetTop will panic().
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_settop
+// https://www.lua.org/manual/5.5/manual.html#lua_settop
 func (l *State) SetTop(index int) {
 	f := l.callInfo.function
 	if index >= 0 {
@@ -161,7 +161,7 @@ func (l *State) SetTop(index int) {
 // above index to fill the gap. This function cannot be called with a
 // pseudo-index, because a pseudo-index is not an actual stack position.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_remove
+// https://www.lua.org/manual/5.5/manual.html#lua_remove
 func (l *State) Remove(index int) {
 	apiCheckStackIndex(index, l.indexToValue(index))
 	i := l.callInfo.function + l.AbsIndex(index)
@@ -173,7 +173,7 @@ func (l *State) Remove(index int) {
 // elements above this index to open space.  This function cannot be called
 // with a pseudo-index, because a pseudo-index is not an actual stack position.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_insert
+// https://www.lua.org/manual/5.5/manual.html#lua_insert
 func (l *State) Insert(index int) {
 	apiCheckStackIndex(index, l.indexToValue(index))
 	i := l.callInfo.function + l.AbsIndex(index)
@@ -185,7 +185,7 @@ func (l *State) Insert(index int) {
 // any element (therefore replacing the value at the given index), and then
 // pops the top element.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_replace
+// https://www.lua.org/manual/5.5/manual.html#lua_replace
 func (l *State) Replace(index int) {
 	l.checkElementCount(1)
 	l.move(index, l.stack[l.top-1])
@@ -195,7 +195,7 @@ func (l *State) Replace(index int) {
 // CheckStack ensures that there are at least size free stack slots in the
 // stack. This call will not panic(), unlike the other Check*() functions.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_checkstack
+// https://www.lua.org/manual/5.5/manual.html#lua_checkstack
 func (l *State) CheckStack(size int) bool {
 	callInfo := l.callInfo
 	ok := l.stackLast-l.top > size
@@ -212,22 +212,22 @@ func (l *State) CheckStack(size int) bool {
 // start at 1, this result is equal to the number of elements in the stack
 // (hence 0 means an empty stack).
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_gettop
+// https://www.lua.org/manual/5.5/manual.html#lua_gettop
 func (l *State) Top() int { return l.top - (l.callInfo.function + 1) }
 
 // Copy moves the element at the index from into the valid index to
 // without shifting any element (therefore replacing the value at that
 // position).
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_copy
+// https://www.lua.org/manual/5.5/manual.html#lua_copy
 func (l *State) Copy(from, to int) { l.move(to, l.indexToValue(from)) }
 
 // Pop pops n elements from the stack.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_pop
+// https://www.lua.org/manual/5.5/manual.html#lua_pop
 func (l *State) Pop(n int) { l.SetTop(-n - 1) }
 
 // PushValue pushes a copy of the element at index onto the stack.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_pushvalue
+// https://www.lua.org/manual/5.5/manual.html#lua_pushvalue
 func (l *State) PushValue(index int) { l.apiPush(l.indexToValue(index)) }
