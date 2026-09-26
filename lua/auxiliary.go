@@ -250,7 +250,12 @@ func (l *State) Errorf(format string, a ...any) {
 // calls the corresponding metamethod with the value as argument, and uses
 // the result of the call as its result.
 func (l *State) ToStringMeta(index int) (string, bool) {
-	if !l.CallMeta(index, "__tostring") {
+	index = l.AbsIndex(index)
+	if l.CallMeta(index, "__tostring") {
+		if !l.IsString(-1) {
+			l.Errorf("'__tostring' must return a string")
+		}
+	} else {
 		switch l.TypeOf(index) {
 		case TypeNumber, TypeString:
 			l.PushValue(index)
@@ -262,8 +267,15 @@ func (l *State) ToStringMeta(index int) (string, bool) {
 			}
 		case TypeNil:
 			l.PushString("nil")
-		default:
-			l.PushFString("%s: %p", l.TypeName(index), l.ToValue(index))
+		default: // its metatable's __name, as Lua 5.3 on, or its type
+			kind := l.TypeName(index)
+			if l.MetaField(index, "__name") {
+				if l.TypeOf(-1) == TypeString {
+					kind, _ = l.ToString(-1)
+				}
+				l.Pop(1)
+			}
+			l.PushFString("%s: %p", kind, l.ToValue(index))
 		}
 	}
 	return l.ToString(-1)
