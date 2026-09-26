@@ -350,9 +350,17 @@ func readAll(l *lua.State, r *bufio.Reader) error {
 // sign, then decimal digits with a fraction and an exponent, or 0x and
 // hexadecimal ones with a binary exponent. It fails, pushing nil, if the
 // text does not make a number.
+// maxNumeralLength is the longest numeral io.read("n") reads.
+const maxNumeralLength = 200
+
 func readNumber(l *lua.State, r *bufio.Reader) (bool, error) {
 	var b []byte
+	tooLong := false
 	accept := func(set string) bool {
+		if len(b) >= maxNumeralLength { // liolib.c's L_MAXLENNUM: fail, the rest unread
+			tooLong = true
+			return false
+		}
 		c, err := r.ReadByte()
 		if err != nil {
 			return false
@@ -368,22 +376,27 @@ func readNumber(l *lua.State, r *bufio.Reader) (bool, error) {
 		b = b[:0]
 	}
 	accept("+-")
-	digits, exponent := "0123456789", "eE"
-	if accept("0") && accept("xX") {
-		digits, exponent = "0123456789abcdefABCDEF", "pP"
-	}
-	for accept(digits) {
-	}
-	if accept(".") {
-		for accept(digits) {
+	digits, exponent, count := "0123456789", "eE", 0
+	if accept("0") {
+		if accept("xX") {
+			digits, exponent = "0123456789abcdefABCDEF", "pP"
+		} else {
+			count = 1 // the 0
 		}
 	}
-	if accept(exponent) {
+	for ; accept(digits); count++ {
+	}
+	if accept(".") {
+		for ; accept(digits); count++ {
+		}
+	}
+	if count > 0 && accept(exponent) { // an exponent only after digits, as liolib.c reads
+		accept("+-")
 		accept("+-")
 		for accept("0123456789") {
 		}
 	}
-	if !l.StringToNumber(string(b)) { // an integer numeral reads as an integer
+	if tooLong || !l.StringToNumber(string(b)) { // an integer numeral reads as an integer
 		l.PushNil()
 		return false, nil
 	}
@@ -423,8 +436,10 @@ func linesIterator(l *lua.State) int {
 // lines pushes an iterator over the file at 1, reading with the formats
 // after it.
 func lines(l *lua.State, shouldClose bool) {
+	const maxFormats = 250 // liolib.c's MAXARGLINE
 	n := l.Top() - 1
-	l.ArgumentCheck(n <= lua.MinStack-3, lua.MinStack-3, "too many options")
+	l.ArgumentCheck(n <= maxFormats, maxFormats+2, "too many arguments")
+	l.CheckStackWithMessage(n+3, "too many arguments")
 	l.PushValue(1)
 	l.PushInteger(n)
 	l.PushBoolean(shouldClose)
@@ -451,6 +466,12 @@ var ioLibrary = []lua.RegistryFunction{
 			openCheckFile(l, l.CheckString(1), "r")
 			l.Replace(1)
 			lines(l, true)
+			// Lua 5.4: the file is the loop's closing value, so a loop
+			// left early closes it too.
+			l.PushNil()
+			l.PushNil()
+			l.PushValue(1)
+			return 4
 		}
 		return 1
 	}},
@@ -481,8 +502,17 @@ var ioLibrary = []lua.RegistryFunction{
 	{Name: "write", Function: func(l *lua.State) int { return write(l, ioFile(l, output), 1) }},
 }
 
+// fileGC closes an open file, ignoring errors, when it is collected or
+// goes out of scope as a to-be-closed variable.
+func fileGC(l *lua.State) int {
+	if s := toStream(l); s.close != nil && s.f != nil {
+		closeHelper(l)
+	}
+	return 0
+}
+
 var fileHandleMethods = []lua.RegistryFunction{
-	{Name: "close", Function: ioClose},
+	{Name: "close", Function: func(l *lua.State) int { toFile(l); return closeHelper(l) }}, // a file, not the default output
 	{Name: "flush", Function: func(l *lua.State) int { return l.FileResult(toFile(l).flush(), "") }},
 	{Name: "lines", Function: func(l *lua.State) int { toFile(l); lines(l, false); return 1 }},
 	{Name: "read", Function: func(l *lua.State) int { return read(l, toFile(l), 2) }},
@@ -521,12 +551,8 @@ var fileHandleMethods = []lua.RegistryFunction{
 		l.PushValue(1) // to return
 		return write(l, s, 2)
 	}},
-	{Name: "__gc", Function: func(l *lua.State) int { // close an open file, ignoring errors
-		if s := toStream(l); s.close != nil && s.f != nil {
-			closeHelper(l)
-		}
-		return 0
-	}},
+	{Name: "__gc", Function: fileGC},
+	{Name: "__close", Function: fileGC}, // local f <close> = io.open(...)
 	{Name: "__tostring", Function: func(l *lua.State) int {
 		if s := toStream(l); s.close == nil {
 			l.PushString("file (closed)")

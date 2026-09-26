@@ -963,6 +963,10 @@ func (c *amd64Compiler) instruction(ip int) int {
 	case bytecode.OpCall:
 		c.call(ip, orig)
 	case bytecode.OpReturn:
+		if hasTBC(c.p) { // Go closes the to-be-closed variables first
+			c.exitAlways(ip)
+			break
+		}
 		c.returnLua(ip, orig)
 	case bytecode.OpLength:
 		c.length(ip, orig)

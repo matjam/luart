@@ -362,6 +362,10 @@ func (p *parser) assignment(t *assignmentTarget, variableCount int) {
 
 func (p *parser) forBody(base, line, n int, isNumeric bool) {
 	p.function.AdjustLocalVariables(3)
+	if !isNumeric {
+		p.function.ToBeClosedSwapped(base + 2) // the closing value, swapped below the control
+		p.function.freeRegisterCount--         // the control variable's register is the body's first
+	}
 	p.checkNext(tkDo)
 	prep := p.function.OpenForBody(base, n, isNumeric)
 	p.block()
@@ -371,9 +375,9 @@ func (p *parser) forBody(base, line, n int, isNumeric bool) {
 func (p *parser) forNumeric(name string, line int) {
 	expr := func() { p.assert(p.function.ExpressionToNextRegister(p.expression()).kind == kindNonRelocatable) }
 	base := p.function.freeRegisterCount
-	p.function.MakeLocalVariable("(for index)")
-	p.function.MakeLocalVariable("(for limit)")
-	p.function.MakeLocalVariable("(for step)")
+	p.function.MakeLocalVariable("(for state)")
+	p.function.MakeLocalVariable("(for state)")
+	p.function.MakeLocalVariable("(for state)")
 	p.function.MakeLocalVariable(name)
 	p.function.MarkReadOnly() // the control variable, since Lua 5.5
 	p.checkNext('=')
@@ -389,11 +393,16 @@ func (p *parser) forNumeric(name string, line int) {
 	p.forBody(base, line, 1, true)
 }
 
+// forList compiles a generic for, as Lua 5.5 does: its explist gives the
+// iterator function, its state, the control variable's initial value and
+// a closing value, a to-be-closed variable the loop closes when it ends.
+// The loop keeps the iterator, state and closing value in three hidden
+// variables; the control variable is the first name.
 func (p *parser) forList(name string) {
 	n, base := 4, p.function.freeRegisterCount
-	p.function.MakeLocalVariable("(for generator)")
 	p.function.MakeLocalVariable("(for state)")
-	p.function.MakeLocalVariable("(for control)")
+	p.function.MakeLocalVariable("(for state)")
+	p.function.MakeLocalVariable("(for state)")
 	p.function.MakeLocalVariable(name)
 	p.function.MarkReadOnly() // the control variable, since Lua 5.5
 	for ; p.testNext(','); n++ {
@@ -402,8 +411,8 @@ func (p *parser) forList(name string) {
 	p.checkNext(tkIn)
 	line := p.lineNumber
 	e, c := p.expressionList()
-	p.function.AdjustAssignment(3, c, e)
-	p.function.CheckStack(3)
+	p.function.AdjustAssignment(4, c, e)
+	p.function.CheckStack(2)
 	p.forBody(base, line, n-3, false)
 }
 
@@ -427,11 +436,12 @@ func (p *parser) testThenBlock(escapes int) int {
 	p.next()
 	e := p.expression()
 	p.checkNext(tkThen)
-	if p.t == tkGoto || p.t == tkBreak {
+	if p.t == tkBreak { // 'if x then break': the test's jump is the break
 		e = p.function.GoIfFalse(e)
 		p.function.EnterBlock(false)
 		p.gotoStatement(e.t)
-		p.skipEmptyStatements()
+		for p.testNext(';') { // only semicolons, as Lua 5.4 does: a label here would mark the skip below
+		}
 		if p.blockFollow(false) {
 			p.function.LeaveBlock()
 			return escapes
@@ -525,8 +535,9 @@ func (p *parser) labelStatement(label string, line int) {
 	p.checkNext(tkDoubleColon)
 	l := p.function.MakeLabel(label, line)
 	p.skipEmptyStatements()
-	if p.blockFollow(false) {
+	if p.blockFollow(false) { // at the end of its block, outside its variables' scope
 		p.activeLabels[l].activeVariableCount = p.function.block.activeVariableCount
+		p.activeLabels[l].declarations = p.function.block.firstGlobal
 	}
 	p.function.FindGotos(l)
 }
@@ -599,14 +610,18 @@ func (p *parser) localFunction() {
 func (p *parser) localStatement() {
 	f := p.function
 	def := p.attribute("")
-	v, last := 0, ""
+	v, last, toClose := 0, "", -1
 	for first := true; first || p.testNext(','); v++ {
 		f.MakeLocalVariable(p.checkName())
 		switch last = p.attribute(def); last {
 		case "const":
 			f.MarkReadOnly()
 		case "close":
-			f.semanticError("to-be-closed variables are not supported yet")
+			f.MarkReadOnly()
+			if toClose >= 0 {
+				f.semanticError("multiple to-be-closed variables in local list")
+			}
+			toClose = f.activeVariableCount + v // its register
 		}
 		first = false
 	}
@@ -625,6 +640,9 @@ func (p *parser) localStatement() {
 		f.AdjustAssignment(v, 0, e)
 	}
 	f.AdjustLocalVariables(v)
+	if toClose >= 0 {
+		f.ToBeClosed(toClose)
+	}
 }
 
 // attribute reads an optional attribute, <const> or <close>, reporting

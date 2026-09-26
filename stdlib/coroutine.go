@@ -53,6 +53,12 @@ func coroutineWrapped(l *lua.State) int {
 	co := l.ToThread(lua.UpValueIndex(1))
 	r := auxResume(l, co, l.Top())
 	if r < 0 {
+		if co.Status() == lua.ThreadError { // it died: close its variables, as auxwrap does
+			if err := co.CloseThread(l); err != nil {
+				l.Pop(1)
+				co.XMove(l, 1) // the error, perhaps from a __close
+			}
+		}
 		if l.IsString(-1) { // add where the error was raised
 			l.Where(1)
 			l.Insert(-2)
@@ -61,6 +67,25 @@ func coroutineWrapped(l *lua.State) int {
 		l.Error()
 	}
 	return r
+}
+
+// coroutineStatus is co's status, as coroutine.status names it, seen from
+// l.
+func coroutineStatus(l, co *lua.State) string {
+	switch {
+	case l == co:
+		return "running"
+	case co.Status() == lua.ThreadYield:
+		return "suspended"
+	case co.Status() == lua.ThreadError:
+		return "dead"
+	}
+	if _, ok := co.Frame(0); ok { // it has frames: it resumed another
+		return "normal"
+	} else if co.Top() == 0 {
+		return "dead"
+	}
+	return "suspended" // not started
 }
 
 func coroutineCreate(l *lua.State) int {
@@ -72,6 +97,31 @@ func coroutineCreate(l *lua.State) int {
 }
 
 var coroutineLibrary = []lua.RegistryFunction{
+	{Name: "close", Function: func(l *lua.State) int {
+		co := l
+		if !l.IsNone(1) {
+			co = toCoroutine(l)
+		}
+		switch status := coroutineStatus(l, co); status {
+		case "dead", "suspended":
+			if err := co.CloseThread(l); err != nil {
+				l.PushBoolean(false)
+				co.XMove(l, 1)
+				return 2
+			}
+			l.PushBoolean(true)
+			return 1
+		case "running":
+			if l.PushThread() { // the main thread
+				l.Errorf("cannot close main thread")
+			}
+			l.CloseRunning()
+			return 0
+		default:
+			l.Errorf("cannot close a %s coroutine", status)
+			return 0
+		}
+	}},
 	{Name: "create", Function: coroutineCreate},
 	{Name: "resume", Function: coroutineResume},
 	{Name: "running", Function: func(l *lua.State) int {
@@ -79,23 +129,7 @@ var coroutineLibrary = []lua.RegistryFunction{
 		return 2
 	}},
 	{Name: "status", Function: func(l *lua.State) int {
-		co := toCoroutine(l)
-		switch {
-		case l == co:
-			l.PushString("running")
-		case co.Status() == lua.ThreadYield:
-			l.PushString("suspended")
-		case co.Status() == lua.ThreadError:
-			l.PushString("dead")
-		default:
-			if _, ok := co.Frame(0); ok { // it has frames: it resumed another
-				l.PushString("normal")
-			} else if co.Top() == 0 {
-				l.PushString("dead")
-			} else {
-				l.PushString("suspended") // not started
-			}
-		}
+		l.PushString(coroutineStatus(l, toCoroutine(l)))
 		return 1
 	}},
 	{Name: "wrap", Function: func(l *lua.State) int {

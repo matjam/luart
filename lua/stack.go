@@ -380,7 +380,7 @@ func (l *State) postCall(firstResult int) bool {
 // results are on the stack, starting at the original function position.
 func (l *State) call(function int, resultCount int, allowYield bool) {
 	if l.nestedGoCallCount++; l.nestedGoCallCount == maxCallCount {
-		l.runtimeError("Go stack overflow")
+		l.runtimeError("C stack overflow") // as C Lua says, which scripts match
 	} else if l.nestedGoCallCount >= maxCallCount+maxCallCount>>3 {
 		l.throw(ErrErrorHandler) // error while handling stack error
 	}

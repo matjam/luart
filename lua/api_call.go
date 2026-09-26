@@ -215,10 +215,14 @@ func (l *State) protectedCall(f func(), oldTop, errorFunc int) error {
 	callInfo, allowHook, nonYieldableCallCount, errorFunction := l.callInfo, l.allowHook, l.nonYieldableCallCount, l.errorFunction
 	l.errorFunction = errorFunc
 	err := l.protect(f)
+	if err == errClosed { // the coroutine closed itself: on to its Resume
+		l.throw(err)
+	}
 	if err != nil {
-		l.close(oldTop)
-		l.setErrorObject(err, oldTop)
 		l.callInfo, l.allowHook, l.nonYieldableCallCount = callInfo, allowHook, nonYieldableCallCount
+		var errObj value
+		err, errObj = l.closeProtected(oldTop, err)
+		l.stack[oldTop], l.top = errObj, oldTop+1
 		l.shrinkStack()
 	}
 	l.errorFunction = errorFunction

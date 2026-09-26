@@ -37,6 +37,10 @@ type State struct {
 	hookCount             int
 	hooker                Hook
 	upValues              *upValue // open upvalues, sorted by stack index, highest first
+	tbc                   []int    // to-be-closed variables' stack indices, ascending
+	deathError            error    // the error that killed a dead coroutine, for CloseThread
+	deathValue            value    // its value
+	closedError           error    // the error a coroutine that closed itself returns
 	errorFunction         int      // current error handling function (stack index)
 	baseCallInfo          callInfo // callInfo for first level (go calling lua)
 	protectFunction       func()

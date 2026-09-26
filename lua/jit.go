@@ -324,6 +324,17 @@ func isConsumed(code []bytecode.Instruction, ip int) bool {
 
 // isExtraArg reports whether code[ip] is the extra-argument word of the
 // instruction before it rather than an instruction.
+// hasTBC reports whether p declares to-be-closed variables, which a
+// generic for does.
+func hasTBC(p *prototype) bool {
+	for _, i := range p.Code {
+		if i.OpCode() == bytecode.OpTBC {
+			return true
+		}
+	}
+	return false
+}
+
 func isExtraArg(code []bytecode.Instruction, ip int) bool {
 	if ip == 0 {
 		return false
@@ -454,7 +465,7 @@ func (l *State) callJIT() bool {
 // l.top, which compiled code does not track.
 func (l *State) jitReturnToGo(ci *callInfo, p *prototype, i bytecode.Instruction) bool {
 	a, b := i.A(), i.B()
-	if b == 0 {
+	if b == 0 || l.hasTBC(ci.base()) {
 		return false
 	}
 	l.top = ci.stackIndex(a + b - 1)
@@ -694,7 +705,7 @@ func (l *State) jitCallNumber(ci *callInfo, i bytecode.Instruction, ip pc) {
 // when the interpreter must return.
 func (l *State) jitReturn(ci *callInfo, i bytecode.Instruction) bool {
 	a, b, wanted := i.A(), i.B(), ci.resultCount
-	if b == 0 || wanted < 0 || !ci.isCallStatus(callStatusReentry) {
+	if b == 0 || wanted < 0 || !ci.isCallStatus(callStatusReentry) || l.hasTBC(ci.base()) {
 		return false
 	}
 	if len(ci.closure.prototype.Prototypes) > 0 {
