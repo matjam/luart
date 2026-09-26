@@ -955,11 +955,15 @@ func (c *arm64Compiler) instruction(ip int) int {
 		a.Str(ZR, r.base, r.off+offN)
 	case bytecode.OpLength:
 		c.length(ip, orig)
-	case bytecode.OpLoadConstantEx, bytecode.OpSetList:
-		c.exitAlways(ip)
-		if op == bytecode.OpLoadConstantEx || orig.C() == 0 {
+	case bytecode.OpSetList:
+		if orig.C() == 0 {
+			c.exitAlways(ip)
 			return 1 // the extra-argument word is not an instruction
 		}
+		c.setList(ip, orig)
+	case bytecode.OpLoadConstantEx:
+		c.exitAlways(ip)
+		return 1 // the extra-argument word is not an instruction
 	default:
 		c.exitAlways(ip)
 	}

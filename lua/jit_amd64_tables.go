@@ -362,9 +362,11 @@ func (c *amd64Compiler) upTableOf(n, ip int) {
 	c.tableOf(operand{rAddr, 0}, ip)
 }
 
-// getIndex compiles GETTABLE, or GETTABUP when up is set, for an array
-// element; other keys exit.
+// getIndex compiles GETTABLE, or GETTABUP when up is set, for an integer
+// key: an array element, or nil past the array of a table without a hash
+// part or a metatable. Other keys exit.
 func (c *amd64Compiler) getIndex(ip int, i bytecode.Instruction, up bool) {
+	a := &c.a
 	if up {
 		c.upTableOf(i.B(), ip)
 	} else {
@@ -374,9 +376,27 @@ func (c *amd64Compiler) getIndex(ip int, i bytecode.Instruction, up bool) {
 		c.exitAlways(ip)
 		return
 	}
-	c.element(rT, offTArray, rIdx, rSlot, ip)
+	outside, done := a.NewLabel(), a.NewLabel()
+	a.Load(rLen, rT, offTArray+offSliceLen)
+	a.Cmp(rIdx, rLen)
+	a.J(AE, outside) // unsigned: keys below 1 too
+	a.Load(rLen, rT, offTArray)
+	a.Mov(rSlot, rIdx)
+	a.Shl(rSlot, 4)
+	a.Add(rSlot, rLen)
 	c.load(operand{rSlot, 0})
 	c.absentIsNil(ip)
+	a.Jmp(done)
+	a.Bind(outside)
+	a.Load(rTmp, rT, offTHash)
+	a.Test(rTmp, rTmp)
+	a.J(NE, c.exit(ip)) // the key may be there
+	a.Load(rTmp, rT, offTMeta)
+	a.Test(rTmp, rTmp)
+	a.J(NE, c.exit(ip))
+	a.MovImm(rP, 0)
+	a.MovImm(rN, 0)
+	a.Bind(done)
 	dst := reg(i.A())
 	c.guardStore(dst, rP, ip)
 	c.store(dst)
@@ -411,6 +431,31 @@ func (c *amd64Compiler) setIndex(ip int, i bytecode.Instruction, up bool) {
 	c.guardStore(slot, rP, ip)
 	c.store(slot)
 	a.StoreZero8(rT, offTFlags) // invalidateTagMethodCache
+}
+
+// setList compiles SETLIST of a fixed count of values, as a constructor
+// such as {a, b, c} ends, into the array part NEWTABLE sized for them. It
+// exits when the array is too short, for jitStep to extend it, and while
+// the write barrier is on.
+func (c *amd64Compiler) setList(ip int, i bytecode.Instruction) {
+	a := &c.a
+	n, start := i.B(), (i.C()-1)*bytecode.ListItemsPerFlush
+	if n == 0 || start+n > maxSetList { // values up to the stack top, which compiled code does not track
+		c.exitAlways(ip)
+		return
+	}
+	exit := c.exit(ip)
+	c.tableOf(reg(i.A()), ip)
+	a.CmpMem(rCtx, offBarrier, 0)
+	a.J(NE, exit)
+	a.Load(rLen, rT, offTArray+offSliceLen)
+	a.CmpImm(rLen, int32(start+n))
+	a.J(L, exit)
+	a.Load(rSlot, rT, offTArray)
+	for k := range n {
+		c.load(reg(i.A() + 1 + k))
+		c.store(operand{rSlot, uint32(start+k) * valueSize})
+	}
 }
 
 // intrinsic is a unary number function compiled inline: emit computes
