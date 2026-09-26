@@ -30,10 +30,7 @@ today, the rules it depends on, and where performance work should go next.
   `lua-5.5-tests/`, run by
   `TestLua55` (lua/lua55_test.go). Its pending list says what each file
   still needs; `APOGEE_SUITE_PROGRESS=1` runs pending files and logs where
-  they stop. Take a file off the list once it passes. The Lua 5.2 suite
-  (the `lua-tests` submodule, `TestLua`) still runs the files whose
-  semantics 5.5 kept; retire one, with a comment, when it tests 5.2
-  behaviour 5.5 changed. C Lua 5.5 (`brew install lua`) is the reference
+  they stop. Take a file off the list once it passes. C Lua 5.5 (`brew install lua`) is the reference
   for any behaviour the suite does not pin down: diff a script's output
   against it.
 - Benchmarks: always pass `-ldflags=-funcalign=64`. Without it, unrelated
@@ -55,7 +52,7 @@ today, the rules it depends on, and where performance work should go next.
   fields, and the JIT hard-codes their layout. File names elsewhere in
   this document are in `lua/` unless a path says otherwise. Its tests
   open `fixtures/` and `libs/` (which the Lua suite's attrib.lua uses)
-  relative to `lua/`, and the suite as `../lua-tests`.
+  relative to `lua/`, and the suite as `../lua-5.5-tests`.
 - `internal/bytecode` is the instruction format, the opcodes, the limits
   the compiler and VM share, `Number` and its arithmetic (`Arith`, so
   constant folding and the VM compute alike), numeral parsing

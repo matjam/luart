@@ -4,10 +4,18 @@
 # apogee
 
 Apogee is a Lua 5.5 VM in pure Go, built for real-time use such as
-per-frame scripts in games, visualisers and audio tools. It is a fork of
-[Shopify/go-lua](https://github.com/Shopify/go-lua). The name is the
+per-frame scripts in games, visualisers and audio tools. The name is the
 Moon's highest point: Lua is Portuguese for moon. It was called luart
 until September 2026.
+
+It began as a fork of [Shopify/go-lua](https://github.com/Shopify/go-lua),
+a Lua 5.2 interpreter, and keeps its history, but little of the original
+remains: apogee speaks Lua 5.5 rather than 5.2, with integers, `<close>`,
+`global` and the 5.5 library; it compiles hot functions to arm64 and
+amd64 machine code; its tables, values, calls and collector (weak tables
+and finalizers over Go's) are redesigned for speed and for no allocation
+per number or call; binary chunks are its own format; and its Go API
+follows Lua 5.5's C API, with generics.
 
 ## Why
 
@@ -51,8 +59,7 @@ JIT compiler. Quite far, it turns out.
 - The official Lua 5.5 suite runs from `lua-5.5-tests/`, unmodified, and
   every file that does not need C Lua's internal test library passes,
   but for `calls.lua`, which checks C Lua's binary chunk header byte for
-  byte ([lua/lua55_test.go](lua/lua55_test.go)). The files of the Lua
-  5.2 suite whose behaviour 5.5 kept still pass.
+  byte ([lua/lua55_test.go](lua/lua55_test.go)).
 - With the JIT it is faster than C Lua 5.4 on the standard benchmarks; see
   [Performance](#performance).
 
@@ -296,7 +303,6 @@ only interprets; see [JIT](#jit).
 ## Development
 
 ```sh
-git submodule update --init   # lua-tests, the Lua 5.2 suite
 go test ./...
 cd bench && go test -bench . -benchmem
 ```

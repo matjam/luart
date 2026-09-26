@@ -2,7 +2,6 @@ package lua
 
 import (
 	"fmt"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -51,86 +50,6 @@ func TestProtectedCall(t *testing.T) {
 	}, MaskCount, 1)
 	l.LoadString("assert(not pcall(string.rep, {}))")
 	l.Call(0, 0)
-}
-
-func TestLua(t *testing.T) {
-	tests := []struct {
-		name    string
-		nonPort bool
-		wrapped bool // runs in a coroutine, yielding 'b' and returning 'a', as all.lua runs it
-		goAsC   bool // expects Go functions to be called C, as APOGEE_GO_AS_C=1 does
-	}{
-		{name: "attrib", nonPort: true},
-		// {name: "big", wrapped: true}, // retired: expects 5.2's names for metamethods ('__newindex'); lua-5.5-tests has its 5.5 version
-		// {name: "bitwise"}, // retired: uses bit32; lua-5.5-tests has its 5.5 version
-		{name: "calls"},
-		// {name: "checktable"}, // needs the C test library (T)
-		// {name: "closure"}, // retired: assigns to for-loop control variables, read-only since 5.5; lua-5.5-tests has its 5.5 version
-		// {name: "code"}, // needs the C test library (T)
-		{name: "constructs"},
-		// {name: "db", goAsC: true}, // retired: traces 5.2 for-loop lines; lua-5.5-tests has its 5.5 version
-		// {name: "errors"}, // retired: expects 5.2's error messages; lua-5.5-tests has its 5.5 version
-		// {name: "events"}, // retired: expects __tostring to return a non-string; lua-5.5-tests has its 5.5 version
-		// {name: "files"}, // retired: load(io.lines(...)) gets io.lines' 5.4 closing value as its environment; lua-5.5-tests has its 5.5 version
-		// {name: "gc"}, // retired: expects collectgarbage("count") to return two results; lua-5.5-tests has its 5.5 version
-		// {name: "coroutine"}, // retired: expects 5.2's __le from __lt; lua-5.5-tests has its 5.5 version
-		// {name: "goto"}, // retired: expects 5.2's goto error messages; lua-5.5-tests has its 5.5 version
-		// {name: "literals"}, // retired: expects 5.2's shorter escape errors; lua-5.5-tests has its 5.5 version
-		{name: "locals"},
-		// {name: "main"}, // tests the lua executable
-		// {name: "math"}, // retired: expects 5.2 numbers: no integers; lua-5.5-tests has its 5.5 version
-		// {name: "nextvar"}, // retired: uses math.pow; lua-5.5-tests has its 5.5 version
-		{name: "pm"},
-		{name: "sort", nonPort: true}, // sort.lua depends on os.clock(), which is not yet implemented on Windows.
-		// {name: "strings"}, // retired: formats 5.2 numbers; lua-5.5-tests has its 5.5 version
-		{name: "vararg"},
-		{name: "verybig"},
-	}
-	for _, v := range tests {
-		if v.nonPort && runtime.GOOS == "windows" {
-			t.Skipf("'%s' skipped because it's non-portable & we're running Windows", v.name)
-		}
-		t.Log(v)
-		l := NewState()
-		if v.goAsC {
-			l.global.goName = "C"
-		}
-		openLibraries(l)
-		// _noposix skips files.lua's checks of popen and os.execute, whose
-		// results depend on the host's /bin/sh and its lua binary.
-		for _, s := range []string{"_port", "_no32", "_noformatA", "_noposix"} {
-			l.PushBoolean(true)
-			l.SetGlobal(s)
-		}
-		if v.nonPort {
-			l.PushBoolean(false)
-			l.SetGlobal("_port")
-		}
-		// l.SetDebugHook(func(state *State, ar Debug) {
-		// 	ci := state.callInfo.(*luaCallInfo)
-		// 	p := state.prototype(ci)
-		// 	println(stack(state.stack[ci.base():state.top]))
-		// 	println(ci.code[ci.savedPC].String(), p.source, p.lineInfo[ci.savedPC])
-		// }, MaskCount, 1)
-		l.Global("debug")
-		l.Field(-1, "traceback")
-		traceback := l.Top()
-		// t.Logf("%#v", l.ToValue(traceback))
-		path := filepath.Join("../lua-tests", v.name+".lua")
-		var err error
-		if v.wrapped {
-			err = l.LoadString(fmt.Sprintf("local f = coroutine.wrap(assert(loadfile(%q))); assert(f() == 'b'); assert(f() == 'a')", path))
-		} else {
-			err = l.LoadFile(path, "text")
-		}
-		if err != nil {
-			t.Errorf("'%s' failed: %s", v.name, err.Error())
-		}
-		// l.Call(0, 0)
-		if err := l.ProtectedCall(0, 0, traceback); err != nil {
-			t.Errorf("'%s' failed: %s", v.name, err.Error())
-		}
-	}
 }
 
 func benchmarkSort(b *testing.B, program string) {
