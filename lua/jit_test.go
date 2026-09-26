@@ -762,6 +762,126 @@ func TestJITKernels(t *testing.T) {
 	}
 }
 
+// Kernels that call intrinsics and read and write buffers agree with the
+// interpreter, including where they leave the kernel mid-loop, and run.
+func TestJITKernelCallsAndBuffers(t *testing.T) {
+	skipWithoutJIT(t)
+	setup := func(l *State) {
+		l.PushBuffer(make([]float64, 100))
+		l.SetGlobal("f64")
+		l.PushBuffer(make([]float32, 100))
+		l.SetGlobal("f32")
+		l.PushBuffer(make([]int32, 100))
+		l.SetGlobal("i32")
+		l.PushBuffer(make([]uint8, 100))
+		l.SetGlobal("u8")
+	}
+	tests := []struct{ name, runs, src string }{
+		{"sin", "int", `local sin = math.sin
+			function run() local s = 0.0; for i = 1, 1000 do s = s + sin(i * 0.01) end; return s end`},
+		// sqrt's argument register holds an integer, and later cos's result.
+		{"sqrt and cos", "int", `local sqrt, cos = math.sqrt, math.cos
+			function run() local s = 0.0; for i = 1, 1000 do s = s + sqrt(i) * cos(i / 7) end; return s end`},
+		{"float loop", "float", `local sin = math.sin
+			function run() local s = 0.0; for x = 0.5, 100.5 do s = s + sin(x) end; return s end`},
+		{"integer argument", "int", `local sqrt = math.sqrt
+			function run() local s = 0.0; for i = 1, 100 do s = s + sqrt(i) end; return s end`},
+		{"arguments sin leaves to Go", "int", `local sin = math.sin
+			function run() local s = 0.0; for i = 1, 100 do s = s + sin(i * 1e9) end; return s end`},
+		{"cos of huge numbers and infinity", "int", `local cos = math.cos
+			function run() local s = 0.0; for i = 1, 20 do s = s + cos(i * 1e307) end; return s end`},
+		{"buffers", "int", `
+			function run()
+			  local f64, f32, i32, u8 = f64, f32, i32, u8
+			  for i = 0, 99 do f64[i] = i * 0.5; f32[i] = i / 3; i32[i] = i * 1000; u8[i] = i * 3 end
+			  local s = 0.0
+			  for i = 0, 99 do s = s + f64[i] + f32[i] * 2 end
+			  return s, f32[7], i32[99], u8[99], f64[3]
+			end`},
+		{"constant keys and values", "int", `
+			function run()
+			  local f64, i32 = f64, i32
+			  for i = 1, 10 do f64[3] = i; f64[i] = 2.5; i32[4] = 7; i32[i] = -3 end
+			  return f64[3], f64[10], i32[4], i32[10]
+			end`},
+		{"keys outside leave the kernel", "int", `
+			function run()
+			  local f64 = f64
+			  local ok, e = pcall(function() for i = 90, 110 do f64[i] = i end end)
+			  local s = 0.0
+			  for i = 95, 105 do if i < 100 then s = s + f64[i] end end
+			  return ok, e, s, f64[99]
+			end`},
+		{"locals written after a side exit keep the last iteration's values", "int", `
+			local get
+			local function fill(buf)
+			  local x, y = 0, 0.5
+			  get = function() return x, y end
+			  for i = 90, 110 do buf[i] = i; x = i; y = y * 2.0 end
+			end
+			function run()
+			  local ok = pcall(fill, f64)
+			  return ok, get()
+			end`},
+		{"float into an integer buffer", "int", `
+			function run()
+			  local i32 = i32
+			  for i = 0, 9 do i32[i] = i * 2.0 end
+			  local ok, e = pcall(function() for i = 0, 9 do i32[i] = i + 0.5 end end)
+			  return i32[9], ok, e
+			end`},
+		{"plasma into a buffer", "int", `local sin = math.sin
+			function run()
+			  local f64 = f64
+			  for y = 0, 9 do for x = 0, 9 do f64[y * 10 + x] = sin(x * 0.1 + 1) + sin(y * 0.07 + 1) + sin((x + y) * 0.05 + 1) end end
+			  return f64[0], f64[37], f64[99] -- only the inner loop can be a kernel
+			end`},
+		{"plasma at a time", "int", `local sin = math.sin
+			local function frame(t)
+			  local canvas = f64
+			  for y = 0, 9 do for x = 0, 9 do canvas[y * 10 + x] = sin(x*0.1+t) + sin(y*0.07+t) + sin((x+y)*0.05+t) end end
+			end
+			function run() frame(0.5); return f64[0], f64[37], f64[99] end`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runtime.GC()
+			defer debug.SetGCPercent(debug.SetGCPercent(-1)) // kernels run while the barrier is off
+			jit, interp, lj := runBothWith(t, tt.src, setup)
+			if jit != interp {
+				t.Fatalf("JIT %q, interpreter %q", jit, interp)
+			}
+			floats, ints := lj.jitCtx.kernels[0] > 0, lj.jitCtx.kernels[1] > 0
+			want := tt.runs
+			if !trigInline && (strings.Contains(tt.src, "sin") || strings.Contains(tt.src, "cos")) {
+				want = "none" // Go computes them, so they are not intrinsics
+			}
+			if floats != (want == "float" || want == "both") || ints != (want == "int" || want == "both") {
+				t.Fatalf("float kernels ran: %v, integer kernels ran: %v; want %q", floats, ints, want)
+			}
+		})
+	}
+}
+
+// An intrinsic call's kernel checks the upvalue still holds the intrinsic
+// it compiled for; one that no longer does runs the ordinary code.
+func TestJITKernelIntrinsicChanged(t *testing.T) {
+	skipWithoutJIT(t)
+	jit, interp, _ := runBoth(t, `
+		local f = math.sin
+		local function sum() local s = 0.0; for i = 1, 200 do s = s + f(i * 0.01) end; return s end
+		function run()
+		  local a = sum()
+		  f = math.cos
+		  local b = sum()
+		  f = function(x) return x * 2 end
+		  return a, b, sum()
+		end`)
+	if jit != interp {
+		t.Fatalf("JIT %q, interpreter %q", jit, interp)
+	}
+}
+
 // A loop longer than the budget returns to Go on the way.
 func TestJITBudget(t *testing.T) {
 	skipWithoutJIT(t)

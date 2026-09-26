@@ -20,6 +20,9 @@ func (c *amd64Compiler) trigIntrinsics() []intrinsic {
 	}
 }
 
+// trigInline reports whether compiled code computes sin and cos itself.
+const trigInline = true
+
 // rTrig holds &trigTable while sin or cos runs.
 const rTrig = rT2
 
@@ -27,10 +30,11 @@ const rTrig = rT2
 // current instruction for arguments of 2^29 and more, which Go reduces
 // with trigReduce, infinities and, for cos, NaN. Each operation is Go's,
 // in Go's order; multiplying by a constant from memory rather than from
-// a register rounds the same.
+// a register rounds the same. It uses X0 to X5, which kernels leave free,
+// and rTmp, rN, rTrig and rIdx, which a kernel saves around it.
 func (c *amd64Compiler) trig(cos bool) {
 	a := &c.a
-	exit := c.exit(c.ip)
+	exit := c.intrinsicExit()
 	done := a.NewLabel()
 	a.MovImm(rTrig, trigTableAddr())
 	a.Ucomisd(0, 0)
@@ -38,8 +42,8 @@ func (c *amd64Compiler) trig(cos bool) {
 		a.J(P, exit)
 	} else {
 		a.J(P, done) // sin(NaN) is its argument
-		a.XorPD(7, 7)
-		a.Ucomisd(0, 7)
+		a.XorPD(1, 1)
+		a.Ucomisd(0, 1)
 		a.J(E, done) // and so is sin(±0)
 		a.MovqFromX(rN, 0)
 	}
@@ -53,7 +57,7 @@ func (c *amd64Compiler) trig(cos bool) {
 	a.MovSD(2, 1)
 	a.MulSDMem(2, rTrig, offTrigFour)
 	a.Cvttsd2si(rIdx, 2)
-	a.Cvtsi2sd(2, rIdx)
+	c.toFloat(2, rIdx)
 	even := a.NewLabel()
 	a.Bt(rIdx, 0)
 	a.J(AE, even)

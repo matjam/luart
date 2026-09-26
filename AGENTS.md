@@ -407,13 +407,39 @@ nothing compiles.
   number constants, arithmetic (`%` and `//` by a nonzero integer
   constant) and number comparisons keeps every Lua register it uses in a
   machine register for the whole loop (`emitKernel`): integers in
-  general-purpose registers, floats in FP registers. `planKernel` gives
-  each register one type, from the loop's kind and the body; one nothing
-  decides (it only meets itself and integers) is an integer. A loop gets
-  an integer and a float kernel where both type; each checks its live-in
+  general-purpose registers, floats in FP registers. A loop gets an
+  integer and a float kernel where both type; each checks its live-in
   types on entry and falls through to the next, then to ordinary code,
-  which comes back to the check every iteration. `jitContext.kernels`
-  counts entries by kind, for `TestJITKernels`.
+  which comes back to the check every iteration, so a kernel whose check
+  keeps failing slows the ordinary loop. `jitContext.kernels` counts
+  entries by kind, for `TestJITKernels`.
+  - **Types per pc.** `planKernel` types each register before each body
+    pc (`at`), because Lua reuses a temporary for an integer and then a
+    float; a register gets a machine register for each type it takes
+    (`slots`). A live-in register the body writes starts with the type it
+    ends with; one nothing decides takes `guess`'s type, a float only
+    when it meets floats more than integers (a time parameter), since a
+    wrong guess costs the kernel.
+  - **Intrinsic calls.** `GETUPVAL f; …arithmetic…; CALL f 2 2`, where
+    the closure being compiled holds `math.sqrt`, `sin` or `cos` in that
+    upvalue, compiles inline; the entry check confirms the upvalue still
+    holds it. The kernel saves the integer registers trig uses around it
+    (`intrinsicSaved`, spilled to `jitContext.spill`).
+  - **Buffers.** `GETTABLE`/`SETTABLE` on a register the body never
+    writes, with an integer key, reads or writes a buffer's element; the
+    entry check confirms a buffer (of floats, if read). A register the
+    function puts a new table in is never taken for one.
+  - **Side exits.** A key out of range, a float for an integer buffer or
+    an argument trig leaves to Go leaves the kernel mid-body
+    (`kernelSideExit`): it writes back the registers defined at that pc
+    and jumps to the ordinary code for the instruction. Locals of the
+    enclosing function the body writes are live-in when a kernel can side
+    exit, so they hold the last iteration's values there: an error may
+    close upvalues over them.
+  - **Integer to float on amd64** goes through `toFloat`, which zeroes the
+    destination first: CVTSI2SD keeps the rest of the register, so waits
+    for its last writer, and in plasma that chained each sin to the one
+    before, taking the kernel from 510 µs to 611 rather than 249.
 
 ### Rules compiled code depends on
 
@@ -667,13 +693,11 @@ In order of expected payoff for real-time scripts such as visualisers:
    replacement the interpreter does, and a CALL of `setmetatable` as an
    intrinsic, would remove most of the TAILCALL exits; allocating tables
    and closures from compiled code would remove the rest.
-2. **Kernels with calls.** Let a kernel call an intrinsic, guarding the
-   callee once at loop entry (nothing in a kernel can change the upvalue
-   or global it comes from), and call a Go or number function by writing
-   the kernel's registers back, exiting, and re-entering after the call.
-   Plasma's inner loop would then keep its numbers in registers apart
-   from the call to `set`; its body without `set` measured 23 ns a pixel
-   as ordinary code and 1.4 ns as a kernel without `sin`.
+2. **More in kernels.** Kernels call intrinsics and index buffers; a Go
+   or number function could be called by writing the kernel's registers
+   back, exiting, and re-entering after the call, and table arrays read
+   with a type check per element (array-fill-sum is 1.6× C Lua) and an
+   adaptive switch-off when that check keeps failing.
 3. **Registers across ordinary code.** Keep numbers in FP registers
    across straight-line code between exits, not only in kernels, with
    type checks at the first use. This is the lever for fib, records and

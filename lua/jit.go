@@ -52,6 +52,7 @@ type jitContext struct {
 	callee    unsafe.Pointer // the *goFunction or *goClosure a jitExitCallGo calls
 	tbc       uintptr        // the innermost to-be-closed variable's address, or 0
 	kernels   [2]uint64      // float and integer kernels entered, for tests
+	spill     [4]uint64      // kernel registers an intrinsic's code needs, saved around it
 }
 
 // A jitExitCallGo exit leaves only the callee's object in the context, and
@@ -158,7 +159,7 @@ func (p *prototype) patchJITCounters() {
 func (l *State) jitInstruction(i bytecode.Instruction, ip pc) (bytecode.Instruction, pc) {
 	ci := l.callInfo
 	if i.OpCode() == opJITCount {
-		l.countJIT(ci.closure.prototype)
+		l.countJIT(ci.closure)
 	} else if l.hookMask == 0 {
 		l.runJIT(ci, ip-1, nil)
 		ci = l.callInfo
@@ -175,14 +176,16 @@ func (l *State) jitInstruction(i bytecode.Instruction, ip pc) (bytecode.Instruct
 	return ci.closure.prototype.jitOrig[ip-1], ip
 }
 
-// countJIT counts one call or loop iteration of p and compiles it once it
-// is hot.
-func (l *State) countJIT(p *prototype) {
+// countJIT counts one call or loop iteration of cl's prototype and compiles
+// it once it is hot. The compiler may speculate on what cl's upvalues hold,
+// checking before it relies on it.
+func (l *State) countJIT(cl *luaClosure) {
+	p := cl.prototype
 	if p.hot++; p.hot <= jitThreshold || p.jit != nil {
 		return
 	}
 	copy(p.exec, p.jitOrig) // remove the counters
-	code, offsets, entries, kernels := compileJIT(p, l.global)
+	code, offsets, entries, kernels := compileJIT(p, l.global, cl)
 	if code == nil {
 		return
 	}
