@@ -278,7 +278,7 @@ func (state *loadState) readFunction() (p *bytecode.Proto, err error) {
 	if b, err = state.readByte(); err != nil {
 		return
 	}
-	p.IsVarArg = b != 0
+	p.IsVarArg, p.VarArgKind = b&1 != 0, bytecode.VarArgKind(b>>1)
 	if b, err = state.readByte(); err != nil {
 		return
 	}

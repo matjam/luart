@@ -150,6 +150,16 @@ func (p *parser) suffixedExpression() exprDesc {
 	line := p.lineNumber
 	e := p.primaryExpression()
 	for {
+		if e.varArg && (p.t == '.' || p.t == '[') { // the named vararg table, indexed
+			if p.t == '.' {
+				p.next()
+				e = p.function.IndexVarArg(e, p.checkNameAsExpression())
+			} else {
+				e = p.function.IndexVarArg(e, p.index())
+			}
+			continue
+		}
+		e = p.function.UseVarArg(e)
 		switch p.t {
 		case '.':
 			e = p.fieldSelector(e)
@@ -338,6 +348,7 @@ func (p *parser) index() exprDesc {
 
 func (p *parser) assignment(t *assignmentTarget, variableCount int) {
 	p.function.CheckReadOnly(t.exprDesc) // a compile-time constant is not a variable, but this error
+	p.function.AssignTarget(t.exprDesc)
 	p.checkCondition(t.isVariable(), "syntax error")
 	if p.testNext(',') {
 		e := p.suffixedExpression()
@@ -431,31 +442,15 @@ func (p *parser) forStatement(line int) {
 	p.function.LeaveBlock()
 }
 
+// testThenBlock compiles [IF | ELSEIF] cond THEN block, as Lua 5.5 does:
+// the condition's jump comes before THEN, on the condition's line.
 func (p *parser) testThenBlock(escapes int) int {
-	var jumpFalse int
-	p.next()
-	e := p.expression()
+	p.next() // skip IF or ELSEIF
+	jumpFalse := p.condition()
 	p.checkNext(tkThen)
-	if p.t == tkBreak { // 'if x then break': the test's jump is the break
-		e = p.function.GoIfFalse(e)
-		p.function.EnterBlock(false)
-		p.gotoStatement(e.t)
-		for p.testNext(';') { // only semicolons, as Lua 5.4 does: a label here would mark the skip below
-		}
-		if p.blockFollow(false) {
-			p.function.LeaveBlock()
-			return escapes
-		}
-		jumpFalse = p.function.Jump()
-	} else {
-		e = p.function.GoIfTrue(e)
-		p.function.EnterBlock(false)
-		jumpFalse = e.f
-	}
-	p.statementList()
-	p.function.LeaveBlock()
+	p.block()
 	if p.t == tkElse || p.t == tkElseif {
-		escapes = p.function.Concatenate(escapes, p.function.Jump())
+		escapes = p.function.Concatenate(escapes, p.function.Jump()) // must jump over it
 	}
 	p.function.PatchToHere(jumpFalse)
 	return escapes
@@ -553,6 +548,11 @@ func (p *parser) parameterList() {
 			case tkDots:
 				p.next()
 				isVarArg = true
+				if p.t == tkName { // Lua 5.5: ...t names the vararg table, a read-only local
+					p.function.MakeLocalVariable(p.checkName())
+					p.function.MarkReadOnly()
+					p.function.varArgParam = p.function.activeVariableCount + n // after self and the parameters
+				}
 			default:
 				p.syntaxError("<name> or '...' expected")
 			}
@@ -561,7 +561,10 @@ func (p *parser) parameterList() {
 	// TODO the following lines belong in a *function method
 	p.function.f.IsVarArg = isVarArg
 	p.function.AdjustLocalVariables(n)
-	p.function.f.ParameterCount = p.function.activeVariableCount
+	p.function.f.ParameterCount = p.function.activeVariableCount // self too, for a method
+	if p.function.varArgParam >= 0 {
+		p.function.AdjustLocalVariables(1)
+	}
 	p.function.ReserveRegisters(p.function.activeVariableCount)
 }
 
@@ -581,7 +584,8 @@ func (p *parser) body(isMethod bool, line int) exprDesc {
 }
 
 func (p *parser) functionName() (e exprDesc, isMethod bool) {
-	for e = p.singleVariable(); p.t == '.'; e = p.fieldSelector(e) {
+	// function t.f() assigns into t: the named vararg table then needs a table.
+	for e = p.function.UseVarArg(p.singleVariable()); p.t == '.'; e = p.fieldSelector(e) {
 	}
 	if p.t == ':' {
 		e, isMethod = p.fieldSelector(e), true
@@ -593,6 +597,7 @@ func (p *parser) functionStatement(line int) {
 	p.next()
 	v, m := p.functionName()
 	p.function.CheckReadOnly(v)
+	p.function.AssignTarget(v)
 	p.function.StoreVariable(v, p.body(m, line))
 	p.function.FixLine(line)
 }
@@ -816,7 +821,7 @@ func Parse(r io.ByteReader, name string, depth int) (proto *bytecode.Proto, err 
 		}
 	}()
 	p := &parser{r: r, lineNumber: 1, lastLine: 1, lookAheadToken: token{t: tkEOS}, depth: depth, source: name}
-	f := &function{f: &bytecode.Proto{Source: name, MaxStackSize: 2, IsVarArg: true}, constantLookup: make(map[any]int), p: p, jumpPC: noJump}
+	f := &function{f: &bytecode.Proto{Source: name, MaxStackSize: 2, IsVarArg: true}, constantLookup: make(map[any]int), p: p, jumpPC: noJump, varArgParam: -1}
 	p.function = f
 	p.mainFunction()
 	return f.f, nil

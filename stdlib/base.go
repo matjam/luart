@@ -169,7 +169,7 @@ var baseLibrary = []lua.RegistryFunction{
 	{Name: "error", Function: func(l *lua.State) int {
 		level := l.OptInteger(2, 1)
 		l.SetTop(1)
-		if l.IsString(1) && level > 0 {
+		if l.TypeOf(1) == lua.TypeString && level > 0 { // a string, not a number, as luaB_error
 			l.Where(int(level))
 			l.PushValue(1)
 			l.Concat(2)

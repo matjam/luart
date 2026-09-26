@@ -91,6 +91,8 @@ type exprDesc struct {
 	t, f      int // patch lists for 'exit when true/false'
 	value     bytecode.Number
 	readOnly  string // the name of a const global this is, which cannot be assigned
+	varArg    bool   // the function's named vararg table, not yet indexed
+	varArgKey bool   // an index into the named vararg table, t[k] or t.k
 }
 
 type assignmentTarget struct {
@@ -156,18 +158,27 @@ type function struct {
 	globals             []declaration // declarations in scope, globals and local constants
 	readOnlyLocals      map[int]bool  // <const> locals and loop control variables, by debug index
 	readOnlyUpValues    map[int]bool  // upvalues of read-only variables
+	varArgParam         int           // the register of the named vararg table, or -1
+	varArgTable         bool          // the named vararg table is used other than indexed
 }
 
 func (f *function) OpenFunction(line int) {
 	p := &bytecode.Proto{Source: f.p.source, MaxStackSize: 2, LineDefined: line}
 	f.f.Prototypes = append(f.f.Prototypes, p)
-	f.p.function = &function{f: p, constantLookup: make(map[any]int), previous: f, p: f.p, jumpPC: noJump, firstLocal: len(f.p.activeVariables)}
+	f.p.function = &function{f: p, constantLookup: make(map[any]int), previous: f, p: f.p, jumpPC: noJump, firstLocal: len(f.p.activeVariables), varArgParam: -1}
 	f.p.function.EnterBlock(false)
 }
 
 func (f *function) CloseFunction() exprDesc {
 	e := f.previous.ExpressionToNextRegister(makeExpression(kindRelocatable, f.previous.encodeABx(bytecode.OpClosure, 0, len(f.previous.f.Prototypes)-1)))
 	f.ReturnNone()
+	switch {
+	case f.varArgParam < 0:
+	case f.varArgTable:
+		f.f.VarArgKind = bytecode.VarArgTable
+	default:
+		f.f.VarArgKind = bytecode.VarArgView
+	}
 	f.LeaveBlock()
 	f.assert(f.block == nil)
 	f.p.function = f.previous
@@ -1189,6 +1200,13 @@ func singleVariableHelper(f *function, name string, base bool, scope *globalScop
 		if e = makeExpression(kindLocal, v); !base {
 			owningBlock(f.block, v).hasUpValue = true
 		}
+		if v == f.varArgParam {
+			if base {
+				e.varArg = true // a view will do while it is only indexed
+			} else {
+				f.varArgTable = true // captured: a closure needs the table
+			}
+		}
 		if f.readOnlyLocals[f.p.activeVariables[f.firstLocal+v]] {
 			e.readOnly = name
 		}
@@ -1247,6 +1265,9 @@ func (f *function) SingleVariable(name string) exprDesc {
 func (f *function) Global(name string) exprDesc {
 	var scope globalScope
 	env, found := singleVariableHelper(f, "_ENV", true, &scope)
+	if env.varArg { // function f(..._ENV): globals are the table's
+		f.varArgTable, env.varArg = true, false
+	}
 	switch {
 	case !found && scope.found != nil && scope.found.value != nil: // local _ENV <const> = k
 		env = f.ExpressionToAnyRegisterOrUpValue(f.constantExpression("_ENV", scope.found.value))
@@ -1317,6 +1338,32 @@ func (f *function) ToBeClosed(r int) {
 func (f *function) ToBeClosedSwapped(r int) {
 	f.block.hasUpValue, f.block.insideTBC = true, true
 	f.EncodeABC(bytecode.OpTBC, r, 1, 0)
+}
+
+// UseVarArg records a use of e: the named vararg table used as a value
+// needs a real table.
+func (f *function) UseVarArg(e exprDesc) exprDesc {
+	if e.varArg {
+		f.varArgTable, e.varArg = true, false
+	}
+	return e
+}
+
+// IndexVarArg returns t[k] for t the named vararg table, which a view
+// answers while nothing needs the table.
+func (f *function) IndexVarArg(t, k exprDesc) exprDesc {
+	t.varArg = false
+	e := f.Indexed(t, k)
+	e.varArgKey = true
+	return e
+}
+
+// AssignTarget records that v is assigned: into the named vararg table,
+// which needs a real one then.
+func (f *function) AssignTarget(v exprDesc) {
+	if v.varArgKey {
+		f.varArgTable = true
+	}
 }
 
 // MarkReadOnly makes the last local variable made read-only.

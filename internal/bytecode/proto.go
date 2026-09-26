@@ -14,7 +14,18 @@ type Proto struct {
 	LineDefined, LastLineDefined int
 	ParameterCount, MaxStackSize int
 	IsVarArg                     bool
+	VarArgKind                   VarArgKind // Lua 5.5's named vararg table, if any
 }
+
+// A VarArgKind says whether a vararg function names its vararg table
+// (function f(...t)), and whether it needs a real one.
+type VarArgKind byte
+
+const (
+	VarArgNone  VarArgKind = iota // no name: only ... reads the extra arguments
+	VarArgView                    // named, used only as t[k] and t.k: the register holds a view of the extra arguments
+	VarArgTable                   // named and used otherwise: the register holds a table, which ... reads
+)
 
 // A LocalVariable is a local's name and the pcs where it is live.
 type LocalVariable struct {

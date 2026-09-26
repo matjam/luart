@@ -34,7 +34,7 @@ var suite55 = []struct {
 	{name: "constructs"},
 	{name: "coroutine", pending: "coroutine.isyieldable"},
 	{name: "cstack"},
-	{name: "db", pending: "named varargs"},
+	{name: "db", pending: "5.4's function names: hooks, metamethods"},
 	{name: "errors", pending: "error(nil) gives \"<no error object>\" (5.5)"},
 	{name: "events", returns: "12", pending: "__eq from either operand (5.4)"},
 	{name: "files", pending: "os.date and os.time checks; /dev/full, which macOS lacks"},
@@ -43,7 +43,7 @@ var suite55 = []struct {
 	{name: "goto", strip: true},
 	{name: "heavy", skip: "not in all.lua: needs gigabytes of memory"},
 	{name: "literals", pending: "\\u escapes"},
-	{name: "locals", returns: "5", pending: "named varargs"},
+	{name: "locals", returns: "5", pending: "5.4's function names in tracebacks (metamethod 'close')"},
 	{name: "main", skip: "tests the standalone interpreter, lua.c"},
 	{name: "math", pending: "string.pack"},
 	{name: "memerr", skip: "needs C Lua's internal test library (T) to fail allocations"},
@@ -54,7 +54,7 @@ var suite55 = []struct {
 	{name: "tpack", pending: "string.pack"},
 	{name: "tracegc", skip: "a module gc.lua loads"},
 	{name: "utf8", pending: "\\u escapes, utf8 library"},
-	{name: "vararg", pending: "named varargs"},
+	{name: "vararg"},
 	{name: "verybig", returns: "10", strip: true},
 }
 
@@ -93,6 +93,7 @@ func runSuiteFile(t *testing.T, dir, name, returns string, strip, wrapped bool) 
 	}
 	defer os.Chdir(cwd)
 	l := NewState()
+	l.global.goName = "C" // the suite expects C Lua's names, as LUART_GO_AS_C=1 gives
 	openLibraries(l)
 	for _, g := range []string{"_soft", "_port", "_nomsg"} {
 		l.PushBoolean(g != "_soft" || !wrapped)

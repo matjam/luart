@@ -16,7 +16,7 @@ func TestUndumpThenDumpReturnsTheSameFunction(t *testing.T) {
 		t.Fatal(err)
 	}
 	var first bytes.Buffer
-	if err := l.Dump(&first); err != nil {
+	if err := l.Dump(&first, false); err != nil {
 		t.Fatal(err)
 	}
 	binary := filepath.Join(t.TempDir(), "sort.bin")
@@ -35,7 +35,7 @@ func TestUndumpThenDumpReturnsTheSameFunction(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	err = l.Dump(&out)
+	err = l.Dump(&out, false)
 	if err != nil {
 		t.Error("unexpected error", err, "with testing dump")
 	}
@@ -63,7 +63,7 @@ func TestDumpThenUndumpReturnsTheSameFunction(t *testing.T) {
 
 	var out bytes.Buffer
 	f := l.stack[l.top-1].luaClosure()
-	err = l.Dump(&out)
+	err = l.Dump(&out, false)
 	if err != nil {
 		t.Error("unexpected error", err, "with testing dump")
 	}

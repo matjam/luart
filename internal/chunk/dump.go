@@ -9,8 +9,10 @@ import (
 )
 
 // Dump writes p, and the functions nested in it, to w as a binary chunk.
-func Dump(w io.Writer, p *bytecode.Proto) error {
-	d := dumpState{out: w, order: endianness()}
+// With strip set it leaves out the debug information: sources, line
+// numbers, and local and upvalue names.
+func Dump(w io.Writer, p *bytecode.Proto, strip bool) error {
+	d := dumpState{out: w, order: endianness(), strip: strip}
 	d.write(header)
 	d.dumpFunction(p)
 	return d.err
@@ -20,6 +22,7 @@ type dumpState struct {
 	out   io.Writer
 	order binary.ByteOrder
 	err   error
+	strip bool
 }
 
 func (d *dumpState) write(data any) {
@@ -122,6 +125,13 @@ func (d *dumpState) writeLocalVariables(p *bytecode.Proto) {
 }
 
 func (d *dumpState) writeDebug(p *bytecode.Proto) {
+	if d.strip { // an empty source, and no lines, locals or upvalue names
+		d.writeString("")
+		d.writeInt(0)
+		d.writeInt(0)
+		d.writeInt(0)
+		return
+	}
 	d.writeString(p.Source)
 	d.writeInt(len(p.LineInfo))
 	d.write(p.LineInfo)
@@ -134,11 +144,19 @@ func (d *dumpState) writeDebug(p *bytecode.Proto) {
 	}
 }
 
+func varArgByte(p *bytecode.Proto) byte {
+	b := byte(p.VarArgKind) << 1
+	if p.IsVarArg {
+		b |= 1
+	}
+	return b
+}
+
 func (d *dumpState) dumpFunction(p *bytecode.Proto) {
 	d.writeInt(p.LineDefined)
 	d.writeInt(p.LastLineDefined)
 	d.writeByte(byte(p.ParameterCount))
-	d.writeBool(p.IsVarArg)
+	d.writeByte(varArgByte(p)) // bit 0: vararg; above it, the named vararg table's kind
 	d.writeByte(byte(p.MaxStackSize))
 	d.writeCode(p)
 	d.writeConstants(p)

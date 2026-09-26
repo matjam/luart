@@ -20,7 +20,7 @@ func load(l *State, t *testing.T, fileName string) *luaClosure {
 func roundTrip(l *State, t *testing.T) *luaClosure {
 	t.Helper()
 	var b bytes.Buffer
-	if err := l.Dump(&b); err != nil {
+	if err := l.Dump(&b, false); err != nil {
 		t.Fatal(err)
 	}
 	if err := l.Load(&b, "=dumped", "b"); err != nil {
