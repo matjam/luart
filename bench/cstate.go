@@ -1,4 +1,4 @@
-//go:build clua54 || luajit
+//go:build clua55 || clua54 || luajit
 
 package luabench
 

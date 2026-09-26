@@ -1,10 +1,10 @@
 package luabench
 
 // The C Lua interpreters the benchmarks compare with, linked with cgo:
-// Lua 5.4 with the clua54 build tag, or LuaJIT with the luajit tag (see
-// README.md). Both define the Lua C API, so a binary can link one of them.
-// Without either tag there are none, and the benchmarks need no C
-// compiler.
+// Lua 5.5 with the clua55 build tag, Lua 5.4 with clua54, or LuaJIT with
+// the luajit tag (see README.md). All define the Lua C API, so a binary can
+// link one of them. Without a tag there are none, and the benchmarks need
+// no C compiler.
 
 // A cLua is a C Lua interpreter, named as its sub-benchmarks are.
 type cLua struct {

@@ -9,7 +9,7 @@
 //
 // -suite picks the benchmark: "suite", BenchmarkSuite, whose interpreters
 // are compared with native Go, or "standard", BenchmarkStandard, whose are
-// compared with C Lua 5.4. -readme replaces the table between the lines
+// compared with C Lua 5.5, or 5.4 for results without 5.5. -readme replaces the table between the lines
 // <!-- suite-table NAME --> and <!-- /suite-table --> in each file.
 // -summary makes one table of both benchmarks' geometric means from each
 // of several results files, a row per benchmark and machine.
@@ -94,6 +94,23 @@ var allImpls = []impl{
 	{"shopify", "go-lua", 2},
 	{"lua54", "Lua 5.4", 3},
 	{"luajit", "LuaJIT", 4},
+}
+
+// useCLua55 makes C Lua 5.5 the C interpreter, in place of 5.4, for
+// results that have it.
+func useCLua55() {
+	lua55 := impl{"lua55", "Lua 5.5", 3}
+	for i, im := range allImpls {
+		if im.name == "lua54" {
+			allImpls[i] = lua55
+		}
+	}
+	for name, s := range suites {
+		if s.base.name == "lua54" {
+			s.base, s.against = lua55, "C Lua 5.5"
+			suites[name] = s
+		}
+	}
 }
 
 type results struct {
@@ -343,6 +360,14 @@ func main() {
 		}
 		rs = append(rs, r)
 	}
+	for _, r := range rs {
+		for k := range r.ns {
+			if strings.HasSuffix(k, "/lua55") {
+				useCLua55()
+			}
+		}
+	}
+	s = suites[*suiteName]
 	if *sum {
 		var t strings.Builder
 		summary(&t, rs)
