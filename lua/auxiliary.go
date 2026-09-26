@@ -10,18 +10,21 @@ import (
 	"syscall"
 )
 
+// functionName names a traceback's function, as lauxlib.c's pushfuncname
+// does in Lua 5.5: by the calling code ("global 'f'", "method 'm'",
+// "metamethod 'index'"), as the main chunk, by a global name, or by its
+// source.
 func functionName(l *State, d Debug) string {
 	switch {
 	case d.NameKind != "":
-		return fmt.Sprintf("function '%s'", d.Name)
+		return fmt.Sprintf("%s '%s'", d.NameKind, d.Name)
 	case d.What == "main":
 		return "main chunk"
+	case pushGlobalFunctionName(l, Frame{d.callInfo}):
+		s, _ := l.ToString(-1)
+		l.Pop(1)
+		return fmt.Sprintf("function '%s'", s)
 	case d.What == l.global.goName:
-		if pushGlobalFunctionName(l, Frame{d.callInfo}) {
-			s, _ := l.ToString(-1)
-			l.Pop(1)
-			return fmt.Sprintf("function '%s'", s)
-		}
 		return "?"
 	}
 	return fmt.Sprintf("function <%s:%d>", d.ShortSource, d.LineDefined)
@@ -168,16 +171,23 @@ func findField(l *State, objectIndex, level int) bool {
 	return false
 }
 
+// pushGlobalFunctionName pushes the name the function running in f has in
+// package.loaded ("string.rep", or "print" for "_G.print"), and reports
+// whether it has one, as lauxlib.c's pushglobalfuncname does.
 func pushGlobalFunctionName(l *State, f Frame) bool {
 	top := l.Top()
 	l.Info("f", f) // push function
-	l.PushGlobalTable()
+	l.Field(RegistryIndex, "_LOADED")
 	if findField(l, top+1, 2) {
+		if name, _ := l.ToString(-1); strings.HasPrefix(name, "_G.") {
+			l.Pop(1)
+			l.PushString(name[3:])
+		}
 		l.Copy(-1, top+1) // move name to proper place
-		l.Pop(2)          // remove pushed values
+		l.SetTop(top + 1) // remove the loaded table and the name's copy
 		return true
 	}
-	l.SetTop(top) // remove function and global table
+	l.SetTop(top) // remove function and loaded table
 	return false
 }
 

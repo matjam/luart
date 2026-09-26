@@ -88,9 +88,17 @@ func (l *State) GC(what GCOption, data int) int {
 		l.fullCollect()
 		return 1 // a cycle finished
 	case GCCount, GCCountBytes:
-		n, allocated := heapNow()
-		if g.gcStopped { // memory grows until the collector runs again
-			n = g.gcCountBase + allocated - g.gcCountAllocatedBase
+		// As C Lua's count, memory in use grows with allocation, garbage
+		// included, until a collection: from the heap after the last Lua
+		// collection, plus what Go has allocated since. Go's own collector
+		// runs whenever it likes, and counting from the live heap would let
+		// two readings a few statements apart drop. Should Go have freed
+		// most of it since, start again from the heap.
+		heap, allocated := heapNow()
+		n := g.gcCountBase + allocated - g.gcCountAllocatedBase
+		if !g.gcStopped && n > 2*heap+1<<20 {
+			g.gcCountBase, g.gcCountAllocatedBase = heap, allocated
+			n = heap
 		}
 		if what == GCCount {
 			return int(n >> 10)

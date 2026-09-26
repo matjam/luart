@@ -112,6 +112,20 @@ func (l *State) functionInfo(p Debug, f closure) (d Debug) {
 	return
 }
 
+// callerName names the function ci calls, as ldebug.c's funcnamefromcall
+// does: from a hook, a finalizer, or the calling instruction.
+func (l *State) callerName(ci *callInfo) (name, kind string) {
+	switch {
+	case ci.isCallStatus(callStatusHooked):
+		return "?", "hook"
+	case l == l.global.finalizerThread && ci == &l.baseCallInfo:
+		return "__gc", "metamethod"
+	case ci.isLua():
+		return l.functionName(ci)
+	}
+	return "", ""
+}
+
 func (l *State) functionName(ci *callInfo) (name, kind string) {
 	if ci == &l.baseCallInfo {
 		return
@@ -157,7 +171,7 @@ func (l *State) functionName(ci *callInfo) (name, kind string) {
 	default:
 		return
 	}
-	return eventNames[tm], "metamethod"
+	return eventNames[tm][2:], "metamethod" // "index", not "__index", as Lua 5.4 names them
 }
 
 // findLocal is ldebug.c's findlocal: the name and stack index of local n
@@ -215,8 +229,8 @@ func (l *State) findVarArg(ci *callInfo, n int) (string, int) {
 // http://www.lua.org/manual/5.2/manual.html#lua_getlocal
 func (l *State) Local(frame Frame, n int) (string, bool) {
 	if frame.ci == nil {
-		if c := l.stack[l.top-1].luaClosure(); c != nil {
-			return c.prototype.localName(n, 0) // the live variables at the start
+		if c := l.stack[l.top-1].luaClosure(); c != nil && n <= c.prototype.ParameterCount {
+			return c.prototype.localName(n, 0) // parameters only, not the vararg table
 		}
 		return "", false
 	}
@@ -336,15 +350,8 @@ func (l *State) Info(what string, frame Frame) (d Debug, ok bool) {
 		case 't':
 			d.IsTailCall = where != nil && ci.isCallStatus(callStatusTail)
 		case 'n':
-			// calling function is a known Lua function?
-			if where != nil && !ci.isCallStatus(callStatusTail) && where.previous.isLua() {
-				d.Name, d.NameKind = l.functionName(where.previous)
-			} else {
-				d.NameKind = ""
-			}
-			if d.NameKind == "" {
-				d.NameKind = "" // not found
-				d.Name = ""
+			if where != nil && !ci.isCallStatus(callStatusTail) {
+				d.Name, d.NameKind = l.callerName(where.previous)
 			}
 		case 'L':
 			hasL = true

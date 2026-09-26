@@ -61,7 +61,7 @@ func TestLua(t *testing.T) {
 		goAsC   bool // expects Go functions to be called C, as LUART_GO_AS_C=1 does
 	}{
 		{name: "attrib", nonPort: true},
-		{name: "big", wrapped: true},
+		// {name: "big", wrapped: true}, // retired: expects 5.2's names for metamethods ('__newindex'); lua-5.5-tests has its 5.5 version
 		// {name: "bitwise"}, // retired: uses bit32; lua-5.5-tests has its 5.5 version
 		{name: "calls"},
 		// {name: "checktable"}, // needs the C test library (T)

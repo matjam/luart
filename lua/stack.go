@@ -350,7 +350,9 @@ func (l *State) adjustVarArgs(p *prototype, argCount int) int {
 	fixedArgs := l.stack[fixed : fixed+fixedArgCount]
 	copy(l.stack[base:base+fixedArgCount], fixedArgs)
 	clear(fixedArgs)
-	switch p.VarArgKind { // Lua 5.5's named vararg table, after the parameters
+	switch p.VarArgKind { // Lua 5.5's vararg table, after the parameters
+	case bytecode.VarArgNone:
+		l.stack[base+fixedArgCount] = nilValue // "(vararg table)"
 	case bytecode.VarArgView:
 		l.stack[base+fixedArgCount] = varArgView
 	case bytecode.VarArgTable:

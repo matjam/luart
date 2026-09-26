@@ -14,7 +14,7 @@ func TestDebugLocals(t *testing.T) {
 		local function f(a, b, ...)
 			local c = a + b
 			local n1, v1 = debug.getlocal(1, 1)
-			local n3, v3 = debug.getlocal(1, 3)
+			local n3, v3 = debug.getlocal(1, 4) -- after the hidden "(vararg table)", as in 5.5
 			local nv, vv = debug.getlocal(1, -2)
 			local none = debug.getlocal(1, -3)
 			local past = debug.getlocal(1, 50)

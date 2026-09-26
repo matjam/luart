@@ -106,7 +106,8 @@ func TestTraceback(t *testing.T) {
 		t.Fatal("no error")
 	}
 	msg, _ := l.ToString(-1)
-	for _, want := range []string{":2: deep", ":2: in function", ":5: in function", ":7: in main chunk"} {
+	// Named by their callers, as Lua 5.5's tracebacks name functions.
+	for _, want := range []string{":2: deep", ":2: in upvalue 'inner'", ":5: in local 'outer'", ":7: in main chunk"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("traceback missing %q:\n%s", want, msg)
 		}

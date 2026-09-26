@@ -552,6 +552,8 @@ func (p *parser) parameterList() {
 					p.function.MakeLocalVariable(p.checkName())
 					p.function.MarkReadOnly()
 					p.function.varArgParam = p.function.activeVariableCount + n // after self and the parameters
+				} else { // as in 5.5, a hidden local, nil: debug.getlocal numbers the locals after it
+					p.function.MakeLocalVariable("(vararg table)")
 				}
 			default:
 				p.syntaxError("<name> or '...' expected")
@@ -562,8 +564,8 @@ func (p *parser) parameterList() {
 	p.function.f.IsVarArg = isVarArg
 	p.function.AdjustLocalVariables(n)
 	p.function.f.ParameterCount = p.function.activeVariableCount // self too, for a method
-	if p.function.varArgParam >= 0 {
-		p.function.AdjustLocalVariables(1)
+	if isVarArg {
+		p.function.AdjustLocalVariables(1) // the vararg table, named or not
 	}
 	p.function.ReserveRegisters(p.function.activeVariableCount)
 }
