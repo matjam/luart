@@ -590,6 +590,15 @@ func (c *arm64Compiler) backEdge(target int) {
 	c.a.B(c.pcs[target])
 }
 
+// jumpTo jumps to target from ip, spending budget if it is backward.
+func (c *arm64Compiler) jumpTo(ip, target int) {
+	if target <= ip {
+		c.backEdge(target)
+	} else {
+		c.a.B(c.pcs[target])
+	}
+}
+
 // jumpAfter returns the target of the JMP at ip+1 that a test instruction
 // at ip consumes, and false when that JMP closes upvalues.
 func (c *arm64Compiler) jumpAfter(ip int) (int, bool) {
@@ -775,12 +784,16 @@ func (c *arm64Compiler) instruction(ip int) int {
 		a.B(c.pcs[ip+2])
 	case bytecode.OpTest:
 		target, ok := c.jumpAfter(ip)
-		if !ok || target <= ip { // backward tests (repeat-until) spend no budget here
+		if !ok {
 			c.exitAlways(ip)
 			break
 		}
-		// The JMP runs when the value's truth differs from C.
-		jump, skip := c.pcs[target], c.pcs[ip+2]
+		// The JMP runs when the value's truth differs from C. A backward
+		// one, a repeat-until's, spends budget on the way.
+		jump, skip, back := c.pcs[target], c.pcs[ip+2], a.NewLabel()
+		if target <= ip {
+			jump = back
+		}
 		if orig.C() == 0 {
 			c.branchFalsy(reg(orig.A()), jump)
 			a.B(skip)
@@ -788,9 +801,13 @@ func (c *arm64Compiler) instruction(ip int) int {
 			c.branchFalsy(reg(orig.A()), skip)
 			a.B(jump)
 		}
+		if target <= ip {
+			a.Bind(back)
+			c.backEdge(target)
+		}
 	case bytecode.OpTestSet:
 		target, ok := c.jumpAfter(ip)
-		if !ok || target <= ip {
+		if !ok {
 			c.exitAlways(ip)
 			break
 		}
@@ -804,7 +821,7 @@ func (c *arm64Compiler) instruction(ip int) int {
 		}
 		a.Bind(assign)
 		c.copyValue(dst, src, ip)
-		a.B(c.pcs[target])
+		c.jumpTo(ip, target)
 	case bytecode.OpForPrep:
 		// As forPrep runs it: the body next with the control variable set,
 		// or past the FORLOOP when the loop runs no times. An integer loop

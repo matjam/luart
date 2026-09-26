@@ -839,11 +839,15 @@ func (c *amd64Compiler) instruction(ip int) int {
 		}
 	case bytecode.OpTest:
 		target, ok := c.jumpAfter(ip)
-		if !ok || target <= ip {
+		if !ok {
 			c.exitAlways(ip)
 			break
 		}
-		jump, skip := c.pcs[target], c.pcs[ip+2]
+		// A backward JMP, a repeat-until's, spends budget on the way.
+		jump, skip, back := c.pcs[target], c.pcs[ip+2], a.NewLabel()
+		if target <= ip {
+			jump = back
+		}
 		if orig.C() == 0 {
 			c.branchFalsy(reg(orig.A()), jump)
 			a.Jmp(skip)
@@ -851,9 +855,13 @@ func (c *amd64Compiler) instruction(ip int) int {
 			c.branchFalsy(reg(orig.A()), skip)
 			a.Jmp(jump)
 		}
+		if target <= ip {
+			a.Bind(back)
+			c.backEdge(target)
+		}
 	case bytecode.OpTestSet:
 		target, ok := c.jumpAfter(ip)
-		if !ok || target <= ip {
+		if !ok {
 			c.exitAlways(ip)
 			break
 		}
@@ -867,7 +875,7 @@ func (c *amd64Compiler) instruction(ip int) int {
 		}
 		a.Bind(assign)
 		c.copyValue(dst, src, ip)
-		a.Jmp(c.pcs[target])
+		c.jumpTo(ip, target)
 	case bytecode.OpForPrep:
 		// As forPrep runs it: the body next with the control variable set,
 		// or past the FORLOOP when the loop runs no times. An integer loop
