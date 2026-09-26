@@ -244,14 +244,25 @@ func (l *State) ToValue(index int) any {
 // http://www.lua.org/manual/5.5/manual.html#lua_topointer
 func (l *State) ToPointer(index int) uintptr {
 	v := l.indexToValue(index)
+	if s, ok := v.str(); ok && len(s) <= maxShortString {
+		// C Lua keeps one copy of each short string, so equal ones share
+		// an address. These have one too: a hash of their bytes.
+		h := uint64(14695981039346656037) // FNV-1a
+		for i := 0; i < len(s); i++ {
+			h = (h ^ uint64(s[i])) * 1099511628211
+		}
+		return uintptr(h | 1) // never 0, which prints as (null)
+	}
 	switch v.kind() {
 	case vkTable, vkLuaClosure, vkGoClosure, vkGoFunction, vkUserData, vkThread, vkString, vkLightUserData:
-		if v.p != emptyStringPtr() {
-			return uintptr(v.p)
-		}
+		return uintptr(v.p)
 	}
 	return 0
 }
+
+// maxShortString is C Lua's LUAI_MAXSHORTLEN: shorter strings are
+// interned there.
+const maxShortString = 40
 
 // RawEqual verifies that the values at index1 and index2 are primitively
 // equal (that is, without calling their metamethods).

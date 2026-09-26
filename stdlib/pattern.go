@@ -371,7 +371,7 @@ func (ms *matchState) doMatch(s, p int) int {
 func (ms *matchState) pushCapture(i, s, e int) {
 	if i >= ms.level {
 		if i != 0 {
-			ms.errorf("invalid capture index")
+			ms.errorf("invalid capture index %%%d", i+1)
 		}
 		ms.l.PushString(ms.src[s:e])
 		return
@@ -441,33 +441,37 @@ func find(l *lua.State, isFind bool) int {
 	return 1
 }
 
-// gmatch is string.gmatch, after lstrlib.c: its iterator is a Go closure
-// whose upvalues are the subject, the pattern, and the position to go on
-// from.
+// gmatch is string.gmatch(s, pattern [, init]), after lstrlib.c: its
+// iterator is a Go closure whose upvalues are the subject, the pattern,
+// the position to go on from, and the end of the last match, where an
+// empty match does not count (Lua 5.3.3's rule).
 func gmatch(l *lua.State) int {
-	l.CheckString(1)
+	s := l.CheckString(1)
 	l.CheckString(2)
+	init := unpackPosition(l.OptInteger(3, 1), len(s)) - 1
+	if init > len(s) { // after the end
+		init = len(s) + 1
+	}
 	l.SetTop(2)
-	l.PushInteger(0)
-	l.PushGoClosure(gmatchNext, 3)
+	l.PushInteger(init)
+	l.PushInteger(-1) // no last match
+	l.PushGoClosure(gmatchNext, 4)
 	return 1
 }
 
 func gmatchNext(l *lua.State) int {
 	s, _ := l.ToString(lua.UpValueIndex(1))
 	p, _ := l.ToString(lua.UpValueIndex(2))
-	start64, _ := l.ToInteger(lua.UpValueIndex(3))
-	start := int(start64)
+	start, _ := l.ToInteger(lua.UpValueIndex(3))
+	last, _ := l.ToInteger(lua.UpValueIndex(4))
 	ms := newMatchState(l, s, p)
-	for src := start; src <= len(s); src++ {
+	for src := int(start); src <= len(s); src++ {
 		ms.reset()
-		if e := ms.match(src, 0); e != -1 {
-			next := e
-			if e == src { // an empty match: move on at least one byte
-				next++
-			}
-			l.PushInteger(next)
+		if e := ms.match(src, 0); e != -1 && e != int(last) {
+			l.PushInteger(e)
 			l.Replace(lua.UpValueIndex(3))
+			l.PushInteger(e)
+			l.Replace(lua.UpValueIndex(4))
 			return ms.pushCaptures(src, e)
 		}
 	}
@@ -489,16 +493,14 @@ func gsub(l *lua.State) int {
 	}
 	ms := newMatchState(l, src, p)
 	var b strings.Builder
-	s, n := 0, 0
+	s, n, last := 0, 0, -1 // last: the end of the last match, where an empty one does not count
+	changed := false
 	for maxN < 0 || n < maxN {
 		ms.reset()
-		e := ms.match(s, 0)
-		if e != -1 {
+		if e := ms.match(s, 0); e != -1 && e != last {
 			n++
-			ms.addValue(&b, s, e, tr, repl)
-		}
-		if e != -1 && e > s { // a non-empty match: skip it
-			s = e
+			changed = ms.addValue(&b, s, e, tr, repl) || changed
+			s, last = e, e
 		} else if s < len(src) {
 			b.WriteByte(src[s])
 			s++
@@ -509,14 +511,20 @@ func gsub(l *lua.State) int {
 			break
 		}
 	}
-	b.WriteString(src[s:])
-	l.PushString(b.String())
+	if changed {
+		b.WriteString(src[s:])
+		l.PushString(b.String())
+	} else {
+		l.PushValue(1) // the original string, as lstrlib.c returns it
+	}
 	l.PushInteger(n)
 	return 2
 }
 
 // addValue appends the replacement for the match from s to e.
-func (ms *matchState) addValue(b *strings.Builder, s, e int, tr lua.Type, repl string) {
+// It reports whether the text changed: a function or table that gives nil
+// or false keeps the original.
+func (ms *matchState) addValue(b *strings.Builder, s, e int, tr lua.Type, repl string) bool {
 	l := ms.l
 	switch tr {
 	case lua.TypeFunction:
@@ -527,10 +535,12 @@ func (ms *matchState) addValue(b *strings.Builder, s, e int, tr lua.Type, repl s
 		l.Table(3)
 	default:
 		ms.addString(b, s, e, repl)
-		return
+		return true
 	}
+	changed := true
 	if !l.ToBoolean(-1) { // nil or false keeps the original text
 		b.WriteString(ms.src[s:e])
+		changed = false
 	} else if !l.IsString(-1) {
 		ms.errorf("invalid replacement value (a %s)", l.TypeOf(-1).String())
 	} else {
@@ -538,6 +548,7 @@ func (ms *matchState) addValue(b *strings.Builder, s, e int, tr lua.Type, repl s
 		b.WriteString(r)
 	}
 	l.Pop(1)
+	return changed
 }
 
 // addString appends repl with its %0 to %9 replaced by the match and its

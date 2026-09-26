@@ -77,12 +77,14 @@ func TestStringGmatch(t *testing.T) {
 		for _ in string.gmatch("abc", "") do n = n + 1 end
 		assert(n == 4, n)
 
-		-- The iterator's upvalues are the subject, pattern and position, as in C.
+		-- The iterator's upvalues are the subject, pattern, position and
+		-- the end of the last match.
 		local it = string.gmatch("x y", "%a")
 		assert(it() == "x")
 		local name, s = debug.getupvalue(it, 1)
 		assert(name == "" and s == "x y" and select(2, debug.getupvalue(it, 2)) == "%a")
-		assert(select(2, debug.getupvalue(it, 3)) == 1 and debug.getupvalue(it, 4) == nil)
+		assert(select(2, debug.getupvalue(it, 3)) == 1 and select(2, debug.getupvalue(it, 4)) == 1)
+		assert(debug.getupvalue(it, 5) == nil)
 	`)
 }
 

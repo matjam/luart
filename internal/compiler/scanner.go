@@ -3,6 +3,7 @@ package compiler
 import (
 	"bytes"
 	"fmt"
+	"github.com/matjam/luart/internal/luautf8"
 	"io"
 	"math"
 	"slices"
@@ -240,12 +241,14 @@ func (s *scanner) readNumber() token {
 	for {
 		if s.checkNext(expo) {
 			s.checkNext("+-")
-		}
-		if isHexadecimal(s.current) || s.current == '.' {
+		} else if isHexadecimal(s.current) || s.current == '.' {
 			s.saveAndAdvance()
 		} else {
 			break
 		}
+	}
+	if isNameStart(s.current) { // a numeral touching a letter, as 1print: an error, as llex.c
+		s.saveAndAdvance()
 	}
 	n, ok := bytecode.Numeral(s.buffer.String())
 	if !ok {
@@ -258,8 +261,9 @@ var escapes map[rune]rune = map[rune]rune{
 	'a': '\a', 'b': '\b', 'f': '\f', 'n': '\n', 'r': '\r', 't': '\t', 'v': '\v', '\\': '\\', '"': '"', '\'': '\'',
 }
 
+// escapeError raises message near the string read so far, its escape
+// and the character after it, as llex.c's esccheck shows them.
 func (s *scanner) escapeError(c []rune, message string) {
-	s.buffer.Reset()
 	s.save('\\')
 	for _, r := range c {
 		if r == endOfStream {
@@ -288,6 +292,56 @@ func (s *scanner) readHexEscape() (r rune) {
 	return
 }
 
+// readUTF8Escape reads \u{XXX}, a value up to 2^31-1, as llex.c's
+// readutf8esc.
+func (s *scanner) readUTF8Escape() uint32 {
+	seen := []rune{'u'}
+	fail := func(message string) {
+		if s.current != endOfStream {
+			seen = append(seen, s.current)
+		}
+		s.escapeError(seen, message)
+	}
+	hex := func(c rune) (uint32, bool) {
+		switch {
+		case '0' <= c && c <= '9':
+			return uint32(c - '0'), true
+		case 'a' <= c && c <= 'f':
+			return uint32(c-'a') + 10, true
+		case 'A' <= c && c <= 'F':
+			return uint32(c-'A') + 10, true
+		}
+		return 0, false
+	}
+	s.advance() // skip 'u'
+	if s.current != '{' {
+		fail("missing '{' in \\u{xxxx}")
+	}
+	seen = append(seen, '{')
+	s.advance()
+	r, ok := hex(s.current)
+	if !ok {
+		fail("hexadecimal digit expected")
+	}
+	for {
+		seen = append(seen, s.current)
+		s.advance()
+		d, ok := hex(s.current)
+		if !ok {
+			break
+		}
+		if r > luautf8.MaxUTF>>4 {
+			fail("UTF-8 value too large")
+		}
+		r = r<<4 + d
+	}
+	if s.current != '}' {
+		fail("missing '}' in \\u{xxxx}")
+	}
+	s.advance() // skip '}'
+	return r
+}
+
 func (s *scanner) readDecimalEscape() (r rune) {
 	b := [3]rune{}
 	for c, i := s.current, 0; i < len(b) && isDecimal(c); i, c = i+1, s.current {
@@ -295,7 +349,7 @@ func (s *scanner) readDecimalEscape() (r rune) {
 		s.advance()
 	}
 	if r > math.MaxUint8 {
-		s.escapeError(b[:], "decimal escape too large")
+		s.escapeError(append(b[:], s.current), "decimal escape too large")
 	}
 	return
 }
@@ -320,6 +374,10 @@ func (s *scanner) readString() token {
 			case c == endOfStream: // do nothing
 			case c == 'x':
 				s.save(s.readHexEscape())
+			case c == 'u':
+				for _, b := range luautf8.Encode(s.readUTF8Escape()) {
+					s.save(rune(b))
+				}
 			case c == 'z':
 				for s.advance(); isSpace(s.current); {
 					if isNewLine(s.current) {

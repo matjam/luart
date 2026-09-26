@@ -90,9 +90,9 @@ func formatHelper(l *lua.State, fs string, argCount int) string {
 		case 'c':
 			checkFormat(l, spec, formatFlagsC, false)
 			c := byte(l.CheckInteger(arg))
-			fmt.Fprintf(&b, spec, 'x')
-			buf := b.Bytes()
-			buf[len(buf)-1] = c // one byte, whatever its value, as C writes it
+			out := []byte(fmt.Sprintf(spec, 'x')) // padded with spaces, on either side
+			out[bytes.IndexByte(out, 'x')] = c    // one byte, whatever its value, as C writes it
+			b.Write(out)
 		case 'd', 'i', 'u', 'o', 'x', 'X':
 			n := l.CheckInteger(arg)
 			flags := formatFlagsX
@@ -109,12 +109,15 @@ func formatHelper(l *lua.State, fs string, argCount int) string {
 			case 'u':
 				fmt.Fprintf(&b, spec[:len(spec)-1]+"d", uint64(n))
 			default:
+				if n == 0 && (conv == 'x' || conv == 'X') { // C's # adds no 0x to 0
+					spec = strings.Replace(spec, "#", "", 1)
+				}
 				fmt.Fprintf(&b, spec, uint64(n))
 			}
 		case 'a', 'A':
 			checkFormat(l, spec, formatFlagsF, true)
 			b.WriteString(formatHexFloat(spec, l.CheckNumber(arg)))
-		case 'e', 'E', 'f', 'F', 'g', 'G':
+		case 'e', 'E', 'f', 'g', 'G': // not F, which is not in C89, as lstrlib.c
 			n := l.CheckNumber(arg)
 			checkFormat(l, spec, formatFlagsF, true)
 			if math.IsInf(n, 0) || math.IsNaN(n) {
@@ -330,7 +333,7 @@ func formatNonFinite(spec string, n float64) string {
 	case strings.Contains(flags, " "):
 		s = " " + s
 	}
-	if verb := spec[len(spec)-1]; verb == 'E' || verb == 'G' {
+	if verb := spec[len(spec)-1]; verb == 'E' || verb == 'G' || verb == 'A' {
 		s = strings.ToUpper(s)
 	}
 	width := strings.TrimLeft(flags, "-+ #0")

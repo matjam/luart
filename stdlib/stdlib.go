@@ -1,10 +1,10 @@
 // Package stdlib holds Lua's standard libraries for luart: basic, package,
-// coroutine, string, table, math, io, os and debug. They are
+// coroutine, string, utf8, table, math, io, os and debug. They are
 // written against luart's public API only.
 //
 // Open opens them all. A host can instead open some of them with
 // State.Require and OpenBase, OpenPackage, OpenCoroutine, OpenString,
-// OpenTable, OpenMath, OpenIO, OpenOS and OpenDebug. Except for the basic
+// OpenUTF8, OpenTable, OpenMath, OpenIO, OpenOS and OpenDebug. Except for the basic
 // and package libraries, each library provides its functions as fields of
 // a global table or as methods of its objects.
 package stdlib
@@ -22,6 +22,7 @@ func Open(l *lua.State, preloaded ...lua.RegistryFunction) {
 		{Name: "io", Function: OpenIO},
 		{Name: "os", Function: OpenOS},
 		{Name: "string", Function: OpenString},
+		{Name: "utf8", Function: OpenUTF8},
 		{Name: "math", Function: OpenMath},
 		{Name: "debug", Function: OpenDebug},
 	}
