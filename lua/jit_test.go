@@ -169,6 +169,28 @@ func TestJITTablesAndCalls(t *testing.T) {
 		src  string
 	}{
 		{"fields", `function run() local p = {x = 1, y = 2}; local s = 0; for i = 1, 10 do p.x = p.x + i; s = s + p.x * p.y end; return s, p.x end`},
+		{"constructors", `
+			local function f() return 7, 8 end
+			function run()
+			  local s = 0
+			  for i = 1, 20 do
+			    local a, b, c = {i, i + 1, "x"}, {i, x = i, 2 * i}, {f()}
+			    local d = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+			      26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, i}
+			    s = s + a[1] + a[2] + #a[3] + b[2] + b.x + c[1] + c[2] + d[50] + d[53] + #d
+			  end
+			  return s
+			end`},
+		{"integer keys past the array", `
+			function run()
+			  local s, t, h, m = 0, {1}, {1}, setmetatable({1}, {__index = function(_, k) return k * 10 end})
+			  h[10] = 5
+			  for i = 1, 10 do
+			    local a, b, c = t[2], t[0], t[-1]
+			    s = s + (a or 1) + (b or 2) + (c or 3) + (h[10] or 0) + (h[11] or 4) + m[3] + t[1]
+			  end
+			  return s
+			end`},
 		{"field added in loop", `function run() local t = {}; for i = 1, 5 do t.a = i; t.b = (t.b or 0) + t.a end; return t.a, t.b end`},
 		{"field set to nil", `function run() local t = {a = 1}; for i = 1, 3 do t.a = nil; t.a = i end; return t.a end`},
 		{"globals", `g = 0; function run() for i = 1, 10 do g = g + i end; return g end`},

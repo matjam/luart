@@ -200,6 +200,10 @@ func (l *State) countJIT(p *prototype) {
 	}
 }
 
+// maxSetList bounds the elements a compiled SETLIST stores, which it
+// addresses with an immediate offset.
+const maxSetList = 1024
+
 // maxInlineCompare is the longest string compiled == compares itself;
 // it exits for longer ones, which Go compares faster.
 const maxInlineCompare = 32
@@ -264,7 +268,7 @@ func worthEntering(code []bytecode.Instruction, always []bool, ip int) bool {
 			continue
 		}
 		op := code[ip].OpCode()
-		if always[ip] && op != bytecode.OpCall && op != bytecode.OpReturn && !jitSteps(op) {
+		if always[ip] && op != bytecode.OpCall && op != bytecode.OpReturn && !jitSteps(code[ip]) {
 			return false
 		}
 		if run++; run >= jitMinRun || op == bytecode.OpForLoop || op == bytecode.OpJump && code[ip].SBx() < 0 {
@@ -435,7 +439,7 @@ func (l *State) runJIT(ci *callInfo, ip pc, bottom *callInfo) bool {
 			ip = l.jumpFrom(ci, i, ip+1)
 			continue
 		default:
-			if jitSteps(i.OpCode()) {
+			if jitSteps(i) {
 				ci.savedPC = ip + 1
 				l.jitStep(ci, i, ip)
 				ip++
@@ -477,13 +481,16 @@ func (l *State) jitReturnToGo(ci *callInfo, p *prototype, i bytecode.Instruction
 	return true
 }
 
-// jitSteps reports whether runJIT runs op itself when compiled code exits
-// at it, and goes on in compiled code after it.
-func jitSteps(op bytecode.OpCode) bool {
-	switch op {
+// jitSteps reports whether runJIT runs i itself when compiled code exits
+// at it, and goes on in compiled code after it: a SETLIST only of a fixed
+// count of values, without an extra argument.
+func jitSteps(i bytecode.Instruction) bool {
+	switch i.OpCode() {
 	case bytecode.OpJump, bytecode.OpNewTable, bytecode.OpClosure, bytecode.OpLength, bytecode.OpGetTable, bytecode.OpGetTableUp, bytecode.OpSelf, bytecode.OpSetTable, bytecode.OpSetTableUp,
 		opGetField, opGetFieldUp, opSelfField, opSetField, opSetFieldUp:
 		return true
+	case bytecode.OpSetList:
+		return i.B() != 0 && i.C() != 0
 	}
 	return false
 }
@@ -557,6 +564,14 @@ func (l *State) jitStep(ci *callInfo, i bytecode.Instruction, ip pc) {
 		if !setField(t, key, v, &closure.prototype.fields[ip]) {
 			l.setTableAt(t, key, v)
 		}
+	case bytecode.OpSetList: // a fixed count, as jitSteps allows
+		a, n := i.A(), i.B()
+		h := frame[a].table()
+		start := (i.C() - 1) * bytecode.ListItemsPerFlush
+		if last := start + n; last > len(h.array) {
+			h.extendArray(l, last)
+		}
+		copy(h.array[start:start+n], frame[a+1:a+1+n])
 	}
 }
 

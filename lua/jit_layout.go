@@ -24,6 +24,7 @@ const (
 	offTShape    = uint32(unsafe.Offsetof(table{}.shape))
 	offTSlots    = uint32(unsafe.Offsetof(table{}.slots))
 	offTArray    = uint32(unsafe.Offsetof(table{}.array))
+	offTHash     = uint32(unsafe.Offsetof(table{}.hash))
 	offTMeta     = uint32(unsafe.Offsetof(table{}.metaTable))
 	offTFlags    = uint32(unsafe.Offsetof(table{}.flags))
 	offShapeDict = uint32(unsafe.Offsetof(shape{}.dict))

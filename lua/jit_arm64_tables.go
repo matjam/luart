@@ -363,9 +363,26 @@ func (c *arm64Compiler) getIndex(ip int, i bytecode.Instruction, up bool) {
 		c.exitAlways(ip)
 		return
 	}
-	c.element(rT, offTArray, rIdx, rSlot, ip)
+	// An array element, or nil past the array of a table without a hash
+	// part or a metatable.
+	a := &c.a
+	outside, done := a.NewLabel(), a.NewLabel()
+	a.Ldr(rLen, rT, offTArray+offSliceLen)
+	a.Cmp(rIdx, rLen)
+	a.BCond(HS, outside) // unsigned: keys below 1 too
+	a.Ldr(rLen, rT, offTArray)
+	a.AddShifted(rSlot, rLen, rIdx, 4)
 	c.load(operand{rSlot, 0})
 	c.absentIsNil(ip)
+	a.B(done)
+	a.Bind(outside)
+	a.Ldr(rTmp, rT, offTHash)
+	a.Cbnz(rTmp, c.exit(ip)) // the key may be there
+	a.Ldr(rTmp, rT, offTMeta)
+	a.Cbnz(rTmp, c.exit(ip))
+	a.Mov(rP, ZR)
+	a.Mov(rN, ZR)
+	a.Bind(done)
 	dst := reg(i.A())
 	c.guardStore(dst, rP, ip)
 	c.store(dst)
@@ -447,6 +464,30 @@ func (c *arm64Compiler) goCallee(ip int, i bytecode.Instruction) {
 	c.branchNumber(rT, notGo) // a number whose bits match the tag
 	a.B(c.goCallExit(ip))
 	a.Bind(notGo)
+}
+
+// setList compiles SETLIST of a fixed count of values, as a constructor
+// such as {a, b, c} ends, into the array part NEWTABLE sized for them. It
+// exits when the array is too short, for jitStep to extend it, and while
+// the write barrier is on.
+func (c *arm64Compiler) setList(ip int, i bytecode.Instruction) {
+	a := &c.a
+	n, start := i.B(), (i.C()-1)*bytecode.ListItemsPerFlush
+	if n == 0 || start+n > maxSetList { // values up to the stack top, which compiled code does not track
+		c.exitAlways(ip)
+		return
+	}
+	exit := c.exit(ip)
+	c.tableOf(reg(i.A()), ip)
+	a.Cbnz(rBarrier, exit)
+	a.Ldr(rLen, rT, offTArray+offSliceLen)
+	a.CmpImm(rLen, uint32(start+n))
+	a.BCond(LT, exit)
+	a.Ldr(rSlot, rT, offTArray)
+	for k := range n {
+		c.load(reg(i.A() + 1 + k))
+		c.store(operand{rSlot, uint32(start+k) * valueSize})
+	}
 }
 
 // intrinsic compiles a unary intrinsic call, branching to notGo when the
