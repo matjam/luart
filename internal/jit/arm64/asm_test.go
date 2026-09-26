@@ -2,6 +2,7 @@ package arm64
 
 import (
 	"encoding/binary"
+	"errors"
 	"testing"
 )
 
@@ -142,6 +143,32 @@ func TestTestBranches(t *testing.T) {
 	a.Ret()
 	a.Tbz(2, 3, l) // tbz w2, #3, 1b
 	check(t, &a, []uint32{0x3600004d, 0xb7f80027, 0xd65f03c0, 0x361fffe2})
+}
+
+func TestLongTestBranches(t *testing.T) {
+	a := Asm{LongTests: true}
+	l := a.NewLabel()
+	a.Tbz(13, 0, l)  // tbnz x13, #0, 1f; b 3f; 1:
+	a.Tbnz(7, 63, l) // tbz x7, #63, 2f; b 3f; 2:
+	a.Bind(l)        // 3:
+	a.Ret()
+	check(t, &a, []uint32{0x3700004d, 0x14000003, 0xb6f80047, 0x14000001, 0xd65f03c0})
+}
+
+// A test branch beyond ±32 KB is ErrTestRange, and LongTests reaches it.
+func TestTestBranchRange(t *testing.T) {
+	for _, long := range []bool{false, true} {
+		a := Asm{LongTests: long}
+		l := a.NewLabel()
+		a.Tbz(1, 0, l)
+		for range 1 << 13 {
+			a.Ret()
+		}
+		a.Bind(l)
+		if _, err := a.Code(); long && err != nil || !long && !errors.Is(err, ErrTestRange) {
+			t.Errorf("LongTests %v: Code gave %v", long, err)
+		}
+	}
 }
 
 func TestMovImm(t *testing.T) {

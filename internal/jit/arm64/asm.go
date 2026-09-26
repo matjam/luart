@@ -7,6 +7,7 @@ package arm64
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 )
 
@@ -64,7 +65,16 @@ type Asm struct {
 	words  []uint32
 	labels []int // instruction index, or -1 while unbound
 	fixups []fixup
+	// LongTests makes Tbz and Tbnz reach any label, as two instructions:
+	// the opposite test, skipping an unconditional branch to the label.
+	// Without it they reach ±32 KB, and Code reports ErrTestRange for one
+	// that does not.
+	LongTests bool
 }
+
+// ErrTestRange is Code's error for a Tbz or Tbnz farther than ±32 KB from
+// its label, which LongTests allows.
+var ErrTestRange = errors.New("arm64: test branch out of range")
 
 // Len returns the number of instructions emitted so far.
 func (a *Asm) Len() int { return len(a.words) }
@@ -102,7 +112,7 @@ func (a *Asm) Code() ([]byte, error) {
 			a.words[f.at] |= (uint32(delta) & (1<<19 - 1)) << 5
 		case fixTest14:
 			if delta < -(1<<13) || delta >= 1<<13 {
-				return nil, fmt.Errorf("arm64: test branch out of range")
+				return nil, ErrTestRange
 			}
 			a.words[f.at] |= (uint32(delta) & (1<<14 - 1)) << 5
 		}
@@ -299,10 +309,21 @@ func (a *Asm) Cbz(rt Reg, l Label) { a.branch(0xb4000000|rt.u(), l, fixCond19) }
 func (a *Asm) Cbnz(rt Reg, l Label) { a.branch(0xb5000000|rt.u(), l, fixCond19) }
 
 // Tbz branches to l when bit b of rt is zero.
-func (a *Asm) Tbz(rt Reg, b uint32, l Label) { a.branch(0x36000000|testBit(b)|rt.u(), l, fixTest14) }
+func (a *Asm) Tbz(rt Reg, b uint32, l Label) { a.test(0x36000000|testBit(b)|rt.u(), l) }
 
 // Tbnz branches to l when bit b of rt is one.
-func (a *Asm) Tbnz(rt Reg, b uint32, l Label) { a.branch(0x37000000|testBit(b)|rt.u(), l, fixTest14) }
+func (a *Asm) Tbnz(rt Reg, b uint32, l Label) { a.test(0x37000000|testBit(b)|rt.u(), l) }
+
+// test emits the TBZ or TBNZ w to l, or with LongTests the other one past
+// a B to l. Bit 24 tells them apart.
+func (a *Asm) test(w uint32, l Label) {
+	if !a.LongTests {
+		a.branch(w, l, fixTest14)
+		return
+	}
+	a.emit(w ^ 1<<24 | 2<<5) // two instructions on: past the B
+	a.B(l)
+}
 
 func testBit(b uint32) uint32 { return (b>>5)<<31 | (b&31)<<19 }
 
