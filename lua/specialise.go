@@ -7,7 +7,7 @@ import "github.com/matjam/luart/internal/bytecode"
 // with its operand kinds fixed at load time: R reads a register and K a
 // constant, whose index has the RK bit cleared.
 const (
-	opAddRR bytecode.OpCode = bytecode.OpErrNNil + 1 + iota
+	opAddRR bytecode.OpCode = bytecode.OpTBC + 1 + iota
 	opAddRK
 	opAddKR
 	opSubRR

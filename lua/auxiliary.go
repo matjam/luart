@@ -263,6 +263,8 @@ func (l *State) NewMetaTable(name string) bool {
 	}
 	l.Pop(1)
 	l.NewTable()
+	l.PushString(name)
+	l.SetField(-2, "__name") // as Lua 5.3 on: error messages and tostring use it
 	l.PushValue(-1)
 	l.SetField(RegistryIndex, name)
 	return true

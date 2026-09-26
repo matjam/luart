@@ -62,6 +62,11 @@ const (
 	// Lua 5.5's global declarations: ERRNNIL A Bx raises "global 'K[Bx-1]'
 	// already defined" unless R(A) is nil ('?' for the name when Bx is 0).
 	OpErrNNil
+
+	// Lua 5.4's to-be-closed variables: TBC A marks R(A) to be closed when
+	// its scope ends; with B set it swaps R(A) and R(A+1) first, for a
+	// generic for's closing value, as 5.5's TFORPREP does.
+	OpTBC
 )
 
 var OpNames = []string{
@@ -108,6 +113,7 @@ var OpNames = []string{
 	"IDIV",
 	"BITWISE",
 	"ERRNNIL",
+	"TBC",
 }
 
 const (
@@ -282,4 +288,5 @@ var opModes []byte = []byte{
 	opmode(0, 1, ArgK, ArgK, ModeABC),  // opIDiv
 	opmode(0, 1, ArgK, ArgK, ModeABC),  // opBitwise; C is unused for ~x
 	opmode(0, 0, ArgU, ArgN, ModeABx),  // opErrNNil
+	opmode(0, 0, ArgU, ArgN, ModeABC),  // opTBC; B swaps first
 }

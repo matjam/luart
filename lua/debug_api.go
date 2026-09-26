@@ -121,6 +121,8 @@ func (l *State) functionName(ci *callInfo) (name, kind string) {
 		return p.objectName(i.A(), pc)
 	case bytecode.OpTForCall:
 		return "for iterator", "for iterator"
+	case bytecode.OpJump, bytecode.OpReturn: // closing a to-be-closed variable
+		tm = tmClose
 	case bytecode.OpSelf, bytecode.OpGetTableUp, bytecode.OpGetTable:
 		tm = tmIndex
 	case bytecode.OpSetTableUp, bytecode.OpSetTable:

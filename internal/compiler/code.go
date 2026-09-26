@@ -102,6 +102,7 @@ type label struct {
 	name                string
 	pc, line            int
 	activeVariableCount int
+	declarations        int // the function's declarations in scope, which a goto may not jump into either
 }
 
 type block struct {
@@ -110,6 +111,7 @@ type block struct {
 	firstGlobal           int // the function's global declarations before the block
 	activeVariableCount   int
 	hasUpValue, isLoop    bool
+	insideTBC             bool // in the scope of a to-be-closed variable, where calls are not tail calls
 }
 
 // A declaration is a variable in scope that takes no register: a Lua 5.5
@@ -175,6 +177,7 @@ func (f *function) CloseFunction() exprDesc {
 func (f *function) EnterBlock(isLoop bool) {
 	// TODO www.lua.org uses a trick here to stack allocate the block, and chain blocks in the stack
 	f.block = &block{previous: f.block, firstLabel: len(f.p.activeLabels), firstGoto: len(f.p.pendingGotos), firstGlobal: len(f.globals), activeVariableCount: f.activeVariableCount, isLoop: isLoop}
+	f.block.insideTBC = f.block.previous != nil && f.block.previous.insideTBC
 	f.assert(f.freeRegisterCount == f.activeVariableCount)
 }
 
@@ -213,19 +216,30 @@ func (f *function) MakeLocalVariable(name string) {
 }
 
 func (f *function) MakeGoto(name string, line, pc int) {
-	f.p.pendingGotos = append(f.p.pendingGotos, label{name: name, line: line, pc: pc, activeVariableCount: f.activeVariableCount})
+	f.p.pendingGotos = append(f.p.pendingGotos, label{name: name, line: line, pc: pc, activeVariableCount: f.activeVariableCount, declarations: len(f.globals)})
 	f.findLabel(len(f.p.pendingGotos) - 1)
 }
 
 func (f *function) MakeLabel(name string, line int) int {
-	f.p.activeLabels = append(f.p.activeLabels, label{name: name, line: line, pc: len(f.f.Code), activeVariableCount: f.activeVariableCount})
+	// A jump target, so that LOADNILs on either side stay apart.
+	f.p.activeLabels = append(f.p.activeLabels, label{name: name, line: line, pc: f.Label(), activeVariableCount: f.activeVariableCount, declarations: len(f.globals)})
 	return len(f.p.activeLabels) - 1
 }
 
 func (f *function) closeGoto(i int, l label) {
 	g := f.p.pendingGotos[i]
-	if f.assert(g.name == l.name); g.activeVariableCount < l.activeVariableCount {
-		f.semanticError(fmt.Sprintf("<goto %s> at line %d jumps into the scope of local '%s'", g.name, g.line, f.LocalVariable(g.activeVariableCount).Name))
+	f.assert(g.name == l.name)
+	if locals, declarations := g.activeVariableCount < l.activeVariableCount, g.declarations < l.declarations; locals || declarations {
+		// Name the first variable it jumps past: a local or a declaration.
+		var name string
+		if declarations && (!locals || f.globals[g.declarations].position <= g.activeVariableCount) {
+			if name = f.globals[g.declarations].name; name == "" {
+				name = "*"
+			}
+		} else {
+			name = f.LocalVariable(g.activeVariableCount).Name
+		}
+		f.semanticError(fmt.Sprintf("<goto %s> at line %d jumps into the scope of '%s'", g.name, g.line, name))
 	}
 	f.PatchList(g.pc, l.pc)
 	copy(f.p.pendingGotos[i:], f.p.pendingGotos[i+1:])
@@ -246,8 +260,14 @@ func (f *function) findLabel(i int) int {
 	return 1
 }
 
+// CheckRepeatedLabel rejects a label already visible in the function,
+// in this block or an enclosing one, as Lua 5.4 does.
 func (f *function) CheckRepeatedLabel(name string) {
-	for _, l := range f.p.activeLabels[f.block.firstLabel:] {
+	outer := f.block
+	for outer.previous != nil {
+		outer = outer.previous
+	}
+	for _, l := range f.p.activeLabels[outer.firstLabel:] {
 		if l.name == name {
 			f.semanticError(fmt.Sprintf("label '%s' already defined on line %d", name, l.line))
 		}
@@ -272,6 +292,7 @@ func (f *function) moveGotosOut(b block) {
 			}
 			f.p.pendingGotos[i].activeVariableCount = b.activeVariableCount
 		}
+		f.p.pendingGotos[i].declarations = min(f.p.pendingGotos[i].declarations, b.firstGlobal)
 	}
 }
 
@@ -283,6 +304,17 @@ func (f *function) LeaveBlock() {
 		f.PatchToHere(j)
 	}
 	if b.isLoop {
+		if b.hasUpValue {
+			// The break label follows the block's closing jump, so breaks
+			// close what the block does themselves: a generic for's
+			// closing value, as lparser.c places the label outside the
+			// block.
+			for i := b.firstGoto; i < len(f.p.pendingGotos); i++ {
+				if g := f.p.pendingGotos[i]; g.name == "break" && g.activeVariableCount > b.activeVariableCount {
+					f.PatchClose(g.pc, b.activeVariableCount)
+				}
+			}
+		}
 		f.breakLabel() // close pending breaks
 	}
 	f.block = b.previous
@@ -414,7 +446,7 @@ func (f *function) SetMultipleReturns(e exprDesc) { f.setReturns(e, bytecode.Mul
 
 func (f *function) Return(e exprDesc, resultCount int) {
 	if e.hasMultipleReturns() {
-		if f.SetMultipleReturns(e); e.kind == kindCall && resultCount == 1 {
+		if f.SetMultipleReturns(e); e.kind == kindCall && resultCount == 1 && !f.block.insideTBC {
 			f.Instruction(e).SetOpCode(bytecode.OpTailCall)
 			f.assert(f.Instruction(e).A() == f.activeVariableCount)
 		}
@@ -1272,6 +1304,21 @@ func (f *function) MakeConstant(c *constantValue) {
 	f.globals = append(f.globals, declaration{name: name, value: c, position: f.activeVariableCount})
 }
 
+// ToBeClosed emits TBC for the variable in register r and marks the block
+// to close it at its end, and on any jump out of it.
+func (f *function) ToBeClosed(r int) {
+	f.block.hasUpValue, f.block.insideTBC = true, true
+	f.EncodeABC(bytecode.OpTBC, r, 0, 0)
+}
+
+// ToBeClosedSwapped is ToBeClosed for a generic for, whose closing value
+// its explist leaves above the control variable: TBC with B set swaps
+// registers r and r+1 first, as TFORPREP does.
+func (f *function) ToBeClosedSwapped(r int) {
+	f.block.hasUpValue, f.block.insideTBC = true, true
+	f.EncodeABC(bytecode.OpTBC, r, 1, 0)
+}
+
 // MarkReadOnly makes the last local variable made read-only.
 func (f *function) MarkReadOnly() {
 	if f.readOnlyLocals == nil {
@@ -1365,9 +1412,9 @@ func (f *function) CloseForBody(prep, base, line, n int, isNumeric bool) {
 	if isNumeric {
 		end = f.encodeAsBx(bytecode.OpForLoop, base, noJump)
 	} else {
-		f.EncodeABC(bytecode.OpTForCall, base, 0, n)
+		f.EncodeABC(bytecode.OpTForCall, base, 0, n) // results from base+3, the control variable
 		f.FixLine(line)
-		end = f.encodeAsBx(bytecode.OpTForLoop, base+2, noJump)
+		end = f.encodeAsBx(bytecode.OpTForLoop, base, noJump)
 	}
 	f.PatchList(end, prep+1)
 	f.FixLine(line)

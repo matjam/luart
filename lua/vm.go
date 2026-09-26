@@ -309,10 +309,38 @@ func expectOp(i bytecode.Instruction, expected bytecode.OpCode) bytecode.Instruc
 	return i
 }
 
+// closeForReturn closes the to-be-closed variables of ci's function before
+// its RETURN i, calling their __close metamethods above the results, and
+// returns the frame, which they may move. Out of line, as it is rare and
+// the interpreter loop pays for its code otherwise.
+func (l *State) closeForReturn(ci *callInfo, i bytecode.Instruction) []value {
+	a, n := i.A(), i.B()-1
+	if n < 0 {
+		n = l.top - ci.stackIndex(a)
+	}
+	ci.extra = n // for finishOp, should a __close yield
+	l.close(ci.base())
+	l.closeTBC(ci.base(), max(l.top, ci.top), nilValue, false, true)
+	l.top = ci.stackIndex(a) + n
+	return ci.frame
+}
+
+// closeFromJump closes what a JMP with A leaves: upvalues and to-be-closed
+// variables from register A-1. Out of line, so that jumpFrom inlines.
+func (l *State) closeFromJump(ci *callInfo, a int, ip pc) {
+	level := ci.stackIndex(a - 1)
+	l.close(level)
+	if l.hasTBC(level) {
+		ci.savedPC = ip // the JMP, which runs again after a yield in a __close (finishOp)
+		l.closeTBC(level, ci.top, nilValue, false, true)
+		l.top = ci.top
+	}
+}
+
 // jumpFrom runs jump instruction j, which precedes ip, and returns the new ip.
 func (l *State) jumpFrom(ci *callInfo, j bytecode.Instruction, ip pc) pc {
 	if a := j.A(); a > 0 {
-		l.close(ci.stackIndex(a - 1))
+		l.closeFromJump(ci, a, ip)
 	}
 	if j.SBx() < 0 { // a loop's back-edge
 		l.pollInterrupt()
@@ -655,9 +683,16 @@ func (l *State) executeSwitch() {
 			}
 		case bytecode.OpJump:
 			ip = l.jumpFrom(ci, i, ip)
+			frame = ci.frame // a __close may move the stack
+		case bytecode.OpTBC:
+			if a := i.A(); i.B() != 0 { // a generic for: closing value below the control variable
+				frame[a], frame[a+1] = frame[a+1], frame[a]
+			}
+			l.newTBC(ci, i.A())
 		case bytecode.OpEqual:
 			if l.equalObjects(k(i.B(), constants, frame), k(i.C(), constants, frame)) == (i.A() != 0) {
 				ip = l.jumpFrom(ci, code[ip], ip+1)
+				frame = ci.frame // a __close may move the stack
 			} else {
 				ip++
 			}
@@ -675,6 +710,7 @@ func (l *State) executeSwitch() {
 			}
 			if less == (i.A() != 0) {
 				ip = l.jumpFrom(ci, code[ip], ip+1)
+				frame = ci.frame // a __close may move the stack
 			} else {
 				ip++
 			}
@@ -691,12 +727,14 @@ func (l *State) executeSwitch() {
 			}
 			if lessOrEqual == (i.A() != 0) {
 				ip = l.jumpFrom(ci, code[ip], ip+1)
+				frame = ci.frame // a __close may move the stack
 			} else {
 				ip++
 			}
 		case bytecode.OpTest:
 			if isFalse(frame[i.A()]) == (i.C() == 0) {
 				ip = l.jumpFrom(ci, code[ip], ip+1)
+				frame = ci.frame // a __close may move the stack
 			} else {
 				ip++
 			}
@@ -704,6 +742,7 @@ func (l *State) executeSwitch() {
 			if b := frame[i.B()]; isFalse(b) == (i.C() == 0) {
 				frame[i.A()] = b
 				ip = l.jumpFrom(ci, code[ip], ip+1)
+				frame = ci.frame // a __close may move the stack
 			} else {
 				ip++
 			}
@@ -791,6 +830,9 @@ func (l *State) executeSwitch() {
 			}
 		case bytecode.OpReturn:
 			a := i.A()
+			if l.hasTBC(ci.base()) {
+				frame = l.closeForReturn(ci, i)
+			}
 			if b, wanted := i.B(), ci.resultCount; b != 0 && wanted >= 0 && l.hookMask&(MaskReturn|MaskLine) == 0 && ci.isCallStatus(callStatusReentry) {
 				// Fixed results into a Lua caller that wants a fixed count.
 				if len(closure.prototype.Prototypes) > 0 {
@@ -846,8 +888,13 @@ func (l *State) executeSwitch() {
 			}
 		case bytecode.OpTForCall:
 			a := i.A()
+			// Iterator, state and closing value at a, the control variable
+			// at a+3, where the call goes so that its first result is the
+			// new control value.
 			callBase := a + 3
-			copy(frame[callBase:callBase+3], frame[a:a+3])
+			frame[a+5] = frame[a+3] // control
+			frame[a+4] = frame[a+1] // state
+			frame[a+3] = frame[a]   // iterator
 			callBase += ci.base()
 			l.top = callBase + 3 // function + 2 args (state and index)
 			l.call(callBase, i.C(), true)
@@ -857,10 +904,9 @@ func (l *State) executeSwitch() {
 			ci.savedPC = ip
 			fallthrough
 		case bytecode.OpTForLoop:
-			if a := i.A(); !frame[a+1].isNil() { // continue loop?
+			if a := i.A(); !frame[a+3].isNil() { // continue loop? The control variable is the first result.
 				l.pollInterrupt()
-				frame[a] = frame[a+1] // save control variable
-				ip += pc(i.SBx())     // jump back
+				ip += pc(i.SBx()) // jump back
 			}
 		case bytecode.OpSetList:
 			a, n, c := i.A(), i.B(), i.C()

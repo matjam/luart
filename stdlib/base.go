@@ -195,6 +195,7 @@ var baseLibrary = []lua.RegistryFunction{
 	}},
 	{Name: "load", Function: func(l *lua.State) int {
 		m, e := l.OptString(3, "bt"), 4
+		l.ArgumentCheck(!strings.Contains(m, "B"), 3, "invalid mode") // C's fixed buffers
 		if l.IsNone(e) {
 			e = 0
 		}

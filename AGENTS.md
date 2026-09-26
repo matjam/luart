@@ -171,6 +171,32 @@ in `jitStep`:
 - SELF stores self in RA+1 after the lookup, not before as C does.
   `finishOp` stores it for a lookup a yield interrupted.
 
+## To-be-closed variables
+
+tbc.go follows lfunc.c and ldo.c. TBC puts a variable's stack index on its
+thread's list (`State.tbc`); a generic for's closing value is one too, as
+TBC with B set swaps it below the control variable (5.5's TFORPREP).
+
+- **Closing.** A closing JMP (`closeFromJump`) and RETURN
+  (`closeForReturn`) close upvalues, then call each `__close` innermost
+  first, popping it from the list before the call. A yield in one unwinds
+  as any yield does; `finishOp` then runs the JMP or RETURN again, which
+  closes the rest. Both paths are out of line: code for them in
+  `executeSwitch` measured 10–20% slower on fib and closures. The compiler
+  emits no tail call inside a to-be-closed scope, as lparser.c does.
+- **Errors.** `protectedCall` closes with `closeProtected`, each `__close`
+  protected and unable to yield, an error in one replacing the error for
+  the rest. A yieldable pcall in a coroutine closes in `finishGoCall`
+  instead, able to yield, as finishpcallk does.
+- **Coroutines.** One that dies by error keeps its variables pending;
+  `CloseThread` (coroutine.close, and coroutine.wrap on an error) closes
+  them. `CloseRunning` is 5.5's `coroutine.close()` of itself.
+- **JIT.** TBC exits, and RETURN in a prototype with TBC always exits, so
+  compiled code never returns past a pending variable. This costs about
+  2% on the standard benchmarks with the JIT (every generic for has a
+  TBC); compiling TBC for a nil closing value, and RETURN and closing
+  JMPs when nothing is pending, would win it back.
+
 ## Garbage collection
 
 Go's collector frees luart's memory. A Lua collection (gc.go) adds what

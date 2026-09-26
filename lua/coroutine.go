@@ -75,14 +75,17 @@ func (l *State) Resume(from *State, argCount int) (yielded bool, err error) {
 	}
 	firstArg := l.top - argCount
 	err = l.protect(func() { l.resume(firstArg) })
-	if err == errBadResume {
+	if err == errClosed {
+		err, l.closedError = l.closedError, nil
+	} else if err == errBadResume {
 		msg, _ := l.stack[l.top-1].str()
 		err = RuntimeError(msg)
 	} else {
 		for err != nil && err != errYield { // an error: can a pcall take it?
 			if !l.recover(err) {
-				l.status = ThreadError // dead
+				l.status, l.deathError = ThreadError, err // dead, its variables to be closed by CloseThread
 				l.setErrorObject(err, l.top)
+				l.deathValue = l.stack[l.top-1]
 				l.callInfo.setTop(l.top)
 				break
 			}
@@ -161,6 +164,15 @@ func (l *State) finishGoCall() {
 	ci := l.callInfo
 	l.assert(ci.continuation != nil && l.nonYieldableCallCount == 0)
 	if ci.isCallStatus(callStatusYieldableProtected) { // was inside a pcall
+		if ci.isCallStatus(callStatusError) {
+			// Close what the error left, able to yield, as ldo.c's
+			// finishpcallk does. An error in a __close comes back here
+			// through recover, with the rest still to close.
+			level := ci.extra
+			errObj := l.stack[level]
+			l.closeTBC(level, -1, errObj, true, true)
+			l.stack[level], l.top = errObj, level+1
+		}
 		ci.clearCallStatus(callStatusYieldableProtected)
 		l.errorFunction = ci.oldErrorFunction
 	}
@@ -303,6 +315,12 @@ func (l *State) finishOp() {
 		if i.C()-1 >= 0 { // fixed results
 			l.top = ci.top
 		}
+	case bytecode.OpJump: // a __close yielded: run it again to close the rest
+		ci.savedPC--
+		l.top = ci.top
+	case bytecode.OpReturn: // as OpJump, with the results kept
+		l.top = ci.stackIndex(i.A()) + ci.extra
+		ci.savedPC--
 	case bytecode.OpTailCall, bytecode.OpSetTableUp, bytecode.OpSetTable:
 	default:
 		l.assert(false)
