@@ -65,6 +65,7 @@ type loadState struct {
 	in       io.Reader
 	order    binary.ByteOrder
 	absent   bool                     // the last string read was absent, not empty
+	strings  []string                 // strings read, which later ones may refer to
 	noSource map[*bytecode.Proto]bool // functions whose source was absent: their parent's, or "=?"
 
 }
@@ -121,6 +122,13 @@ func (state *loadState) readString() (string, error) {
 	if state.absent = size == 0; state.absent { // no string: C's NULL
 		return "", nil
 	}
+	if size&reuseBit() != 0 { // a string read before, by index
+		i := size &^ reuseBit()
+		if i >= uint64(len(state.strings)) {
+			return "", errCorrupted
+		}
+		return state.strings[i], nil
+	}
 	if size > 1<<62 {
 		return "", errCorrupted
 	}
@@ -129,7 +137,9 @@ func (state *loadState) readString() (string, error) {
 	if _, err := io.CopyN(&b, state.in, int64(size)); err != nil {
 		return "", err
 	}
-	return string(b.Bytes()[:size-1]), nil // without the 0 byte at the end
+	s := string(b.Bytes()[:size-1]) // without the 0 byte at the end
+	state.strings = append(state.strings, s)
+	return s, nil
 }
 
 // readList reads a count and that many fixed-size elements.
