@@ -779,10 +779,9 @@ func TestJITKernelCallsAndBuffers(t *testing.T) {
 	tests := []struct{ name, runs, src string }{
 		{"sin", "int", `local sin = math.sin
 			function run() local s = 0.0; for i = 1, 1000 do s = s + sin(i * 0.01) end; return s end`},
-		// sqrt(i) would put an integer in the register cos's result later
-		// takes, and a kernel keeps one type in each register.
+		// sqrt's argument register holds an integer, and later cos's result.
 		{"sqrt and cos", "int", `local sqrt, cos = math.sqrt, math.cos
-			function run() local s = 0.0; for i = 1, 1000 do s = s + sqrt(i * 1.0) * cos(i / 7) end; return s end`},
+			function run() local s = 0.0; for i = 1, 1000 do s = s + sqrt(i) * cos(i / 7) end; return s end`},
 		{"float loop", "float", `local sin = math.sin
 			function run() local s = 0.0; for x = 0.5, 100.5 do s = s + sin(x) end; return s end`},
 		{"integer argument", "int", `local sqrt = math.sqrt
@@ -853,7 +852,11 @@ func TestJITKernelCallsAndBuffers(t *testing.T) {
 				t.Fatalf("JIT %q, interpreter %q", jit, interp)
 			}
 			floats, ints := lj.jitCtx.kernels[0] > 0, lj.jitCtx.kernels[1] > 0
-			if want := tt.runs; floats != (want == "float" || want == "both") || ints != (want == "int" || want == "both") {
+			want := tt.runs
+			if !trigInline && (strings.Contains(tt.src, "sin") || strings.Contains(tt.src, "cos")) {
+				want = "none" // Go computes them, so they are not intrinsics
+			}
+			if floats != (want == "float" || want == "both") || ints != (want == "int" || want == "both") {
 				t.Fatalf("float kernels ran: %v, integer kernels ran: %v; want %q", floats, ints, want)
 			}
 		})

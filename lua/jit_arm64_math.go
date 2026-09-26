@@ -26,6 +26,9 @@ var intrinsics = []struct {
 
 func funcValue(f func(float64) float64) uint64 { return uint64(*(*uintptr)(unsafe.Pointer(&f))) }
 
+// trigInline reports whether compiled code computes sin and cos itself.
+const trigInline = true
+
 // rTrig holds &trigTable while sin or cos runs.
 const rTrig = rT2
 

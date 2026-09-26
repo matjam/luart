@@ -20,6 +20,9 @@ func (c *amd64Compiler) trigIntrinsics() []intrinsic {
 	}
 }
 
+// trigInline reports whether compiled code computes sin and cos itself.
+const trigInline = true
+
 // rTrig holds &trigTable while sin or cos runs.
 const rTrig = rT2
 
