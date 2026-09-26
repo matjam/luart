@@ -18,7 +18,7 @@ const (
 	maxIntSize  = 16 // lstrlib.c's MAXINTSIZE
 	intSize     = 8  // SZINT
 	nativeAlign = 8  // offsetof(struct cD, u)
-	maxPackSize = math.MaxInt64
+	maxPackSize = math.MaxInt
 )
 
 // A packOption is a format option, lstrlib.c's KOption.
