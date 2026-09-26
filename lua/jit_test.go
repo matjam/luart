@@ -963,3 +963,51 @@ func TestJITRandomArithmetic(t *testing.T) {
 		}
 	}
 }
+
+// Compiled code runs a generic for's TBC when its closing value is nil,
+// and returns from a function with one unless a variable in its frame is
+// to be closed: those Go closes.
+func TestJITToBeClosed(t *testing.T) {
+	skipWithoutJIT(t)
+	src := `
+		local log = {}
+		local function closing(name)
+		  return setmetatable({}, {__close = function() log[#log + 1] = name end})
+		end
+		local function find(t, x) -- returns from inside a pairs loop
+		  for k, v in pairs(t) do
+		    if v == x then return k end
+		  end
+		  return nil
+		end
+		local function closed(t) -- returns with a variable to close
+		  for k in next, t, nil, closing("loop") do
+		    return k
+		  end
+		end
+		local function nested(n)
+		  local c <close> = closing("outer" .. n)
+		  if n > 0 then return nested(n - 1) + 1 end
+		  return find({10, 20, 30}, 20)
+		end
+		function run()
+		  local s = 0
+		  for i = 1, 200 do
+		    s = s + find({1, 2, 3, i}, i)
+		    s = s + closed({5})
+		    for _, v in ipairs({1, 2, 3}) do s = s + v end
+		    local fs = {}
+		    for k, v in pairs({4, 5, 6}) do -- closures: the loop's jump closes upvalues
+		      fs[#fs + 1] = function() return k + v end
+		      if k == 2 then break end
+		    end
+		    for _, f in ipairs(fs) do s = s + f() end
+		  end
+		  s = s + nested(3)
+		  return s .. " " .. #log .. " " .. log[1] .. " " .. log[#log]
+		end`
+	jit, interp, _ := runBoth(t, src)
+	if jit != interp {
+		t.Fatalf("JIT %q, interpreter %q", jit, interp)
+	}
+}

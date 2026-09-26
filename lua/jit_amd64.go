@@ -971,11 +971,31 @@ func (c *amd64Compiler) instruction(ip int) int {
 	case bytecode.OpCall:
 		c.call(ip, orig)
 	case bytecode.OpReturn:
-		if hasTBC(c.p) { // Go closes the to-be-closed variables first
-			c.exitAlways(ip)
-			break
+		if hasTBC(c.p) { // Go closes the frame's to-be-closed variables first
+			a.Load(rTmp, rCtx, offCtxTBC)
+			a.Cmp(rTmp, rFrame)
+			a.J(AE, c.exit(ip))
 		}
 		c.returnLua(ip, orig)
+	case bytecode.OpTBC: // a nil closing value, as pairs gives, closes nothing
+		r := reg(orig.A())
+		if orig.B() == 0 {
+			a.Load(rTmp, r.base, r.off+offP)
+			a.Test(rTmp, rTmp)
+			a.J(NE, c.exit(ip))
+			break
+		}
+		// A generic for's: see the arm64 compiler.
+		closing := reg(orig.A() + 1)
+		a.CmpMem(rCtx, offBarrier, 0)
+		a.J(NE, c.exit(ip))
+		a.Load(rTmp, closing.base, closing.off+offP)
+		a.Test(rTmp, rTmp)
+		a.J(NE, c.exit(ip))
+		c.load(r)
+		c.store(closing)
+		a.StoreZero(r.base, r.off+offP)
+		a.StoreZero(r.base, r.off+offN)
 	case bytecode.OpLength:
 		c.length(ip, orig)
 	case bytecode.OpLoadConstantEx, bytecode.OpSetList:

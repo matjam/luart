@@ -44,7 +44,17 @@ func (l *State) Field(index int, name string) Type {
 //
 // http://www.lua.org/manual/5.5/manual.html#lua_geti
 func (l *State) FieldInt[T Integer](index int, i T) Type {
-	v := l.tableAt(l.indexToValue(index), integerValue(int64(i)))
+	t, k := l.indexToValue(index), int64(i)
+	var v value
+	if tt := t.table(); tt != nil && int64(int(k)) == k {
+		// A raw read first, as the library's loops over sequences mostly
+		// find their values.
+		if v = tt.atInt(int(k)); v.isNil() && tt.metaTable != nil {
+			v = l.tableAt(t, integerValue(k))
+		}
+	} else {
+		v = l.tableAt(t, integerValue(k))
+	}
 	l.apiPush(v)
 	return l.valueToType(v)
 }

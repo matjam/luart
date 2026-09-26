@@ -44,6 +44,7 @@ const (
 	offSliceLen  = 8
 	offCtxS      = uint32(unsafe.Offsetof(jitContext{}.state))
 	offCallee    = uint32(unsafe.Offsetof(jitContext{}.callee))
+	offCtxTBC    = uint32(unsafe.Offsetof(jitContext{}.tbc))
 
 	offClProto   = uint32(unsafe.Offsetof(luaClosure{}.prototype))
 	offClUpVals  = uint32(unsafe.Offsetof(luaClosure{}.upValues))
