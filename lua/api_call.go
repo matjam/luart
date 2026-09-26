@@ -13,7 +13,7 @@ import (
 // it will return (ctx, shouldYield, err), where ctx is the value that was
 // passed to the callee together with the continuation function.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_getctx
+// https://www.lua.org/manual/5.5/manual.html#lua_KFunction
 func (l *State) Context() (int, bool, error) {
 	if l.callInfo.isCallStatus(callStatusYielded) {
 		return l.callInfo.context, l.callInfo.shouldYield, l.callInfo.error
@@ -24,7 +24,7 @@ func (l *State) Context() (int, bool, error) {
 // CallWithContinuation is exactly like Call, but allows the called function to
 // yield.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_callk
+// https://www.lua.org/manual/5.5/manual.html#lua_callk
 func (l *State) CallWithContinuation(argCount, resultCount, context int, continuation Function) {
 	if apiCheck && continuation != nil && l.callInfo.isLua() {
 		panic("cannot use continuations inside hooks")
@@ -82,7 +82,7 @@ func (l *State) CallWithContinuation(argCount, resultCount, context int, continu
 // Note that the code above is "balanced": at its end, the stack is back to
 // its original configuration. This is considered good programming practice.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_call
+// https://www.lua.org/manual/5.5/manual.html#lua_call
 func (l *State) Call(argCount, resultCount int) {
 	l.CallWithContinuation(argCount, resultCount, 0, nil)
 }
@@ -113,7 +113,7 @@ func (l *State) Call(argCount, resultCount int) {
 //	ErrMemory        allocating memory, the error handler is not called
 //	ErrErrorHandler  running the error handler
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_pcall
+// https://www.lua.org/manual/5.5/manual.html#lua_pcall
 func (l *State) ProtectedCall(argCount, resultCount, errorFunction int) error {
 	return l.ProtectedCallWithContinuation(argCount, resultCount, errorFunction, 0, nil)
 }
@@ -121,7 +121,7 @@ func (l *State) ProtectedCall(argCount, resultCount, errorFunction int) error {
 // ProtectedCallWithContinuation behaves exactly like ProtectedCall, but
 // allows the called function to yield.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_pcallk
+// https://www.lua.org/manual/5.5/manual.html#lua_pcallk
 func (l *State) ProtectedCallWithContinuation(argCount, resultCount, errorFunction, context int, continuation Function) (err error) {
 	if apiCheck && continuation != nil && l.callInfo.isLua() {
 		panic("cannot use continuations inside hooks")
@@ -158,7 +158,7 @@ func (l *State) ProtectedCallWithContinuation(argCount, resultCount, errorFuncti
 // pushes the compiled chunk as a Lua function on top of the stack.
 // Otherwise, it pushes an error message.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_load
+// https://www.lua.org/manual/5.5/manual.html#lua_load
 func (l *State) Load(r io.Reader, chunkName string, mode string) error {
 	if err := protectedParser(l, r, chunkName, mode); err != nil {
 		return err
@@ -194,7 +194,7 @@ func (l *State) Dump(w io.Writer, strip bool) error {
 // Error generates a Lua error.  The error message must be on the stack top.
 // The error can be any of any Lua type. This function will panic().
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_error
+// https://www.lua.org/manual/5.5/manual.html#lua_error
 func (l *State) Error() {
 	l.checkElementCount(1)
 	l.errorMessage()

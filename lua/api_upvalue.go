@@ -26,7 +26,7 @@ func (l *State) UpValue(function, index int) (name string, ok bool) {
 // Returns an empty string and false if the index is greater than the number
 // of upvalues.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_setupvalue
+// https://www.lua.org/manual/5.5/manual.html#lua_setupvalue
 func (l *State) SetUpValue(function, index int) (name string, ok bool) {
 	if c := l.indexToValue(function).closure(); c != nil {
 		if ok = 1 <= index && index <= c.upValueCount(); ok {

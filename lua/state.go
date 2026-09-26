@@ -119,7 +119,7 @@ func typeOf(v value) Type {
 
 // NewState creates a new thread running in a new, independent state.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_newstate
+// https://www.lua.org/manual/5.5/manual.html#lua_newstate
 func NewState(options ...Option) *State {
 	l := &State{allowHook: true, error: nil, nonYieldableCallCount: 1}
 	g := &globalState{mainThread: l, registry: newTable(), memoryErrorMessage: "not enough memory", rootShape: newRootShape(),

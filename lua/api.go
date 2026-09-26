@@ -217,5 +217,5 @@ type Function func(state *State) int
 
 // String returns the name of Type t.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_typename
+// https://www.lua.org/manual/5.5/manual.html#lua_typename
 func (t Type) String() string { return typeNames[t+1] }

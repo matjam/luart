@@ -138,7 +138,7 @@ today, the rules it depends on, and where performance work should go next.
 
 ## Coroutines
 
-Coroutines work as C Lua 5.2's do (coroutine.go ports ldo.c's
+Coroutines work as C Lua's do (coroutine.go ports ldo.c's
 `lua_resume`, `lua_yieldk`, `unroll` and `recover`, and lvm.c's
 `luaV_finishOp`).
 
@@ -155,7 +155,7 @@ Coroutines work as C Lua 5.2's do (coroutine.go ports ldo.c's
 - **Why not goroutines.** A goroutine per coroutine would be simpler, but a
   switch would cost a scheduler hand-off, and a suspended coroutine that
   became garbage would leak its goroutine. This way a coroutine is only a
-  stack, a switch is a panic and a recover, and the semantics are 5.2's:
+  stack, a switch is a panic and a recover, and the semantics are C Lua's:
   yields across pcall, metamethods and iterators, and "attempt to yield
   across a C-call boundary" for a Go function without a continuation, such
   as table.sort's comparator.
@@ -248,12 +248,12 @@ follows lgc.c's atomic phase.
 - **Why not Go finalizers.** `runtime.SetFinalizer` runs on another
   goroutine at an unknown time, can't resurrect in Lua's order, and can't
   tell a weak table's entries from strong ones. A Lua-level mark over
-  Lua's own roots gives 5.2's semantics: gc.lua passes.
+  Lua's own roots gives C Lua's semantics: 5.5's gc.lua passes.
 - **Differences.** The collection is not incremental: it marks the whole
   Lua heap at once. An object only Go memory refers to, outside the
   registry and the stacks, counts as unreachable, so a Go embedder must
   keep such objects in the registry. `__mode` and `__gc` are noticed when
-  the metatable is set, as 5.2 reads `__gc`. Of `collectgarbage`'s
+  the metatable is set, as C Lua reads `__gc`. Of `collectgarbage`'s
   "param" parameters only "pause" paces collections; the modes are
   remembered and reported, and "step" in generational mode collects.
   The count is Go's heap, so Go's own warm-up (starting GC worker

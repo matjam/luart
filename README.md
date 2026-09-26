@@ -143,7 +143,7 @@ go install github.com/matjam/apogee/cmd/apogee@latest
 ```
 
 `apogee` runs scripts as the standalone `lua` does, with the same options:
-`-e`, `-l`, `-i`, `-v`, `-E`, `-` for stdin, the `arg` table, `LUA_INIT`,
+`-e`, `-l`, `-i`, `-v`, `-E`, `-W`, `-` for stdin, the `arg` table, `LUA_INIT`,
 and Ctrl-C to interrupt. On a terminal its REPL:
 
 - highlights Lua as you type, and runs a statement when it is complete

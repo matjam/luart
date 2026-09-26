@@ -18,9 +18,11 @@ const (
 	dirSep     = "/"
 	noDynamic  = "dynamic libraries not enabled; check your Lua installation"
 	root       = "/usr/local/"
-	luaDir     = root + "share/lua/5.2/"
-	cDir       = root + "lib/lua/5.2/"
-	defaultLua = luaDir + "?.lua;" + luaDir + "?/init.lua;" + cDir + "?.lua;" + cDir + "?/init.lua;./?.lua"
+	versionDir = "5.5"  // luaconf.h's LUA_VDIR
+	envSuffix  = "_5_5" // after LUA_PATH and LUA_CPATH, lua.h's LUA_VERSUFFIX
+	luaDir     = root + "share/lua/" + versionDir + "/"
+	cDir       = root + "lib/lua/" + versionDir + "/"
+	defaultLua = luaDir + "?.lua;" + luaDir + "?/init.lua;" + cDir + "?.lua;" + cDir + "?/init.lua;./?.lua;./?/init.lua"
 	defaultC   = cDir + "?.so;" + cDir + "loadall.so;./?.so"
 )
 
@@ -163,16 +165,25 @@ func noEnv(l *lua.State) bool {
 }
 
 // setPath sets package[field] from the environment variable env with
-// _5_2, or without it, or to def; ";;" in a variable stands for def.
+// _5_5, or without it, or to def. The variable's first ";;" stands for
+// def, as in loadlib.c's setpath.
 func setPath(l *lua.State, field, env, def string) {
-	path, ok := os.LookupEnv(env + "_5_2")
+	path, ok := os.LookupEnv(env + envSuffix)
 	if !ok {
 		path, ok = os.LookupEnv(env)
 	}
 	if !ok || noEnv(l) {
 		l.PushString(def)
+	} else if prefix, suffix, found := strings.Cut(path, pathSep+pathSep); !found {
+		l.PushString(path)
 	} else {
-		l.PushString(strings.ReplaceAll(path, pathSep+pathSep, pathSep+def+pathSep))
+		if prefix != "" {
+			def = prefix + pathSep + def
+		}
+		if suffix != "" {
+			def += pathSep + suffix
+		}
+		l.PushString(def)
 	}
 	l.SetField(-2, field)
 }
