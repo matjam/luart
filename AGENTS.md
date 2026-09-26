@@ -700,7 +700,8 @@ In order of expected payoff for real-time scripts such as visualisers:
 2. **More in kernels.** Kernels call intrinsics and index buffers; a Go
    or number function could be called by writing the kernel's registers
    back, exiting, and re-entering after the call, and table arrays read
-   with a type check per element (array-fill-sum is 1.6× C Lua) and an
+   with a type check per element (array-fill-sum takes about twice C
+   Lua's time, though most of it is growing the array, in Go) and an
    adaptive switch-off when that check keeps failing.
 3. **Registers across ordinary code.** Keep numbers in FP registers
    across straight-line code between exits, not only in kernels, with
