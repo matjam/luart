@@ -19,10 +19,11 @@ func Dump(w io.Writer, p *bytecode.Proto, strip bool) error {
 }
 
 type dumpState struct {
-	out   io.Writer
-	order binary.ByteOrder
-	err   error
-	strip bool
+	out     io.Writer
+	order   binary.ByteOrder
+	err     error
+	strip   bool
+	strings map[string]int // strings written, by index
 }
 
 func (d *dumpState) write(data any) {
@@ -98,28 +99,38 @@ func (d *dumpState) writeUpvalues(p *bytecode.Proto) {
 	}
 }
 
-// writeString writes s with its size, counting the 0 byte after it, as C
-// Lua does; "" too, as size 0 means no string at all.
-// writeAbsent writes a missing string, which loads as C's NULL.
-func (d *dumpState) writeAbsent() {
+// writeSize writes a string's size field, pointer-sized.
+func (d *dumpState) writeSize(size uint64) {
 	switch header.PointerSize {
 	case 8:
-		d.write(uint64(0))
-	case 4:
-		d.write(uint32(0))
-	}
-}
-
-func (d *dumpState) writeString(s string) {
-	size := len(s) + 1
-	switch header.PointerSize {
-	case 8:
-		d.write(uint64(size))
+		d.write(size)
 	case 4:
 		d.write(uint32(size))
 	default:
 		panic(fmt.Sprintf("unsupported pointer size (%d)", header.PointerSize))
 	}
+}
+
+// reuseBit marks a size field that refers to a string already written,
+// by its index, as Lua 5.5's dumps reuse strings.
+func reuseBit() uint64 { return 1 << (8*uint(header.PointerSize) - 1) }
+
+// writeAbsent writes a missing string, which loads as C's NULL.
+func (d *dumpState) writeAbsent() { d.writeSize(0) }
+
+// writeString writes s with its size, counting the 0 byte after it, as C
+// Lua does; "" too, as size 0 means no string at all. A string written
+// before is its index instead, with reuseBit set.
+func (d *dumpState) writeString(s string) {
+	if i, ok := d.strings[s]; ok {
+		d.writeSize(reuseBit() | uint64(i))
+		return
+	}
+	if d.strings == nil {
+		d.strings = map[string]int{}
+	}
+	d.strings[s] = len(d.strings)
+	d.writeSize(uint64(len(s) + 1))
 	d.write([]byte(s))
 	d.writeByte(0)
 }

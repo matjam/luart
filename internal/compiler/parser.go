@@ -745,7 +745,9 @@ func (p *parser) returnStatement() {
 		// hook's frame then leaves the locals alone.
 		f.EncodeABC(bytecode.OpReturn, f.activeVariableCount, 1, 0)
 	} else {
-		f.Return(p.expressionList())
+		e, n := p.expressionList()
+		p.checkLimit(n+1, 255, "returns") // as lcode.c's luaK_ret, whose B is 8 bits
+		f.Return(e, n)
 	}
 	p.testNext(';')
 }

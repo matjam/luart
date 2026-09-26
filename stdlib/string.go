@@ -264,6 +264,9 @@ var stringLibrary = []lua.RegistryFunction{
 	{Name: "len", Function: func(l *lua.State) int { l.PushInteger(len(l.CheckString(1))); return 1 }},
 	{Name: "lower", Function: func(l *lua.State) int { l.PushString(changeCase(l.CheckString(1), 'A', 'Z')); return 1 }},
 	{Name: "match", Function: func(l *lua.State) int { return find(l, false) }},
+	{Name: "pack", Function: stringPack},
+	{Name: "packsize", Function: stringPackSize},
+	{Name: "unpack", Function: stringUnpack},
 	{Name: "rep", Function: func(l *lua.State) int {
 		s, n, sep := l.CheckString(1), checkInt(l, 2), l.OptString(3, "")
 		if n <= 0 {
