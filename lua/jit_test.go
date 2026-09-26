@@ -936,6 +936,28 @@ func TestJITTailCalls(t *testing.T) {
 			local function k(x) return x + 1 end
 			local function f(x) local g = function() return x end; return k(g()) end
 			function run() local s = 0; for i = 1, 20 do s = s + f(i) end; return s end`},
+		{"passing a closure over the frame", `
+			local function call(g) return g() * 2 end
+			local function f(x) local g = function() return x end; x = x + 1; return call(g) end
+			function run() local s = 0; for i = 1, 20 do s = s + f(i) end; return s end`},
+		{"returns from functions with nested functions", `
+			local function none(x) local g = function(y) return y * 2 end; return g(x) + 1 end
+			local function keeps(x) local get = function() return x end; x = x * 10; return get end
+			local function maybe(x) if x % 2 == 0 then local get = function() return x end; return get() end; local unused = function() end; return x end
+			function run()
+			  local s, getters = 0, {}
+			  for i = 1, 30 do s = s + none(i) + maybe(i); getters[i] = keeps(i) end
+			  for i = 1, 30 do s = s + getters[i]() end
+			  return s
+			end`},
+		{"an outer frame's open upvalue", `
+			local function inner(x) local g = function() return 1 end; return x + g() end
+			function run()
+			  local s, n = 0, 0
+			  local bump = function() n = n + 1 end
+			  for i = 1, 30 do s = s + inner(i); bump() end
+			  return s, n
+			end`},
 		{"tail called status", `
 			local function inner() local info = debug.getinfo(1, "t"); return info.istailcall end
 			local function outer() return inner() end

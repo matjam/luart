@@ -19,6 +19,7 @@ const (
 	offN         = uint32(unsafe.Offsetof(value{}.n))
 	offUVState   = uint32(unsafe.Offsetof(upValue{}.state))
 	offUVIndex   = uint32(unsafe.Offsetof(upValue{}.index))
+	offLUpValues = uint32(unsafe.Offsetof(State{}.upValues))
 	offUVClosed  = uint32(unsafe.Offsetof(upValue{}.closed))
 	offStack     = uint32(unsafe.Offsetof(State{}.stack))
 	offTShape    = uint32(unsafe.Offsetof(table{}.shape))

@@ -127,16 +127,33 @@ func (c *arm64Compiler) spend(ip int) {
 	c.a.BCond(EQ, c.budget[ip])
 }
 
+// exitIfUpValuesOpen exits at ip if any upvalue is open at or above the base
+// of the frame whose callInfo is in rCI, of the state in rState: a function
+// with nested functions returns or tail calls in compiled code only when
+// there are none for Go to close. The open upvalues are sorted highest
+// first. It uses rTmp and rTmp2.
+func (c *arm64Compiler) exitIfUpValuesOpen(ip int) {
+	a := &c.a
+	none := a.NewLabel()
+	a.Ldr(rTmp, rState, offLUpValues)
+	a.Cbz(rTmp, none)
+	a.Ldr(rTmp, rTmp, offUVIndex)
+	a.Ldr(rTmp2, rCI, offCIFunction)
+	a.Cmp(rTmp, rTmp2)
+	a.BCond(GT, c.exit(ip)) // index >= base, which is function + 1
+	a.Bind(none)
+}
+
 // tailCallLua compiles the TAILCALL i at ip for a compiled, fixed-parameter
 // Lua closure as the interpreter's TAILCALL replaces the frame: the callee
 // and its arguments move down to the frame's function slot, and the frame,
 // its base unchanged, runs the callee. It exits for any other callee, for
-// arguments up to l.top, and when p has nested functions, whose upvalues
-// Go closes first.
+// arguments up to l.top, and when upvalues are open in the frame of a
+// function with nested functions, for Go to close them first.
 func (c *arm64Compiler) tailCallLua(ip int, i bytecode.Instruction) {
 	a := &c.a
 	ra, b := i.A(), i.B()
-	if b == 0 || len(c.p.Prototypes) > 0 {
+	if b == 0 {
 		c.exitAlways(ip)
 		return
 	}
@@ -156,6 +173,9 @@ func (c *arm64Compiler) tailCallLua(ip int, i bytecode.Instruction) {
 	a.Cbz(rCache, exit)
 	a.Ldr(rState, rCtx, offCtxS)
 	a.Ldr(rCI, rState, offLCallInfo)
+	if len(c.p.Prototypes) > 0 {
+		c.exitIfUpValuesOpen(ip)
+	}
 	// checkStack(p.maxStackSize) with l.top at ci.function + b.
 	a.Ldr(rIdx, rCI, offCIFunction)
 	a.Ldr(rLen, rT2, offPMaxStack)
@@ -225,7 +245,7 @@ func (c *arm64Compiler) tailCallLua(ip int, i bytecode.Instruction) {
 func (c *arm64Compiler) returnLua(ip int, i bytecode.Instruction) {
 	a := &c.a
 	ra, b := i.A(), i.B()
-	if b == 0 || len(c.p.Prototypes) > 0 { // results to l.top, or upvalues to close
+	if b == 0 { // results to l.top
 		c.exitAlways(ip)
 		return
 	}
@@ -233,6 +253,9 @@ func (c *arm64Compiler) returnLua(ip int, i bytecode.Instruction) {
 	a.Cbnz(rBarrier, exit)
 	a.Ldr(rState, rCtx, offCtxS)
 	a.Ldr(rCI, rState, offLCallInfo)
+	if len(c.p.Prototypes) > 0 {
+		c.exitIfUpValuesOpen(ip)
+	}
 	a.Ldrb(rTmp, rCI, offCIStatus)
 	a.Tbz(rTmp, bitOf(callStatusReentry), exit)
 	a.Ldr(rLen, rCI, offCIResults) // wanted
