@@ -4,3 +4,5 @@
 # A workspace joining cmd/luart to this checkout, for local development
 go.work
 go.work.sum
+/cmd/luart/luart
+/cmd/luart/luart.exe

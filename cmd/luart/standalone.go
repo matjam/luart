@@ -55,6 +55,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, terminal bool
 		c.printVersion()
 	}
 	c.l = newState()
+	defer c.l.Close() // runs pending finalizers and flushes files, as lua.c's lua_close
 	if !noEnv && !c.report(c.handleInit()) {
 		return 1
 	}
@@ -116,6 +117,10 @@ func collectArgs(args []string) (script int, interactive, version, execute, noEn
 				return -i, interactive, version, execute, noEnv
 			}
 			noEnv = true
+		case 'W':
+			if len(a) != 2 {
+				return -i, interactive, version, execute, noEnv
+			}
 		case 'i', 'v':
 			if len(a) != 2 {
 				return -i, interactive, version, execute, noEnv
@@ -144,13 +149,15 @@ func (c *cli) usage(bad string) {
 	}
 	fmt.Fprintf(c.stderr, `usage: %s [options] [script [args]]
 Available options are:
-  -e stat  execute string 'stat'
-  -i       enter interactive mode after executing 'script'
-  -l name  require library 'name'
-  -v       show version information
-  -E       ignore environment variables
-  --       stop handling options
-  -        stop handling options and execute stdin
+  -e stat   execute string 'stat'
+  -i        enter interactive mode after executing 'script'
+  -l mod    require library 'mod' into global 'mod'
+  -l g=mod  require library 'mod' into global 'g'
+  -v        show version information
+  -E        ignore environment variables
+  -W        turn warnings on
+  --        stop handling options
+  -         stop handling options and execute stdin
 `, c.progName)
 }
 
@@ -231,18 +238,25 @@ func (c *cli) doString(s, name string) error {
 }
 
 func (c *cli) doLibrary(name string) error {
+	// As lua.c's dolibrary: -l g=mod sets g to require("mod"); -l mod
+	// sets mod, less any suffix from a '-'.
+	global, module, ok := strings.Cut(name, "=")
+	if !ok {
+		module = name
+		global, _, _ = strings.Cut(name, "-")
+	}
 	c.l.Global("require")
-	c.l.PushString(name)
+	c.l.PushString(module)
 	if err := c.docall(1, 1); err != nil {
 		return err
 	}
-	c.l.SetGlobal(name)
+	c.l.SetGlobal(global)
 	return nil
 }
 
-// handleInit runs LUA_INIT_5_2, or LUA_INIT: a file after @, else code.
+// handleInit runs LUA_INIT_5_5, or LUA_INIT: a file after @, else code.
 func (c *cli) handleInit() error {
-	name := "LUA_INIT_5_2"
+	name := "LUA_INIT_5_5"
 	init, ok := os.LookupEnv(name)
 	if !ok {
 		name = "LUA_INIT"
@@ -260,6 +274,10 @@ func (c *cli) handleInit() error {
 func (c *cli) runArgs(args []string, end int) bool {
 	for i := 1; i < end; i++ {
 		a := args[i]
+		if a == "-W" {
+			c.l.Warning("@on", false) // turn warnings on
+			continue
+		}
 		if len(a) < 2 || a[0] != '-' || (a[1] != 'e' && a[1] != 'l') {
 			continue
 		}

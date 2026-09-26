@@ -82,6 +82,26 @@ func (t *theme) tokenStyle(tt chroma.TokenType) lipgloss.Style {
 
 var luaLexer = chroma.Coalesce(lexers.Get("lua"))
 
+// isGlobalDeclaration reports whether toks[i] is the word global starting
+// a Lua 5.5 declaration, which chroma's Lua 5.x lexer takes for a name:
+// global followed by a name, function, an attribute or *.
+func isGlobalDeclaration(toks []chroma.Token, i int) bool {
+	if toks[i].Value != "global" || !toks[i].Type.InCategory(chroma.Name) {
+		return false
+	}
+	for _, next := range toks[i+1:] {
+		switch {
+		case next.Type.InCategory(chroma.Text) && strings.TrimSpace(next.Value) == "":
+			continue
+		case next.Value == "function", next.Value == "<", next.Value == "*":
+			return true
+		default:
+			return next.Type.InCategory(chroma.Name)
+		}
+	}
+	return false
+}
+
 // highlight returns code's lines, coloured as Lua. Code that does not
 // tokenise comes back plain.
 func (t *theme) highlight(code string) []string {
@@ -89,8 +109,12 @@ func (t *theme) highlight(code string) []string {
 	if err != nil {
 		return strings.Split(code, "\n")
 	}
+	toks := it.Tokens()
 	lines := []string{""}
-	for tok := it(); tok != chroma.EOF; tok = it() {
+	for i, tok := range toks {
+		if isGlobalDeclaration(toks, i) {
+			tok.Type = chroma.Keyword
+		}
 		st := t.tokenStyle(tok.Type)
 		for i, part := range strings.Split(tok.Value, "\n") {
 			if i > 0 {
