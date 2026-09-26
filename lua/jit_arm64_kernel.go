@@ -250,6 +250,10 @@ func (c *arm64Compiler) kernelInstruction(k *kernel, ip int, latch Label) int {
 		// and give the modulo the divisor's sign.
 		divisor := p.Constants[bytecode.ConstantIndex(i.C())].i()
 		b, d := k.ireg(i.B()), k.ireg(i.A())
+		if plan, ok := planDivide(divisor); ok {
+			a.Mov(d, c.divideByConstant(op, plan, b))
+			break
+		}
 		a.MovImm(rTmp2, uint64(divisor))
 		a.Sdiv(rTmp, b, rTmp2)          // toward zero; minint / -1 wraps
 		a.Msub(rExitPC, rTmp, rTmp2, b) // the remainder, with b's sign

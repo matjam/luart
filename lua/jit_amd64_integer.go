@@ -26,7 +26,12 @@ func (c *amd64Compiler) divide(ip int, op bytecode.OpCode, i bytecode.Instructio
 	if floatsExit {
 		floats = c.exit(ip)
 	}
-	if kb != kindFloat && kc != kindFloat {
+	if plan, ok := constantDivisor(c.p, i.C()); ok && kb != kindFloat {
+		c.branchUnlessInteger(b, kb, floats)
+		a.Load(rP, b.base, b.off+offN)
+		c.storeInteger(dst, c.divideByConstant(op, plan, rP))
+		a.Jmp(done)
+	} else if kb != kindFloat && kc != kindFloat {
 		c.branchUnlessInteger(b, kb, floats)
 		c.branchUnlessInteger(cc, kc, floats)
 		a.Load(rP, b.base, b.off+offN)
@@ -74,6 +79,60 @@ func (c *amd64Compiler) divide(ip int, op bytecode.OpCode, i bytecode.Instructio
 		c.storeNumber(dst, 0)
 	}
 	a.Bind(done)
+}
+
+// divideByConstant computes n % d or n // d, floored, for the constant d
+// that plan describes (see jit_divide.go), and returns the register that
+// holds the result: AX or DX, which it uses, so n must be neither.
+func (c *amd64Compiler) divideByConstant(op bytecode.OpCode, plan divPlan, n Reg) Reg {
+	a := &c.a
+	if plan.pow2 {
+		a.Mov(AX, n)
+		if op == bytecode.OpMod {
+			a.AndImm(AX, int32(plan.d-1))
+		} else {
+			a.Sar(AX, uint8(plan.shift))
+		}
+		return AX
+	}
+	a.MovImm(AX, uint64(plan.magic))
+	a.ImulWide(n) // DX: the high half of n * magic
+	if plan.addN {
+		a.Add(DX, n)
+	} else if plan.subN {
+		a.Sub(DX, n)
+	}
+	if plan.shift > 0 {
+		a.Sar(DX, uint8(plan.shift))
+	}
+	if plan.d > 0 { // plus one for a negative quotient: n's sign, or q's
+		a.Mov(AX, n)
+	} else {
+		a.Mov(AX, DX)
+	}
+	a.Shr(AX, 63)
+	a.Add(DX, AX) // the quotient, toward zero
+	a.ImulImm(AX, DX, int32(plan.d))
+	a.Neg(AX)
+	a.Add(AX, n) // the remainder, with n's sign
+	adjust := a.NewLabel()
+	a.Test(AX, AX)
+	a.J(E, adjust) // exact
+	if plan.d > 0 {
+		a.J(NS, adjust)
+	} else {
+		a.J(S, adjust)
+	}
+	if op == bytecode.OpMod { // signs differ: one step toward minus infinity
+		a.AddImm(AX, int32(plan.d))
+	} else {
+		a.SubImm(DX, 1)
+	}
+	a.Bind(adjust)
+	if op == bytecode.OpMod {
+		return AX
+	}
+	return DX
 }
 
 // bitwise compiles a bitwise operator on two integers, or one for ~. A

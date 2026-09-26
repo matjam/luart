@@ -91,6 +91,15 @@ func TestIntegerArithmetic(t *testing.T) {
 	})
 }
 
+func TestDivideByConstant(t *testing.T) {
+	var a Asm
+	a.Smulh(3, 20, 9) // smulh x3, x20, x9
+	a.Smulh(0, 1, 2)  // smulh x0, x1, x2
+	a.Asr(5, 6, 3)    // asr x5, x6, #3
+	a.Asr(28, 1, 63)  // asr x28, x1, #63
+	check(t, &a, []uint32{0x9b497e83, 0x9b427c20, 0x9343fcc5, 0x937ffc3c})
+}
+
 func TestBranches(t *testing.T) {
 	var a Asm
 	fwd, back := a.NewLabel(), a.NewLabel()

@@ -204,6 +204,11 @@ func (a *Asm) Lsr(rd, rn Reg, shift uint32) {
 	a.emit(0xd340fc00 | (shift&63)<<16 | rn.u()<<5 | rd.u())
 }
 
+// Asr shifts rn right, signed, by shift into rd.
+func (a *Asm) Asr(rd, rn Reg, shift uint32) {
+	a.emit(0x9340fc00 | (shift&63)<<16 | rn.u()<<5 | rd.u())
+}
+
 // Sub computes rd = rn - rm.
 func (a *Asm) Sub(rd, rn, rm Reg) { a.emit(0xcb000000 | rm.u()<<16 | rn.u()<<5 | rd.u()) }
 
@@ -215,6 +220,9 @@ func (a *Asm) Neg(rd, rm Reg) { a.Sub(rd, ZR, rm) }
 
 // Mul computes rd = rn * rm, keeping the low 64 bits.
 func (a *Asm) Mul(rd, rn, rm Reg) { a.emit(0x9b007c00 | rm.u()<<16 | rn.u()<<5 | rd.u()) }
+
+// Smulh computes rd = the high 64 bits of the signed 128-bit rn * rm.
+func (a *Asm) Smulh(rd, rn, rm Reg) { a.emit(0x9b407c00 | rm.u()<<16 | rn.u()<<5 | rd.u()) }
 
 // Msub computes rd = ra - rn*rm.
 func (a *Asm) Msub(rd, rn, rm, ra Reg) {
