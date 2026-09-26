@@ -31,7 +31,7 @@ func luart(t *testing.T, stdin string, env []string, args ...string) result {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], args...)
 	for _, e := range os.Environ() {
-		if !strings.HasPrefix(e, "LUA_INIT") { // an empty LUA_INIT_5_2 still hides LUA_INIT
+		if !strings.HasPrefix(e, "LUA_INIT") { // an empty LUA_INIT_5_5 still hides LUA_INIT
 			cmd.Env = append(cmd.Env, e)
 		}
 	}
@@ -66,7 +66,7 @@ func TestCommandLine(t *testing.T) {
 		stderr string // a substring of stderr, or ""
 		status int
 	}{
-		{"version", "", nil, []string{"-v"}, "Lua 5.2  Copyright (C) 1994-2015 Lua.org, PUC-Rio; luart", "", 0},
+		{"version", "", nil, []string{"-v"}, "Lua 5.5  Copyright (C) 1994-2026 Lua.org, PUC-Rio; luart", "", 0},
 		{"execute", "", nil, []string{"-e", "print(1 + 1)"}, "2\n", "", 0},
 		{"execute joined", "", nil, []string{"-eprint('joined')"}, "joined\n", "", 0},
 		{"executes in order", "", nil, []string{"-e", "x = 2", "-e", "print(x * 3)"}, "6\n", "", 0},
@@ -82,9 +82,13 @@ func TestCommandLine(t *testing.T) {
 		{"require", "", nil, []string{"-l", "string", "-e", "print(type(string.rep))"}, "function\n", "", 0},
 		{"LUA_INIT", "", []string{"LUA_INIT=print('init')"}, []string{"-e", "print('after')"}, "init\nafter\n", "", 0},
 		{"LUA_INIT file", "", []string{"LUA_INIT=@" + init}, []string{"-e", "print(initialised)"}, "from file\n", "", 0},
-		{"LUA_INIT_5_2 first", "", []string{"LUA_INIT=print('no')", "LUA_INIT_5_2=print('yes')"}, []string{"-e", ""}, "yes\n", "", 0},
+		{"LUA_INIT_5_5 first", "", []string{"LUA_INIT=print('no')", "LUA_INIT_5_5=print('yes')"}, []string{"-e", ""}, "yes\n", "", 0},
 		{"-E ignores LUA_INIT", "", []string{"LUA_INIT=print('init')"}, []string{"-E", "-e", "print('after')"}, "after\n", "", 0},
 		{"--", "", nil, []string{"--", script}, "script", "", 0},
+		{"require into a global", "", nil, []string{"-l", "s=string", "-e", "print(s == string)"}, "true\n", "", 0},
+		{"warnings off", "", nil, []string{"-e", "warn('hidden')"}, "", "", 0},
+		{"-W", "", nil, []string{"-W", "-e", "warn('shown', '!')"}, "", "Lua warning: shown!\n", 0},
+		{"finalizers run at exit", "", nil, []string{"-e", "setmetatable({}, {__gc = function() print('gc') end})"}, "gc\n", "", 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -98,7 +102,7 @@ func TestCommandLine(t *testing.T) {
 			if !strings.Contains(r.stderr, tt.stderr) {
 				t.Errorf("stderr %q, want it to contain %q", r.stderr, tt.stderr)
 			}
-			if tt.name == "LUA_INIT" || tt.name == "-E ignores LUA_INIT" || tt.name == "LUA_INIT_5_2 first" {
+			if tt.name == "LUA_INIT" || tt.name == "-E ignores LUA_INIT" || tt.name == "LUA_INIT_5_5 first" {
 				if r.stdout != tt.stdout {
 					t.Errorf("stdout %q, want exactly %q", r.stdout, tt.stdout)
 				}

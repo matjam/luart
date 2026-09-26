@@ -45,6 +45,6 @@ func luartVersion() string {
 
 // versionLine is what -v prints.
 func versionLine() string {
-	return fmt.Sprintf("%s  Copyright (C) 1994-2015 Lua.org, PUC-Rio; luart %s %s/%s",
+	return fmt.Sprintf("%s  Copyright (C) 1994-2026 Lua.org, PUC-Rio; luart %s %s/%s",
 		lua.VersionString, luartVersion(), runtime.GOOS, runtime.GOARCH)
 }

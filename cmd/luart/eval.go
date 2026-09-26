@@ -151,7 +151,7 @@ func (f *formatter) table(index, depth int, seen map[any]bool) *pnode {
 	}
 	l.PushNil()
 	for l.Next(index) {
-		if k, ok := l.ToInteger(-2); ok && l.TypeOf(-2) == lua.TypeNumber && 1 <= k && k <= length {
+		if k, ok := l.ToInteger(-2); ok && l.TypeOf(-2) == lua.TypeNumber && 1 <= k && k <= int64(length) {
 			l.Pop(1)
 			continue
 		}

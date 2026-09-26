@@ -8,7 +8,7 @@ require (
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/charmbracelet/x/term v0.2.2
-	github.com/matjam/luart v0.0.0-20260925210503-825076de939b
+	github.com/matjam/luart v0.0.0-20260926024940-8f5ae7794d31
 )
 
 require (
