@@ -12,8 +12,8 @@ import (
 	"os/signal"
 	"strings"
 
-	"github.com/matjam/luart/lua"
-	"github.com/matjam/luart/stdlib"
+	"github.com/matjam/apogee/lua"
+	"github.com/matjam/apogee/stdlib"
 )
 
 const progName = "apogee"

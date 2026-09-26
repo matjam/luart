@@ -13,7 +13,7 @@ import (
 	"runtime/debug"
 
 	"github.com/charmbracelet/x/term"
-	"github.com/matjam/luart/lua"
+	"github.com/matjam/apogee/lua"
 )
 
 func main() {
@@ -32,7 +32,7 @@ func isTerminal(f any) bool {
 func apogeeVersion() string {
 	if info, ok := debug.ReadBuildInfo(); ok {
 		for _, m := range info.Deps {
-			if m.Path == "github.com/matjam/luart" {
+			if m.Path == "github.com/matjam/apogee" {
 				if m.Replace != nil {
 					return "(devel)"
 				}

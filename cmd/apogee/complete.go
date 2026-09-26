@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/matjam/luart/lua"
+	"github.com/matjam/apogee/lua"
 )
 
 // completions returns the names that could complete the identifier chain
