@@ -360,7 +360,8 @@ func makeExpression(kind, info int) exprDesc {
 }
 
 func (f *function) semanticError(message string) {
-	f.p.t = 0 // remove "near to" from final message
+	f.p.t = 0                     // remove "near to" from final message
+	f.p.lineNumber = f.p.lastLine // back to the line of the last token used
 	f.p.syntaxError(message)
 }
 
@@ -633,9 +634,8 @@ func (f *function) NumberConstant(n bytecode.Number) int {
 }
 
 func (f *function) CheckStack(n int) {
-	if n += f.freeRegisterCount; n >= bytecode.MaxStack {
-		f.p.syntaxError("function or expression too complex")
-	} else if n > f.f.MaxStackSize {
+	if n += f.freeRegisterCount; n > f.f.MaxStackSize {
+		f.p.checkLimit(n, bytecode.MaxArgA, "registers") // as instructions' A fields hold registers
 		f.f.MaxStackSize = n
 	}
 }
@@ -1392,6 +1392,7 @@ func (f *function) CheckReadOnly(v exprDesc) {
 // code raises "global 'name' already defined" unless it is nil.
 func (f *function) CheckGlobalUndefined(v exprDesc, name string, line int) {
 	e := f.ExpressionToAnyRegister(v)
+	f.FixLine(line)
 	k := f.stringConstant(name) + 1
 	if k > bytecode.MaxArgBx {
 		k = 0

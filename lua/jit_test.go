@@ -820,7 +820,7 @@ func TestJITEquality(t *testing.T) {
 		      (a == true and "t" or "-") .. (a == 1 and "1" or "-") .. (nil == a and "N" or "-") ..
 		      (0 == a and "0" or "-") .. (a ~= -0.0 and "m" or "-")
 		  end
-		  -- __eq only on the second: not tried
+		  -- __eq only on the second: tried, as Lua 5.4 on
 		  out[#out + 1] = (plain == ta) and "y" or "n"
 		  -- a loop whose back edge is an equality test
 		  local k, s = 0, nil

@@ -123,6 +123,14 @@ var coroutineLibrary = []lua.RegistryFunction{
 		}
 	}},
 	{Name: "create", Function: coroutineCreate},
+	{Name: "isyieldable", Function: func(l *lua.State) int {
+		co := l
+		if !l.IsNone(1) {
+			co = toCoroutine(l)
+		}
+		l.PushBoolean(co.IsYieldable())
+		return 1
+	}},
 	{Name: "resume", Function: coroutineResume},
 	{Name: "running", Function: func(l *lua.State) int {
 		l.PushBoolean(l.PushThread())

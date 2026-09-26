@@ -222,8 +222,17 @@ follows lgc.c's atomic phase.
   finalizers still due. Ephemeron tables are marked to convergence. It
   then clears weak values, moves unreached finalizable objects to
   `toFinalize` (resurrecting them), clears weak keys and weak values
-  again, and runs the finalizers newest first. An error in one is raised
-  as "error in __gc metamethod (...)".
+  again, and runs the finalizers newest first. An error in one is a
+  warning, "error in __gc (...)", as in 5.4 on. It also clears each
+  thread's stack above its top, and "buries" the keys of dictionary
+  shapes' nil slots (`shape.buried`), so that Go frees dead keys as C Lua
+  does; `next` resumes from a buried key by its hash. Shared shapes take
+  no key longer than 40 bytes, since they outlive their tables.
+- **Closing a state.** `State.Close`, as lua_close, closes the main
+  thread's to-be-closed variables and runs every pending finalizer,
+  newest first; `os.exit(code, true)` calls it. Files a script opens are
+  fully buffered, as in C, and os.exit flushes them, as C's exit does, so
+  a host that ends the process otherwise should close its states.
 - **When it runs.** On `collectgarbage("collect")` and `"step"`, and
   automatically once a metatable with `__mode` or `__gc` is set, since a
   state without either has nothing for it to do. The automatic pacing is
@@ -247,8 +256,11 @@ follows lgc.c's atomic phase.
   Lua heap at once. An object only Go memory refers to, outside the
   registry and the stacks, counts as unreachable, so a Go embedder must
   keep such objects in the registry. `__mode` and `__gc` are noticed when
-  the metatable is set, as 5.2 reads `__gc`. `setstepmul`, `setmajorinc`,
-  `generational` and `incremental` are accepted and ignored.
+  the metatable is set, as 5.2 reads `__gc`. Of `collectgarbage`'s
+  "param" parameters only "pause" paces collections; the modes are
+  remembered and reported, and "step" in generational mode collects.
+  The count is Go's heap, so Go's own warm-up (starting GC worker
+  threads) can grow it by a few kilobytes over the first collections.
 
 ## JIT
 

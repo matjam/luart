@@ -97,7 +97,10 @@ func (p *parser) constructor() exprDesc {
 	return t
 }
 
-func (p *parser) functionArguments(f exprDesc, line int) exprDesc {
+// functionArguments parses a call's arguments. The call is on the line
+// they start on, as Lua 5.5 has it.
+func (p *parser) functionArguments(f exprDesc) exprDesc {
+	line := p.lineNumber
 	var args exprDesc
 	switch p.t {
 	case '(':
@@ -147,7 +150,6 @@ func (p *parser) primaryExpression() (e exprDesc) {
 }
 
 func (p *parser) suffixedExpression() exprDesc {
-	line := p.lineNumber
 	e := p.primaryExpression()
 	for {
 		if e.varArg && (p.t == '.' || p.t == '[') { // the named vararg table, indexed
@@ -167,9 +169,9 @@ func (p *parser) suffixedExpression() exprDesc {
 			e = p.function.Indexed(p.function.ExpressionToAnyRegisterOrUpValue(e), p.index())
 		case ':':
 			p.next()
-			e = p.functionArguments(p.function.Self(e, p.checkNameAsExpression()), line)
+			e = p.functionArguments(p.function.Self(e, p.checkNameAsExpression()))
 		case '(', tkString, '{':
-			e = p.functionArguments(p.function.ExpressionToNextRegister(e), line)
+			e = p.functionArguments(p.function.ExpressionToNextRegister(e))
 		default:
 			return e
 		}

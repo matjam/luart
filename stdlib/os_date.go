@@ -21,28 +21,19 @@ func osDate(l *lua.State) int {
 	s := l.OptString(1, "%c")
 	t := time.Now()
 	if !l.IsNoneOrNil(2) {
-		t = time.Unix(int64(l.CheckNumber(2)), 0)
+		t = time.Unix(l.CheckInteger(2), 0)
 	}
 	if strings.HasPrefix(s, "!") { // UTC
 		t, s = t.UTC(), s[1:]
 	} else {
 		t = t.Local()
 	}
+	if !representable(t) {
+		l.Errorf("date result cannot be represented in this installation")
+	}
 	if s == "*t" {
 		l.CreateTable(0, 9)
-		for _, f := range []struct {
-			name  string
-			value int
-		}{
-			{"sec", t.Second()}, {"min", t.Minute()}, {"hour", t.Hour()},
-			{"day", t.Day()}, {"month", int(t.Month())}, {"year", t.Year()},
-			{"wday", int(t.Weekday()) + 1}, {"yday", t.YearDay()},
-		} {
-			l.PushInteger(f.value)
-			l.SetField(-2, f.name)
-		}
-		l.PushBoolean(t.IsDST())
-		l.SetField(-2, "isdst")
+		setDateFields(l, t)
 		return 1
 	}
 	var b strings.Builder

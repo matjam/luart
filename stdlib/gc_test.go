@@ -1,6 +1,12 @@
 package stdlib_test
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/matjam/luart/lua"
+	"github.com/matjam/luart/stdlib"
+)
 
 // While the collector is stopped, "count" grows by what the script
 // allocates, even a few small objects, and a collection lowers it.
@@ -81,11 +87,25 @@ func TestFinalizers(t *testing.T) {
 		late.__gc = function() log[#log + 1] = "late" end
 		collectgarbage()
 		assert(#log == 3)
-
-		setmetatable({}, {__gc = function() error("boom") end})
-		local ok, e = pcall(collectgarbage)
-		assert(not ok and e:find("error in __gc metamethod (", 1, true) and e:find("boom", 1, true), e)
 	`)
+}
+
+// An error in a finalizer is a warning, as in Lua 5.4 on.
+func TestFinalizerErrorWarns(t *testing.T) {
+	l := lua.NewState()
+	stdlib.Open(l)
+	var b strings.Builder
+	l.SetWarnFunction(lua.StderrWarnings(&b))
+	if err := l.DoString(`
+		warn("@on")
+		setmetatable({}, {__gc = function() error("boom", 0) end})
+		collectgarbage()
+		warn("done", "!")`); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := b.String(), "Lua warning: error in __gc (boom)\nLua warning: done!\n"; got != want {
+		t.Errorf("warnings %q, want %q", got, want)
+	}
 }
 
 // Collections run automatically as the state allocates, once a metatable

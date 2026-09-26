@@ -1,5 +1,7 @@
 package lua
 
+import "hash/maphash"
+
 // A shape maps a table's string keys to slots in the table's slots slice.
 //
 // Tables that gain the same string keys in the same order share one shape,
@@ -20,6 +22,7 @@ type shape struct {
 const (
 	maxSharedShapeKeys = 32 // keys beyond this make a table a dictionary
 	maxShapeChildren   = 64 // children beyond this make new tables dictionaries
+	maxSharedKeyLen    = 40 // longer keys make a table a dictionary, as shared shapes outlive tables
 )
 
 func newRootShape() *shape { return &shape{} }
@@ -40,7 +43,7 @@ func (s *shape) with(k value, key string) *shape {
 	if c, ok := s.next[key]; ok {
 		return c
 	}
-	if len(s.keys) >= maxSharedShapeKeys || len(s.next) >= maxShapeChildren {
+	if len(s.keys) >= maxSharedShapeKeys || len(s.next) >= maxShapeChildren || len(key) > maxSharedKeyLen {
 		d := s.dictionary()
 		return d.with(k, key)
 	}
@@ -56,6 +59,44 @@ func (s *shape) with(k value, key string) *shape {
 	}
 	s.next[key] = c
 	return c
+}
+
+// buried returns a copy of dictionary s without the keys of t's nil slots,
+// so that Go can free them, as C Lua frees dead keys. A buried key's slot
+// keeps a tombstone, the key's hash, from which next resumes. The new
+// shape invalidates slots that instructions cached for the old one.
+func (s *shape) buried(slots []value) *shape {
+	d := &shape{slots: make(map[string]int32, len(s.slots)), keys: make([]value, len(s.keys)), dict: true}
+	for i, k := range s.keys {
+		if str, ok := k.str(); ok && slots[i].isNil() {
+			k = tombstone(str)
+		} else if ok {
+			d.slots[str] = int32(i)
+		}
+		d.keys[i] = k
+	}
+	return d
+}
+
+// tombstoneSeed hashes buried keys.
+var tombstoneSeed = maphash.MakeSeed()
+
+// tombstone is the key of a buried slot whose key was k: an integer, which
+// no shape key otherwise is.
+func tombstone(k string) value { return integerValue(int64(maphash.String(tombstoneSeed, k))) }
+
+// buriedSlot returns the slot of dictionary s where key k was buried.
+func (s *shape) buriedSlot(k string) (int32, bool) {
+	if !s.dict {
+		return 0, false
+	}
+	t := tombstone(k)
+	for i, x := range s.keys {
+		if x.isInteger() && x.i() == t.i() {
+			return int32(i), true
+		}
+	}
+	return 0, false
 }
 
 // dictionary returns a private, mutable copy of s.

@@ -22,6 +22,7 @@ type table struct {
 // tableExtra holds table state that most tables never need.
 type tableExtra struct {
 	dead          int         // nil slots in a dictionary shape
+	buried        int         // how many of them a collection buried: see shape.buried
 	iterationKeys []hashValue // snapshot of hash keys for next
 	iterationNext int         // index in iterationKeys after the key next last returned
 }
@@ -174,7 +175,7 @@ func (t *table) compact() {
 	d := &shape{slots: make(map[string]int32, live), keys: make([]value, 0, live), dict: true}
 	slots := make([]value, 0, live)
 	for i, v := range t.slots {
-		if !v.isNil() {
+		if !v.isNil() { // a live slot, so not buried
 			k := t.shape.keys[i]
 			s, _ := k.str()
 			d.slots[s] = int32(len(slots))
@@ -182,7 +183,7 @@ func (t *table) compact() {
 			slots = append(slots, v)
 		}
 	}
-	t.shape, t.slots, t.extra.dead = d, slots, 0
+	t.shape, t.slots, t.extra.dead, t.extra.buried = d, slots, 0, 0
 }
 
 func (l *State) fastTagMethod(table *table, event tm) value {
@@ -409,7 +410,9 @@ func (l *State) next(t *table, key int) bool {
 		} else if str, ok := k.str(); ok {
 			slot, ok := int32(0), false
 			if t.shape != nil {
-				slot, ok = t.shape.slot(str)
+				if slot, ok = t.shape.slot(str); !ok { // cleared, and then buried by a collection?
+					slot, ok = t.shape.buriedSlot(str)
+				}
 			}
 			if !ok {
 				l.runtimeError("invalid key to 'next'")

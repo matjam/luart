@@ -72,7 +72,7 @@ func TestSyntaxErrors(t *testing.T) {
 		{"x = 0x10 y", "syntax error near <eof>"},
 		{"x = 'abc' 'd'", "unexpected symbol near ''d''"},
 		{"x =", "unexpected symbol near <eof>"},
-		{"x = \x01", "unexpected symbol near char(1)"},
+		{"x = \x01", "unexpected symbol near '<\\1>'"},
 		{`x = "abc\x"`, `hexadecimal digit expected near '"abc\x"'`}, // the string so far, as C Lua 5.5
 		{`x = "abc\q"`, `invalid escape sequence near '"abc\q'`},
 		{`x = "abc\300"`, `decimal escape too large near '"abc\300"'`},
@@ -84,8 +84,8 @@ func TestSyntaxErrors(t *testing.T) {
 		{"x = 1e", "malformed number near '1e'"},
 		{"x = 1..2", "malformed number near '1..2'"},
 		// Names are ASCII letters, digits and '_', as in the C locale.
-		{"\xe9 = 1", "unexpected symbol near char(233)"},
-		{"a\xe91 = 1", "syntax error near char(233)"},
+		{"\xe9 = 1", "unexpected symbol near '<\\233>'"},
+		{"a\xe91 = 1", "syntax error near '<\\233>'"},
 	} {
 		_, err := Parse(strings.NewReader(tt.source), "=test", 0)
 		if want := "test:1: " + tt.want; err == nil || err.Error() != want {

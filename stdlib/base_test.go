@@ -32,10 +32,11 @@ func TestCollectGarbage(t *testing.T) {
 		assert(collectgarbage("isrunning") == true)
 		assert(collectgarbage("stop") == 0 and collectgarbage("isrunning") == false)
 		assert(collectgarbage("restart") == 0 and collectgarbage("isrunning") == true)
-		assert(collectgarbage("setpause", 100) == 200 and collectgarbage("setpause", 200) == 100)
-		assert(collectgarbage("setstepmul", 400) == 200 and collectgarbage("setstepmul", 200) == 400)
-		assert(collectgarbage("setmajorinc", 50) == 100)
-		assert(collectgarbage("generational") == 0 and collectgarbage("incremental") == 0)
+		assert(collectgarbage("param", "pause", 100) == 250 and collectgarbage("param", "pause") == 100)
+		assert(collectgarbage("param", "stepmul", 400) == 200 and collectgarbage("param", "stepmul", 200) == 400)
+		assert(collectgarbage("generational") == "incremental" and collectgarbage("incremental") == "generational")
+		assert(not pcall(collectgarbage, "setpause", 100)) -- gone in 5.5
+		assert(not pcall(collectgarbage, "param", "bogus"))
 		local ok, err = pcall(collectgarbage, "bogus")
 		assert(not ok and err:find("invalid option 'bogus'", 1, true), err)
 	`)
@@ -101,7 +102,7 @@ func TestRepeatedStackOverflow(t *testing.T) {
 func TestErrorValues(t *testing.T) {
 	run(t, `
 		local ok, v = pcall(error)
-		assert(not ok and v == nil and select('#', pcall(error)) == 2)
+		assert(not ok and v == "<no error object>" and select('#', pcall(error)) == 2) -- as 5.5
 		local e = {}
 		ok, v = pcall(error, e)
 		assert(not ok and v == e)

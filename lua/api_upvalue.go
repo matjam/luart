@@ -48,7 +48,7 @@ func (l *State) upValue(f, n int) **upValue {
 
 // UpValueID returns a unique identifier for the upvalue numbered n from the
 // closure at index f. Parameters f and n are as in UpValue (but n cannot be
-// greater than the number of upvalues).
+// greater than the number of upvalues). It returns nil for an invalid n.
 //
 // These unique identifiers allow a program to check whether different
 // closures share upvalues. Lua closures that share an upvalue (that is, that
@@ -56,10 +56,16 @@ func (l *State) upValue(f, n int) **upValue {
 // upvalue indices.
 func (l *State) UpValueID(f, n int) any {
 	v := l.indexToValue(f)
-	if v.luaClosure() != nil {
-		return *l.upValue(f, n)
+	if c := v.luaClosure(); c != nil {
+		if 1 <= n && n <= len(c.upValues) {
+			return c.upValues[n-1]
+		}
+		return nil
 	} else if c := v.goClosure(); c != nil {
-		return &c.upValues[n-1]
+		if 1 <= n && n <= len(c.upValues) {
+			return &c.upValues[n-1]
+		}
+		return nil
 	}
 	panic("closure expected")
 }

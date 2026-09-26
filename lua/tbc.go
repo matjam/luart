@@ -53,7 +53,7 @@ func (l *State) closeTBC(level, top int, errObj value, hasErr, yieldable bool) {
 		}
 		l.checkStack(3)
 		if !tm.isFunction() && l.tagMethodByObject(tm, tmCall).isNil() {
-			l.runtimeError(fmt.Sprintf("attempt to call a %s value (metamethod 'close')", l.valueToType(tm)))
+			l.runtimeError(fmt.Sprintf("attempt to call a %s value (metamethod 'close')", objectTypeName(tm)))
 		}
 		l.push(tm)
 		l.push(v)
@@ -116,6 +116,7 @@ func (l *State) CloseThread(from *State) error {
 	}
 	l.deathError = nil // closed once: a second close finds nothing
 	l.callInfo = &l.baseCallInfo
+	l.errorFunction = 0 // not the handler of an xpcall it yielded inside
 	l.status = ThreadOK // so that __close metamethods can run
 	l.nonYieldableCallCount = 1
 	if err == nil && !l.hasTBC(1) {
@@ -124,6 +125,10 @@ func (l *State) CloseThread(from *State) error {
 	}
 	if err == nil { // a suspended coroutine: no error object
 		e := l.protect(func() { l.close(1); l.closeTBC(1, -1, nilValue, false, false) })
+		if e == errClosed { // a __close metamethod closed l again, which finished closing it
+			e, l.closedError = l.closedError, nil
+			return e
+		}
 		if e == nil {
 			l.top = l.baseCallInfo.function + 1
 			return nil

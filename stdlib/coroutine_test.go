@@ -73,6 +73,7 @@ func TestCoroutineYieldAcross(t *testing.T) {
 			__add = function(a, b) y("add"); return 42 end,
 			__concat = function(a, b) y("concat"); return "cat" end,
 			__lt = function(a, b) y("lt"); return true end,
+			__le = function(a, b) y("le"); return false end,
 			__eq = function(a, b) y("eq"); return true end,
 			__len = function(a) y("len"); return 7 end,
 			__call = function(self, x) y("call"); return x + 1 end,
@@ -86,7 +87,7 @@ func TestCoroutineYieldAcross(t *testing.T) {
 			r[3] = a + 1
 			r[4] = "x" .. a .. "y"
 			r[5] = a < b
-			r[6] = a <= b -- __le falls back to not (b < a)
+			r[6] = a <= b
 			r[7] = a == b
 			r[8] = #a
 			r[9] = a(9)
@@ -94,7 +95,7 @@ func TestCoroutineYieldAcross(t *testing.T) {
 			return table.concat({r[1], r[2], r[3], r[4], tostring(r[5]), tostring(r[6]), tostring(r[7]), r[8], r[9]}, ",")
 		end)
 		assert(out.result == "foo!,10,42,xcat,true,false,true,7,10", out.result) -- a .. "y" first
-		assert(table.concat(out, ",") == "index,newindex,add,concat,lt,lt,eq,len,call,index", table.concat(out, ","))
+		assert(table.concat(out, ",") == "index,newindex,add,concat,lt,le,eq,len,call,index", table.concat(out, ","))
 
 		-- a generic for's iterator
 		out = collect(function()

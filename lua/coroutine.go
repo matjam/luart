@@ -35,7 +35,7 @@ var (
 //
 // http://www.lua.org/manual/5.2/manual.html#lua_newthread
 func (l *State) NewThread() *State {
-	l1 := &State{global: l.global, allowHook: true, nonYieldableCallCount: 1}
+	l1 := &State{global: l.global, allowHook: true}
 	l1.initializeStack()
 	l1.hooker, l1.hookMask, l1.baseHookCount = l.hooker, l.hookMask, l.baseHookCount
 	l1.resetHookCount()
@@ -218,6 +218,12 @@ func (l *State) recover(err error) bool {
 	return true
 }
 
+// IsYieldable reports whether l can yield: it is a coroutine, and no Go
+// call without a continuation, nor a metamethod call from Go, is running.
+//
+// https://www.lua.org/manual/5.5/manual.html#lua_isyieldable
+func (l *State) IsYieldable() bool { return l.nonYieldableCallCount == 0 }
+
 // Yield yields the coroutine running l, which must not be the main
 // thread, with resultCount values from the top of the stack, which its
 // Resume returns. A Go function yields with
@@ -273,9 +279,12 @@ func (l *State) finishOp() {
 	ci := l.callInfo
 	frame, p := ci.frame, ci.closure.prototype
 	i := p.Code[ci.savedPC-1]
+	if i.OpCode() == bytecode.OpBitwise {
+		ci.savedPC++ // resume after its EXTRAARG, which holds its operator
+	}
 	switch op := i.OpCode(); op {
-	case bytecode.OpAdd, bytecode.OpSub, bytecode.OpMul, bytecode.OpDiv, bytecode.OpMod,
-		bytecode.OpPow, bytecode.OpUnaryMinus, bytecode.OpLength, bytecode.OpGetTableUp, bytecode.OpGetTable:
+	case bytecode.OpBitwise, bytecode.OpAdd, bytecode.OpSub, bytecode.OpMul, bytecode.OpDiv, bytecode.OpMod,
+		bytecode.OpPow, bytecode.OpIDiv, bytecode.OpUnaryMinus, bytecode.OpLength, bytecode.OpGetTableUp, bytecode.OpGetTable:
 		l.top--
 		frame[i.A()] = l.stack[l.top]
 	case bytecode.OpSelf:
@@ -285,9 +294,6 @@ func (l *State) finishOp() {
 	case bytecode.OpLessOrEqual, bytecode.OpLessThan, bytecode.OpEqual:
 		result := !isFalse(l.stack[l.top-1])
 		l.top--
-		if op == bytecode.OpLessOrEqual && l.tagMethodByObject(k(i.B(), p.Constants, frame), tmLE).isNil() {
-			result = !result // "<=" ran as "not <"
-		}
 		if result != (i.A() != 0) {
 			ci.savedPC++ // skip the jump
 		}
