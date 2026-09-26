@@ -186,6 +186,11 @@ func (l *State) concat(total int) {
 			for i, j := 0, len(ss)-1; i < j; i, j = i+1, j-1 {
 				ss[i], ss[j] = ss[j], ss[i]
 			}
+			size := 0
+			for _, s := range ss {
+				size += len(s)
+			}
+			l.charge(size)
 			put(len(ss), stringValue(strings.Join(ss, "")))
 		}
 		total -= n - 1 // created 1 new string from `n` strings
@@ -918,7 +923,7 @@ func (l *State) executeSwitch() {
 			start := (c - 1) * bytecode.ListItemsPerFlush
 			last := start + n
 			if last > len(h.array) {
-				h.extendArray(last)
+				h.extendArray(l, last)
 			}
 			copy(h.array[start:last], frame[a+1:a+1+n])
 			l.top = ci.top

@@ -1,6 +1,7 @@
 package lua
 
 import (
+	"math"
 	"os"
 	"sync/atomic"
 )
@@ -81,6 +82,11 @@ type globalState struct {
 	gcBackoff            uint              // automatic collections wait 2^gcBackoff times longer
 	gcCountBase          uint64            // for "count" while stopped: the heap when counting began
 	gcCountAllocatedBase uint64            // and Go's allocated bytes then
+
+	// The allocation limit; see memory.go.
+	allocRemaining int // bytes Lua may still allocate
+	allocLimit     int // what allocRemaining started from, math.MaxInt for no limit
+	allocCounted   int // bytes counted before allocRemaining last started
 	// seed uint // randomized seed for hashes
 	// upValueHead upValue // head of double-linked list of all open upvalues
 }
@@ -123,11 +129,11 @@ func typeOf(v value) Type {
 func NewState(options ...Option) *State {
 	l := &State{allowHook: true, error: nil, nonYieldableCallCount: 1}
 	g := &globalState{mainThread: l, registry: newTable(), memoryErrorMessage: "not enough memory", rootShape: newRootShape(),
-		gcParams: defaultGCParams, warn: StderrWarnings(os.Stderr)}
+		gcParams: defaultGCParams, warn: StderrWarnings(os.Stderr), allocRemaining: math.MaxInt, allocLimit: math.MaxInt}
 	l.global = g
 	l.initializeStack()
-	g.registry.putAtInt(RegistryIndexMainThread, objectValue(l))
-	g.registry.putAtInt(RegistryIndexGlobals, objectValue(newTable()))
+	g.registry.putAtInt(l, RegistryIndexMainThread, objectValue(l))
+	g.registry.putAtInt(l, RegistryIndexGlobals, objectValue(newTable()))
 	copy(g.tagMethodNames[:], eventNames)
 	g.jit = jitDefault && jitSupported && !jitDisabled
 	g.goName = "Go"

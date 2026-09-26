@@ -35,6 +35,7 @@ var (
 //
 // https://www.lua.org/manual/5.5/manual.html#lua_newthread
 func (l *State) NewThread() *State {
+	l.charge(threadBytes)
 	l1 := &State{global: l.global, allowHook: true}
 	l1.initializeStack()
 	l1.hooker, l1.hookMask, l1.baseHookCount = l.hooker, l.hookMask, l.baseHookCount

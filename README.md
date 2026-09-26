@@ -298,6 +298,18 @@ time.AfterFunc(100*time.Millisecond, l.Interrupt)
 err := l.DoString(`while true do end`) // runtime error: [string "while true do end"]:1: interrupted!
 ```
 
+**Limiting memory.** `SetAllocationLimit` bounds what a script may
+allocate from then on. An allocation past it fails before it is made, with
+a memory error, as when C Lua's allocator refuses one; `pcall` returns
+"not enough memory". The count includes garbage and never goes down, so
+the same script with the same inputs stops at the same point. Set it
+before each evaluation, as with `Interrupt`:
+
+```go
+l.SetAllocationLimit(8 << 20)
+err := l.DoString(`local s = string.rep("x", 1e9)`) // errors.Is(err, lua.ErrMemory)
+```
+
 **Without the JIT.** `lua.NewState(lua.WithoutJIT())` makes a state that
 only interprets; see [JIT](#jit).
 

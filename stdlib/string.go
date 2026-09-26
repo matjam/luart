@@ -156,6 +156,7 @@ func formatHelper(l *lua.State, fs string, argCount int) string {
 		default:
 			l.Errorf("invalid conversion '%s' to 'format'", spec)
 		}
+		l.CheckAllocation(b.Len())
 	}
 	return b.String()
 }
@@ -265,7 +266,12 @@ var stringLibrary = []lua.RegistryFunction{
 	{Name: "gmatch", Function: gmatch},
 	{Name: "gsub", Function: gsub},
 	{Name: "len", Function: func(l *lua.State) int { l.PushInteger(len(l.CheckString(1))); return 1 }},
-	{Name: "lower", Function: func(l *lua.State) int { l.PushString(changeCase(l.CheckString(1), 'A', 'Z')); return 1 }},
+	{Name: "lower", Function: func(l *lua.State) int {
+		s := l.CheckString(1)
+		l.CheckAllocation(len(s))
+		l.PushString(changeCase(s, 'A', 'Z'))
+		return 1
+	}},
 	{Name: "match", Function: func(l *lua.State) int { return find(l, false) }},
 	{Name: "pack", Function: stringPack},
 	{Name: "packsize", Function: stringPackSize},
@@ -276,7 +282,7 @@ var stringLibrary = []lua.RegistryFunction{
 			l.PushString("")
 		} else if len(s)+len(sep) < len(s) || len(s)+len(sep) >= math.MaxInt/n {
 			l.Errorf("resulting string too large")
-		} else if sep == "" {
+		} else if l.CheckAllocation(n*len(s) + (n-1)*len(sep)); sep == "" {
 			l.PushString(strings.Repeat(s, n))
 		} else {
 			var b bytes.Buffer
@@ -291,7 +297,9 @@ var stringLibrary = []lua.RegistryFunction{
 		return 1
 	}},
 	{Name: "reverse", Function: func(l *lua.State) int {
-		b := []byte(l.CheckString(1))
+		s := l.CheckString(1)
+		l.CheckAllocation(len(s))
+		b := []byte(s)
 		slices.Reverse(b)
 		l.PushString(string(b))
 		return 1
@@ -312,7 +320,12 @@ var stringLibrary = []lua.RegistryFunction{
 		}
 		return 1
 	}},
-	{Name: "upper", Function: func(l *lua.State) int { l.PushString(changeCase(l.CheckString(1), 'a', 'z')); return 1 }},
+	{Name: "upper", Function: func(l *lua.State) int {
+		s := l.CheckString(1)
+		l.CheckAllocation(len(s))
+		l.PushString(changeCase(s, 'a', 'z'))
+		return 1
+	}},
 }
 
 // formatNonFinite formats an infinity or NaN n as C's printf does for the

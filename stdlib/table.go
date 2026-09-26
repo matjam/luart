@@ -146,6 +146,7 @@ func tableConcat(l *lua.State) int {
 	for ; i < last; i++ {
 		add(i)
 		b.WriteString(sep)
+		l.CheckAllocation(b.Len()) // the result, which a long sep can make far longer than the table
 	}
 	if i == last { // the last, if the interval was not empty
 		add(i)

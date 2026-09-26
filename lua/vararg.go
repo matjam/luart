@@ -13,9 +13,10 @@ import (
 
 // varArgTable makes the vararg table of the extra arguments extras.
 func (l *State) varArgTable(extras []value) value {
+	l.chargeTable(len(extras), 1)
 	t := newTableWithSize(len(extras), 1)
 	for i, v := range extras {
-		t.putAtInt(i+1, v)
+		t.putAtInt(l, i+1, v)
 	}
 	t.put(l, stringValue("n"), integerValue(int64(len(extras))))
 	return objectValue(t)

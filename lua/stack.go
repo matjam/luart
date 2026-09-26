@@ -65,7 +65,6 @@ func (c *luaClosure) upValueCount() int        { return len(c.upValues) }
 func (c *goClosure) upValue(i int) value       { return c.upValues[i] }
 func (c *goClosure) setUpValue(i int, v value) { c.upValues[i] = v }
 func (c *goClosure) upValueCount() int         { return len(c.upValues) }
-func (l *State) newUpValue() *upValue          { return &upValue{} }
 
 func (uv *upValue) value() value {
 	if uv.state != nil {
@@ -206,6 +205,8 @@ func (ci *luaCallInfo) step() bytecode.Instruction {
 	return i
 }
 
+// newLuaClosure makes a closure of p, which the caller has counted: see
+// closureCost.
 func (l *State) newLuaClosure(p *prototype) *luaClosure {
 	c := &luaClosure{prototype: p}
 	if n := len(p.UpValues); n <= len(c.inline) {
@@ -229,7 +230,7 @@ func (l *State) findUpValue(level int, storage *upValue) *upValue {
 	}
 	uv := storage
 	if uv == nil {
-		uv = new(upValue)
+		uv = new(upValue) // counted with its closure: see chargeClosure
 	}
 	*uv = upValue{state: l, index: level, next: *link}
 	*link = uv
@@ -243,6 +244,7 @@ func (l *State) newClosure(p *prototype, upValues []*upValue, base int) value {
 	if l.global.gcMayBeDue() {
 		l.checkGC()
 	}
+	l.charge(closureCost(p))
 	c := l.newLuaClosure(p)
 	p.cache = c
 	storage := &c.own
@@ -565,6 +567,7 @@ func (l *State) growStack(n int) {
 			l.reallocStack(errorStackSize)
 			l.runtimeError("stack overflow")
 		} else {
+			l.charge((newSize - len(l.stack)) * slotBytes)
 			l.reallocStack(newSize)
 		}
 	}

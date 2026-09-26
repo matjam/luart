@@ -273,10 +273,11 @@ func (l *State) collectValidLines(f closure) {
 	if lc, ok := f.(*luaClosure); !ok {
 		l.apiPush(nilValue)
 	} else {
+		l.chargeTable(0, 0)
 		t := newTable()
 		l.apiPush(objectValue(t))
 		for _, i := range lc.prototype.LineInfo {
-			t.putAtInt(int(i), trueValue)
+			t.putAtInt(l, int(i), trueValue)
 		}
 	}
 }

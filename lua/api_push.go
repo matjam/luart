@@ -11,6 +11,7 @@ import (
 //
 // https://www.lua.org/manual/5.5/manual.html#lua_pushstring
 func (l *State) PushString(s string) {
+	l.charge(len(s))
 	l.apiPush(stringValue(s))
 }
 
@@ -106,6 +107,7 @@ func (l *State) PushGoClosure(function Function, upValueCount uint8) {
 		n := int(upValueCount)
 
 		l.checkElementCount(n)
+		l.charge(goClosureBytes + n*slotBytes)
 		cl := &goClosure{function: function, upValues: make([]value, upValueCount)}
 		l.top -= n
 		copy(cl.upValues, l.stack[l.top:l.top+n])
@@ -182,6 +184,7 @@ func (l *State) PushUserData(d any) { l.PushUserDataUV(d, 1) }
 //
 // http://www.lua.org/manual/5.5/manual.html#lua_newuserdatauv
 func (l *State) PushUserDataUV(d any, n int) {
+	l.charge(userDataBytes + max(n, 0)*slotBytes)
 	u := &userData{data: d}
 	if n > 0 {
 		u.userValues = make([]value, n)
