@@ -14,7 +14,7 @@ import (
 func Dump(w io.Writer, p *bytecode.Proto, strip bool) error {
 	d := dumpState{out: w, order: endianness(), strip: strip}
 	d.write(header)
-	d.dumpFunction(p)
+	d.dumpFunction(p, nil)
 	return d.err
 }
 
@@ -85,7 +85,7 @@ func (d *dumpState) writePrototypes(p *bytecode.Proto) {
 	d.writeInt(len(p.Prototypes))
 
 	for _, o := range p.Prototypes {
-		d.dumpFunction(o)
+		d.dumpFunction(o, &p.Source)
 	}
 }
 
@@ -100,6 +100,16 @@ func (d *dumpState) writeUpvalues(p *bytecode.Proto) {
 
 // writeString writes s with its size, counting the 0 byte after it, as C
 // Lua does; "" too, as size 0 means no string at all.
+// writeAbsent writes a missing string, which loads as C's NULL.
+func (d *dumpState) writeAbsent() {
+	switch header.PointerSize {
+	case 8:
+		d.write(uint64(0))
+	case 4:
+		d.write(uint32(0))
+	}
+}
+
 func (d *dumpState) writeString(s string) {
 	size := len(s) + 1
 	switch header.PointerSize {
@@ -124,15 +134,19 @@ func (d *dumpState) writeLocalVariables(p *bytecode.Proto) {
 	}
 }
 
-func (d *dumpState) writeDebug(p *bytecode.Proto) {
-	if d.strip { // an empty source, and no lines, locals or upvalue names
-		d.writeString("")
+func (d *dumpState) writeDebug(p *bytecode.Proto, parentSource *string) {
+	if d.strip { // no source (C's NULL), and no lines, locals or upvalue names
+		d.writeAbsent()
 		d.writeInt(0)
 		d.writeInt(0)
 		d.writeInt(0)
 		return
 	}
-	d.writeString(p.Source)
+	if parentSource != nil && p.Source == *parentSource { // a nested function's: the loader takes its parent's
+		d.writeAbsent()
+	} else {
+		d.writeString(p.Source)
+	}
 	d.writeInt(len(p.LineInfo))
 	d.write(p.LineInfo)
 	d.writeLocalVariables(p)
@@ -152,7 +166,7 @@ func varArgByte(p *bytecode.Proto) byte {
 	return b
 }
 
-func (d *dumpState) dumpFunction(p *bytecode.Proto) {
+func (d *dumpState) dumpFunction(p *bytecode.Proto, parentSource *string) { // nil for the main function
 	d.writeInt(p.LineDefined)
 	d.writeInt(p.LastLineDefined)
 	d.writeByte(byte(p.ParameterCount))
@@ -162,5 +176,5 @@ func (d *dumpState) dumpFunction(p *bytecode.Proto) {
 	d.writeConstants(p)
 	d.writePrototypes(p)
 	d.writeUpvalues(p)
-	d.writeDebug(p)
+	d.writeDebug(p, parentSource)
 }

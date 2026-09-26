@@ -403,8 +403,8 @@ func (c *collector) propagate() {
 			if d.metaTable != nil {
 				c.mark(objectValue(d.metaTable))
 			}
-			if d.env != nil {
-				c.mark(objectValue(d.env))
+			for _, v := range d.userValues {
+				c.mark(v)
 			}
 		case vkThread:
 			th := v.thread()

@@ -34,7 +34,9 @@ func Load(r io.Reader, name string) (*bytecode.Proto, error) {
 	err := s.checkHeader()
 	var p *bytecode.Proto
 	if err == nil {
-		p, err = s.readFunction()
+		if p, err = s.readFunction(); err == nil {
+			s.inheritSources(p, "=?")
+		}
 	}
 	if err != nil {
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
@@ -60,9 +62,11 @@ func displayName(name string) string {
 }
 
 type loadState struct {
-	in     io.Reader
-	order  binary.ByteOrder
-	absent bool // the last string read was absent, not empty
+	in       io.Reader
+	order    binary.ByteOrder
+	absent   bool                     // the last string read was absent, not empty
+	noSource map[*bytecode.Proto]bool // functions whose source was absent: their parent's, or "=?"
+
 }
 
 func (state *loadState) read(data any) error {
@@ -187,7 +191,10 @@ func (state *loadState) readDebug(p *bytecode.Proto) (err error) {
 	if p.Source, err = state.readString(); err != nil {
 		return
 	} else if p.Source == "" && state.absent {
-		p.Source = "=?" // stripped, as lua_getinfo names a NULL source
+		if state.noSource == nil {
+			state.noSource = map[*bytecode.Proto]bool{}
+		}
+		state.noSource[p] = true // filled in by inheritSources
 	}
 	if p.LineInfo, err = readList[int32](state); err != nil {
 		return
@@ -297,6 +304,20 @@ func (state *loadState) readFunction() (p *bytecode.Proto, err error) {
 	}
 	err = state.readDebug(p)
 	return
+}
+
+// inheritSources gives each function loaded without a source its
+// parent's, or "=?" (stripped, as lua_getinfo names a NULL source) for
+// the main function, as lundump.c's loadFunction does. A function's
+// source comes after its nested functions', so this runs once all are
+// read.
+func (state *loadState) inheritSources(p *bytecode.Proto, parent string) {
+	if state.noSource[p] {
+		p.Source = parent
+	}
+	for _, c := range p.Prototypes {
+		state.inheritSources(c, p.Source)
+	}
 }
 
 func (state *loadState) checkHeader() error {

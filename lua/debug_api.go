@@ -133,6 +133,9 @@ func (l *State) functionName(ci *callInfo) (name, kind string) {
 	var tm tm
 	p := l.prototype(ci)
 	pc := ci.savedPC - 1 // the calling instruction
+	if pc > 0 && p.Code[pc].OpCode() == bytecode.OpExtraArg && p.Code[pc-1].OpCode() == bytecode.OpBitwise {
+		pc-- // BITWISE, which has read its operator from the EXTRAARG after it
+	}
 	switch i := p.Code[pc]; i.OpCode() {
 	case bytecode.OpCall, bytecode.OpTailCall:
 		return p.objectName(i.A(), pc)
@@ -158,6 +161,10 @@ func (l *State) functionName(ci *callInfo) (name, kind string) {
 		tm = tmMod
 	case bytecode.OpPow:
 		tm = tmPow
+	case bytecode.OpIDiv:
+		tm = tmIDiv
+	case bytecode.OpBitwise:
+		tm = arithEvent(bytecode.ArithOp(p.Code[pc+1].Ax()))
 	case bytecode.OpUnaryMinus:
 		tm = tmUnaryMinus
 	case bytecode.OpLength:
@@ -349,6 +356,13 @@ func (l *State) Info(what string, frame Frame) (d Debug, ok bool) {
 			}
 		case 't':
 			d.IsTailCall = where != nil && ci.isCallStatus(callStatusTail)
+			if where != nil {
+				d.ExtraArgs = int(ci.callMetamethods)
+			}
+		case 'r':
+			if ci != nil {
+				d.FirstTransfer, d.TransferCount = ci.transferFirst, ci.transferCount
+			}
 		case 'n':
 			if where != nil && !ci.isCallStatus(callStatusTail) {
 				d.Name, d.NameKind = l.callerName(where.previous)

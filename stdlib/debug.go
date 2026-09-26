@@ -139,6 +139,11 @@ func getInfo(l *lua.State) int {
 	}
 	if has('t') {
 		setBoolean("istailcall", d.IsTailCall)
+		setInteger("extraargs", d.ExtraArgs)
+	}
+	if has('r') {
+		setInteger("ftransfer", d.FirstTransfer)
+		setInteger("ntransfer", d.TransferCount)
 	}
 	// Info pushed the function for 'f' and then the lines for 'L'.
 	if has('L') {
@@ -252,10 +257,12 @@ func readStdinLine() (string, bool) {
 var debugLibrary = []lua.RegistryFunction{
 	{Name: "debug", Function: debugPrompt},
 	{Name: "getuservalue", Function: func(l *lua.State) int {
+		n := int(l.OptInteger(2, 1))
 		if l.TypeOf(1) != lua.TypeUserData {
 			l.PushNil()
-		} else {
-			l.UserValue(1)
+		} else if l.UserValue(1, n) != lua.TypeNone {
+			l.PushBoolean(true)
+			return 2
 		}
 		return 1
 	}},
@@ -296,15 +303,16 @@ var debugLibrary = []lua.RegistryFunction{
 	}},
 	{Name: "upvalueid", Function: func(l *lua.State) int { l.PushLightUserData(l.UpValueID(1, checkUpValue(l, 1, 2))); return 1 }},
 	{Name: "setuservalue", Function: func(l *lua.State) int {
+		n := int(l.OptInteger(3, 1))
 		if l.TypeOf(1) == lua.TypeLightUserData {
 			l.ArgumentError(1, "full userdata expected, got light userdata")
 		}
 		l.CheckType(1, lua.TypeUserData)
-		if !l.IsNoneOrNil(2) {
-			l.CheckType(2, lua.TypeTable)
-		}
+		l.CheckAny(2)
 		l.SetTop(2)
-		l.SetUserValue(1)
+		if !l.SetUserValue(1, n) {
+			l.PushNil() // fail
+		}
 		return 1
 	}},
 	{Name: "sethook", Function: func(l *lua.State) int {

@@ -97,6 +97,7 @@ func (c *arm64Compiler) callLua(ip int, i bytecode.Instruction, notLua Label) {
 	a.Str(rTmp2, rNext, offCIResults)
 	a.MovImm(rTmp2, uint64(callStatusLua|callStatusReentry))
 	a.Strb(rTmp2, rNext, offCIStatus)
+	a.Strb(ZR, rNext, offCIMeta) // no __call metamethods
 	// frame = l.stack[base:top]
 	a.AddShifted(rTmp, rStack, rSlot, 4)
 	a.Str(rTmp, rP, offLFrame)

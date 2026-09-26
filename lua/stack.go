@@ -106,9 +106,15 @@ type callInfo struct {
 	function, top, resultCount int
 	previous, next             *callInfo
 	callStatus                 callStatus
+	callMetamethods            uint8 // the __call metamethods the call went through, each adding an argument
 	*luaCallInfo
 	*goCallInfo
 	extra int // a yield's function, or a yieldable pcall's old top
+
+	// transferFirst and transferCount are the values a call or return
+	// hook running for this call can see: the parameters or results, as
+	// indices debug.getlocal takes. Zero outside such a hook.
+	transferFirst, transferCount int
 }
 
 type luaCallInfo struct {
@@ -171,7 +177,7 @@ func (l *State) pushLuaFrame(function, base, resultCount int, c *luaClosure) *ca
 	ci.top = base + p.MaxStackSize
 	// TODO l.assert(ci.top <= l.stackLast)
 	ci.resultCount = resultCount
-	ci.callStatus = callStatusLua
+	ci.callStatus, ci.callMetamethods = callStatusLua, 0
 	ci.frame = l.stack[base:ci.top]
 	l.callInfo = ci
 	l.top = ci.top
@@ -190,7 +196,7 @@ func (l *State) pushGoFrame(function, resultCount int) {
 	ci.top = l.top + MinStack
 	// TODO l.assert(ci.top <= l.stackLast)
 	ci.resultCount = resultCount
-	ci.callStatus = 0
+	ci.callStatus, ci.callMetamethods = 0, 0
 	l.callInfo = ci
 }
 
@@ -267,11 +273,12 @@ func cached(p *prototype, upValues []*upValue, base int) *luaClosure {
 	return c
 }
 
-func (l *State) callGo(f value, function int, resultCount int) {
+func (l *State) callGo(f value, function int, resultCount int, callMetamethods uint8) {
 	l.checkStack(MinStack)
 	l.pushGoFrame(function, resultCount)
+	l.callInfo.callMetamethods = callMetamethods
 	if l.hookMask&MaskCall != 0 {
-		l.hook(HookCall, -1)
+		l.hookTransfer(HookCall, 1, l.top-function-1) // the arguments
 	}
 	var n int
 	if c := f.goClosure(); c != nil {
@@ -284,10 +291,11 @@ func (l *State) callGo(f value, function int, resultCount int) {
 }
 
 func (l *State) preCall(function int, resultCount int) bool {
+	var metamethods uint8 // __call metamethods in the way, as ldo.c counts them
 	for {
 		switch fv := l.stack[function]; fv.kind() {
 		case vkGoClosure, vkGoFunction:
-			l.callGo(fv, function, resultCount)
+			l.callGo(fv, function, resultCount, metamethods)
 			return true
 		case vkLuaClosure:
 			f := fv.luaClosure()
@@ -310,15 +318,22 @@ func (l *State) preCall(function int, resultCount int) bool {
 				base = l.adjustVarArgs(p, argCount)
 			}
 			ci := l.pushLuaFrame(function, base, resultCount, f)
+			ci.callMetamethods = metamethods
 			if l.hookMask&MaskCall != 0 {
 				l.callHook(ci)
 			}
 			return false
 		default:
+			// A __call metamethod, which may be a callable table in turn, up
+			// to 15 deep, as Lua 5.5 allows.
 			tm := l.tagMethodByObject(l.stack[function], tmCall)
-			if !tm.isFunction() {
+			if tm.isNil() {
 				l.typeError(l.stack[function], "call")
 			}
+			if metamethods == 15 {
+				l.runtimeError("'__call' chain too long")
+			}
+			metamethods++
 			// Slide the args + function up 1 slot and poke in the tag method
 			for p := l.top; p > function; p-- {
 				l.stack[p] = l.stack[p-1]
@@ -331,12 +346,13 @@ func (l *State) preCall(function int, resultCount int) bool {
 }
 
 func (l *State) callHook(ci *callInfo) {
-	ci.savedPC++ // hooks assume 'pc' is already incremented
+	ci.savedPC++                             // hooks assume 'pc' is already incremented
+	n := ci.closure.prototype.ParameterCount // the parameters, as luaD_hookcall
 	if pci := ci.previous; pci.isLua() && pci.code[pci.savedPC-1].OpCode() == bytecode.OpTailCall {
 		ci.setCallStatus(callStatusTail)
-		l.hook(HookTailCall, -1)
+		l.hookTransfer(HookTailCall, 1, n)
 	} else {
-		l.hook(HookCall, -1)
+		l.hookTransfer(HookCall, 1, n)
 	}
 	ci.savedPC-- // correct 'pc'
 }
@@ -364,7 +380,11 @@ func (l *State) adjustVarArgs(p *prototype, argCount int) int {
 func (l *State) postCall(firstResult int) bool {
 	ci := l.callInfo
 	if l.hookMask&MaskReturn != 0 {
-		l.hook(HookReturn, -1)
+		base := ci.function + 1 // where debug.getlocal counts from
+		if ci.isLua() {
+			base = ci.base()
+		}
+		l.hookTransfer(HookReturn, firstResult-base+1, l.top-firstResult) // the results, as rethook
 	}
 	result, wanted, i := ci.function, ci.resultCount, 0
 	l.callInfo = ci.previous // back to caller
@@ -447,6 +467,15 @@ func (l *State) protect(f func()) (err error) {
 	f()
 	l.nestedGoCallCount, l.protectFunction = nestedGoCallCount, protectFunction
 	return err
+}
+
+// hookTransfer runs the hook for event, a call or return, able to see
+// count values from local index first.
+func (l *State) hookTransfer(event, first, count int) {
+	ci := l.callInfo
+	ci.transferFirst, ci.transferCount = first, count
+	l.hook(event, -1)
+	ci.transferFirst, ci.transferCount = 0, 0
 }
 
 func (l *State) hook(event, line int) {

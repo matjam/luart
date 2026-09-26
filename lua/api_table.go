@@ -105,17 +105,20 @@ func (l *State) MetaTable(index int) bool {
 	return true
 }
 
-// UserValue pushes onto the stack the Lua value associated with the userdata
-// at index.  This value must be a table or nil.
+// UserValue pushes user value n of the full userdata at index and returns
+// its type, or pushes nil and returns TypeNone if the userdata has no such
+// value.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_getuservalue
-func (l *State) UserValue(index int) {
+// http://www.lua.org/manual/5.5/manual.html#lua_getiuservalue
+func (l *State) UserValue(index, n int) Type {
 	d := l.indexToValue(index).userData()
-	if d.env == nil {
+	if d == nil || n < 1 || n > len(d.userValues) {
 		l.apiPush(nilValue)
-	} else {
-		l.apiPush(objectValue(d.env))
+		return TypeNone
 	}
+	v := d.userValues[n-1]
+	l.apiPush(v)
+	return l.valueToType(v)
 }
 
 // SetGlobal pops a value from the stack and sets it as the new value of
@@ -186,19 +189,20 @@ func (l *State) RawSetInt[T Integer](index int, key T) {
 	l.top--
 }
 
-// SetUserValue pops a table or nil from the stack and sets it as the new
-// value associated to the userdata at index.
+// SetUserValue pops a value from the stack and sets it as user value n of
+// the full userdata at index. It reports false, popping the value anyway,
+// if the userdata has no such value.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_setuservalue
-func (l *State) SetUserValue(index int) {
+// http://www.lua.org/manual/5.5/manual.html#lua_setiuservalue
+func (l *State) SetUserValue(index, n int) bool {
 	l.checkElementCount(1)
 	d := l.indexToValue(index).userData()
-	if l.stack[l.top-1].isNil() {
-		d.env = nil
-	} else {
-		d.env = l.stack[l.top-1].table()
+	ok := d != nil && 1 <= n && n <= len(d.userValues)
+	if ok {
+		d.userValues[n-1] = l.stack[l.top-1]
 	}
 	l.top--
+	return ok
 }
 
 // SetMetaTable pops a table from the stack and sets it as the new metatable

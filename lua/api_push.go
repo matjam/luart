@@ -174,8 +174,20 @@ func (l *State) PushBoolean(b bool) { l.apiPush(boolValue(b)) }
 func (l *State) PushLightUserData(d any) { l.apiPush(l.valueOf(d)) }
 
 // PushUserData is similar to PushLightUserData, but pushes a full userdata
-// onto the stack.
-func (l *State) PushUserData(d any) { l.apiPush(objectValue(&userData{data: d})) }
+// onto the stack, with one user value, as lua_newuserdata does.
+func (l *State) PushUserData(d any) { l.PushUserDataUV(d, 1) }
+
+// PushUserDataUV pushes a full userdata holding d, with n user values,
+// each nil to start with.
+//
+// http://www.lua.org/manual/5.5/manual.html#lua_newuserdatauv
+func (l *State) PushUserDataUV(d any, n int) {
+	u := &userData{data: d}
+	if n > 0 {
+		u.userValues = make([]value, n)
+	}
+	l.apiPush(objectValue(u))
+}
 
 // PushGlobalTable pushes the global environment onto the stack.
 //

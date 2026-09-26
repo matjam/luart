@@ -633,7 +633,7 @@ func (l *State) jitCallGo(ci *callInfo, i bytecode.Instruction, ip pc) {
 		}
 	}
 	l.top = ci.stackIndex(a + b)
-	l.callGo(fv, ci.stackIndex(a), c-1)
+	l.callGo(fv, ci.stackIndex(a), c-1, 0)
 	l.top = ci.top
 }
 

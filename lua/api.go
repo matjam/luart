@@ -196,6 +196,15 @@ type Debug struct {
 	// In this case, the caller of this level is not in the stack.
 	IsTailCall bool
 
+	// ExtraArgs, filled by option 't', is how many __call metamethods the
+	// call went through, each adding the called value as an argument.
+	ExtraArgs int
+
+	// FirstTransfer and TransferCount, filled by option 'r', are the
+	// values a call or return hook can see: the parameters or results,
+	// as indices Local takes. They are 0 outside such a hook.
+	FirstTransfer, TransferCount int
+
 	// callInfo is the active function.
 	callInfo *callInfo
 }

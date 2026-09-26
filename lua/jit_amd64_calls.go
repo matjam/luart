@@ -98,6 +98,7 @@ func (c *amd64Compiler) callLua(ip int, i bytecode.Instruction, notLua Label) {
 	a.Store(R9, offCIResults, CX)
 	a.MovImm(CX, uint64(callStatusLua|callStatusReentry))
 	a.Store8(R9, offCIStatus, CX)
+	a.StoreZero8(R9, offCIMeta) // no __call metamethods
 	// frame = l.stack[base:top]
 	a.Load(CX, R12, offStack)
 	a.Mov(R8, R13)
