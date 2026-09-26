@@ -83,13 +83,27 @@ func numberToString(v value) string {
 // integer representation, or operands of the wrong type. Arithmetic takes
 // strings holding numerals; bitwise operators do not, as in Lua 5.4.
 func (l *State) arith(rb, rc value, event tm) value {
-	op := bytecode.ArithOp(event - tmAdd)
-	if rb.isNumber() && rc.isNumber() && !op.IsBitwise() && !(rb.isInteger() && rc.isInteger()) {
+	if rb.isNumber() && rc.isNumber() && !(rb.isInteger() && rc.isInteger()) {
 		// An integer and a float, as in i * 0.5: the opcodes' fast paths
 		// take two floats or two integers, and a float operand makes the
-		// result a float.
-		return numberValue(bytecode.FloatArith(op, rb.toFloat(), rc.toFloat()))
+		// result a float. The common operators come first, without
+		// FloatArith's dispatch.
+		x, y := rb.toFloat(), rc.toFloat()
+		switch event {
+		case tmAdd:
+			return numberValue(x + y)
+		case tmSub:
+			return numberValue(x - y)
+		case tmMul:
+			return numberValue(x * y)
+		case tmDiv:
+			return numberValue(x / y)
+		}
+		if op := bytecode.ArithOp(event - tmAdd); !op.IsBitwise() {
+			return numberValue(bytecode.FloatArith(op, x, y))
+		}
 	}
+	op := bytecode.ArithOp(event - tmAdd)
 	var a, b bytecode.Number
 	var ok bool
 	if op.IsBitwise() {

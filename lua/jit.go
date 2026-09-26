@@ -50,6 +50,7 @@ type jitContext struct {
 	reason    uint64         // why the last run exited, set by runJIT
 	state     unsafe.Pointer // the *State, for calls and returns
 	callee    unsafe.Pointer // the *goFunction or *goClosure a jitExitCallGo calls
+	tbc       uintptr        // the innermost to-be-closed variable's address, or 0
 	kernels   [2]uint64      // float and integer kernels entered, for tests
 }
 
@@ -586,6 +587,13 @@ func (l *State) enterJIT(ci *callInfo, c *luaClosure, p *prototype, jc *jitCode,
 	ctx.target = jc.base + uintptr(off)
 	ctx.budget = jitBudget
 	ctx.state = unsafe.Pointer(l)
+	// Only Go makes variables to be closed, and it enters compiled code
+	// again afterwards, so this holds for the run: a RETURN in a frame
+	// below it returns in compiled code.
+	ctx.tbc = 0
+	if n := len(l.tbc); n > 0 {
+		ctx.tbc = uintptr(unsafe.Pointer(&l.stack[l.tbc[n-1]]))
+	}
 	ctx.reason = call.Call(jc.base, unsafe.Pointer(ctx))
 	runtime.KeepAlive(frame)
 	runtime.KeepAlive(c)
