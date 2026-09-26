@@ -1,7 +1,7 @@
-// Package chunk reads and writes luart's binary chunks, the precompiled
+// Package chunk reads and writes apogee's binary chunks, the precompiled
 // functions string.dump returns. The format is Lua 5.2's with integer
-// constants added, marked as version 0x55 and format 4 (luart's). C Lua's
-// chunks, of any version, do not load: luart runs its own instruction set.
+// constants added, marked as version 0x55 and format 4 (apogee's). C Lua's
+// chunks, of any version, do not load: apogee runs its own instruction set.
 package chunk
 
 import (
@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"unsafe"
 
-	"github.com/matjam/luart/internal/bytecode"
+	"github.com/matjam/apogee/internal/bytecode"
 )
 
 // Signature is the mark that starts a binary chunk ('<esc>Lua').

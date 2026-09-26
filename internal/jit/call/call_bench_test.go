@@ -7,8 +7,8 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/matjam/luart/internal/jit/call"
-	"github.com/matjam/luart/internal/jit/execmem"
+	"github.com/matjam/apogee/internal/jit/call"
+	"github.com/matjam/apogee/internal/jit/execmem"
 )
 
 func BenchmarkCallRet(b *testing.B) {

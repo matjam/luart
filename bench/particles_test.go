@@ -64,8 +64,8 @@ func BenchmarkGoParticles(b *testing.B) {
 	}
 }
 
-func BenchmarkLuartParticles(b *testing.B) {
-	l := newLuart(b, particlesSrc)
+func BenchmarkApogeeParticles(b *testing.B) {
+	l := newApogee(b, particlesSrc)
 	l.RegisterNumberFunction("set", setClipped)
-	runLuartFrames(b, l)
+	runApogeeFrames(b, l)
 }

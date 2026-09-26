@@ -3,8 +3,8 @@
 package lua
 
 import (
-	"github.com/matjam/luart/internal/bytecode"
-	. "github.com/matjam/luart/internal/jit/amd64"
+	"github.com/matjam/apogee/internal/bytecode"
+	. "github.com/matjam/apogee/internal/jit/amd64"
 )
 
 // Lua-to-Lua calls and returns between compiled functions on amd64; see

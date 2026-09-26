@@ -5,7 +5,7 @@ package lua
 import (
 	"math"
 
-	. "github.com/matjam/luart/internal/jit/amd64"
+	. "github.com/matjam/apogee/internal/jit/amd64"
 )
 
 // Below GOAMD64=v3 Go compiles math/sin.go without fused multiply-adds,

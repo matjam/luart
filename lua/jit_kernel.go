@@ -2,7 +2,7 @@
 
 package lua
 
-import "github.com/matjam/luart/internal/bytecode"
+import "github.com/matjam/apogee/internal/bytecode"
 
 // Numeric loop kernels.
 //

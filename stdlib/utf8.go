@@ -1,8 +1,8 @@
 package stdlib
 
 import (
-	"github.com/matjam/luart/internal/luautf8"
-	"github.com/matjam/luart/lua"
+	"github.com/matjam/apogee/internal/luautf8"
+	"github.com/matjam/apogee/lua"
 )
 
 // The utf8 library, after lutf8lib.c. It decodes as Lua does: strictly,

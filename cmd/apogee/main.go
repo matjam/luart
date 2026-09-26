@@ -1,9 +1,9 @@
-// Command luart runs Lua 5.2 on luart. It takes lua.c's options, and on a
+// Command apogee runs Lua 5.2 on apogee. It takes lua.c's options, and on a
 // terminal its REPL highlights and completes code, prints values as
 // trees, and can be interrupted.
 //
-//	go install github.com/matjam/luart/cmd/luart@latest
-//	luart [options] [script [args]]
+//	go install github.com/matjam/apogee/cmd/apogee@latest
+//	apogee [options] [script [args]]
 package main
 
 import (
@@ -27,9 +27,9 @@ func isTerminal(f any) bool {
 	return ok && term.IsTerminal(file.Fd())
 }
 
-// luartVersion is the version of the luart module this binary was built
+// apogeeVersion is the version of the apogee module this binary was built
 // with, or "(devel)".
-func luartVersion() string {
+func apogeeVersion() string {
 	if info, ok := debug.ReadBuildInfo(); ok {
 		for _, m := range info.Deps {
 			if m.Path == "github.com/matjam/luart" {
@@ -45,6 +45,6 @@ func luartVersion() string {
 
 // versionLine is what -v prints.
 func versionLine() string {
-	return fmt.Sprintf("%s  Copyright (C) 1994-2026 Lua.org, PUC-Rio; luart %s %s/%s",
-		lua.VersionString, luartVersion(), runtime.GOOS, runtime.GOARCH)
+	return fmt.Sprintf("%s  Copyright (C) 1994-2026 Lua.org, PUC-Rio; apogee %s %s/%s",
+		lua.VersionString, apogeeVersion(), runtime.GOOS, runtime.GOARCH)
 }

@@ -5,14 +5,14 @@ import (
 	"math"
 	"strings"
 
-	"github.com/matjam/luart/lua"
+	"github.com/matjam/apogee/lua"
 )
 
 // string.pack, string.packsize and string.unpack, after lstrlib.c. Sizes
 // are those of C on a 64-bit machine, which is where the JIT runs: short
 // 2, int 4, long, size_t and lua_Integer 8, float 4, double and
 // lua_Number 8, with at most 8-byte alignment. The native order is
-// little-endian on every platform luart builds for.
+// little-endian on every platform apogee builds for.
 
 const (
 	maxIntSize  = 16 // lstrlib.c's MAXINTSIZE

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/matjam/luart/internal/jit/call"
-	"github.com/matjam/luart/internal/jit/execmem"
+	"github.com/matjam/apogee/internal/jit/call"
+	"github.com/matjam/apogee/internal/jit/execmem"
 )
 
 // returnArgPlus41 is code that returns its ctx argument plus 41.

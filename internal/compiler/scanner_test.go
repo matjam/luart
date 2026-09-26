@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/matjam/luart/internal/bytecode"
+	"github.com/matjam/apogee/internal/bytecode"
 )
 
 type test struct {

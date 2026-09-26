@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/matjam/luart/lua"
+	"github.com/matjam/apogee/lua"
 )
 
 // The io library, after liolib.c.

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/matjam/luart/internal/compiler"
+	"github.com/matjam/apogee/internal/compiler"
 )
 
 func testString(t *testing.T, s string) { testStringHelper(t, s, false) }
@@ -58,7 +58,7 @@ func TestLua(t *testing.T) {
 		name    string
 		nonPort bool
 		wrapped bool // runs in a coroutine, yielding 'b' and returning 'a', as all.lua runs it
-		goAsC   bool // expects Go functions to be called C, as LUART_GO_AS_C=1 does
+		goAsC   bool // expects Go functions to be called C, as APOGEE_GO_AS_C=1 does
 	}{
 		{name: "attrib", nonPort: true},
 		// {name: "big", wrapped: true}, // retired: expects 5.2's names for metamethods ('__newindex'); lua-5.5-tests has its 5.5 version

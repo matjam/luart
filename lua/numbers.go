@@ -5,7 +5,7 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/matjam/luart/internal/bytecode"
+	"github.com/matjam/apogee/internal/bytecode"
 )
 
 // numeric returns the number v as a bytecode.Number, if it is a number.

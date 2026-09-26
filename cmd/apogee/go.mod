@@ -1,4 +1,4 @@
-module github.com/matjam/luart/cmd/luart
+module github.com/matjam/apogee/cmd/apogee
 
 go 1.27.1
 

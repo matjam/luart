@@ -6,8 +6,8 @@ import (
 	"math"
 	"unsafe"
 
-	"github.com/matjam/luart/internal/bytecode"
-	. "github.com/matjam/luart/internal/jit/amd64"
+	"github.com/matjam/apogee/internal/bytecode"
+	. "github.com/matjam/apogee/internal/jit/amd64"
 )
 
 // Table access and calls on amd64, mirroring jit_arm64_tables.go. Lua

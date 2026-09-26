@@ -1,8 +1,8 @@
 package lua_test
 
 import (
-	"github.com/matjam/luart/lua"
-	"github.com/matjam/luart/stdlib"
+	"github.com/matjam/apogee/lua"
+	"github.com/matjam/apogee/stdlib"
 )
 
 // The package's internal tests open the standard libraries through this.

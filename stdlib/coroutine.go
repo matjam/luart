@@ -1,6 +1,6 @@
 package stdlib
 
-import "github.com/matjam/luart/lua"
+import "github.com/matjam/apogee/lua"
 
 // The coroutine library, after lcorolib.c.
 

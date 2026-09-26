@@ -89,8 +89,8 @@ type impl struct {
 // allImpls are the interpreters in column and series order. A results file
 // has those it ran: the C ones need cgo and a build tag.
 var allImpls = []impl{
-	{"luart-jit", "Luart (JIT)", 1},
-	{"luart", "Luart (no JIT)", 0},
+	{"apogee-jit", "Apogee (JIT)", 1},
+	{"apogee", "Apogee (no JIT)", 0},
 	{"shopify", "go-lua", 2},
 	{"lua54", "Lua 5.4", 3},
 	{"luajit", "LuaJIT", 4},
@@ -329,7 +329,7 @@ func summary(w io.Writer, rs []*results) {
 }
 
 // bold reports whether the summary shows im's results in bold.
-func (im impl) bold() bool { return im.name == "luart-jit" }
+func (im impl) bold() bool { return im.name == "apogee-jit" }
 
 func main() {
 	suiteName := flag.String("suite", "suite", `the benchmark: "suite" or "standard"`)

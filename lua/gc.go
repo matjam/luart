@@ -8,7 +8,7 @@ import (
 	"unsafe"
 )
 
-// Go's collector frees luart's memory. What Lua defines beyond freeing
+// Go's collector frees apogee's memory. What Lua defines beyond freeing
 // memory, weak tables and __gc finalizers, a Lua collection provides, after
 // lgc.c's atomic phase: it marks every object reachable from Lua's roots,
 // clears weak entries whose objects it did not reach, and runs the
@@ -63,7 +63,7 @@ const (
 	GCParam                        // GC(GCParam, p, v): returns parameter p, then sets it to v if v >= 0
 )
 
-// Collector parameters for GCParam, as lua_gc's LUA_GCP values. luart's
+// Collector parameters for GCParam, as lua_gc's LUA_GCP values. apogee's
 // collector uses only GCPPause; it keeps the others for collectgarbage.
 const (
 	GCPMinorMul   = iota // generational mode: minor collection frequency
@@ -80,7 +80,7 @@ var defaultGCParams = [gcParamCount]int{GCPMinorMul: 20, GCPMajorMinor: 50, GCPM
 	GCPPause: 250, GCPStepMul: 200, GCPStepSize: 200 * int(unsafe.Sizeof(table{}))}
 
 // GC controls the collector, as lua_gc does; see the gc.go comment for
-// what a collection does in luart. It returns -1 for an invalid option,
+// what a collection does in apogee. It returns -1 for an invalid option,
 // and for any option while a collection or a finalizer runs.
 // GCGenerational and GCIncremental return the previous mode, one of them.
 //

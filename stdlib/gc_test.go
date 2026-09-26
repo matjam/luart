@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/matjam/luart/lua"
-	"github.com/matjam/luart/stdlib"
+	"github.com/matjam/apogee/lua"
+	"github.com/matjam/apogee/stdlib"
 )
 
 // While the collector is stopped, "count" grows by what the script

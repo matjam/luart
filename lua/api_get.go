@@ -1,6 +1,6 @@
 package lua
 
-import "github.com/matjam/luart/internal/bytecode"
+import "github.com/matjam/apogee/internal/bytecode"
 
 // TypeOf returns the type of the value at index, or TypeNone for a
 // non-valid (but acceptable) index.

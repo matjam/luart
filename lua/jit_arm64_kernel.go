@@ -5,8 +5,8 @@ package lua
 import (
 	"math"
 
-	"github.com/matjam/luart/internal/bytecode"
-	. "github.com/matjam/luart/internal/jit/arm64"
+	"github.com/matjam/apogee/internal/bytecode"
+	. "github.com/matjam/apogee/internal/jit/arm64"
 )
 
 // Numeric loop kernels on arm64; see jit_kernel.go.

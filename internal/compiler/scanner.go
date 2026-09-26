@@ -3,13 +3,13 @@ package compiler
 import (
 	"bytes"
 	"fmt"
-	"github.com/matjam/luart/internal/luautf8"
+	"github.com/matjam/apogee/internal/luautf8"
 	"io"
 	"math"
 	"slices"
 	"strings"
 
-	"github.com/matjam/luart/internal/bytecode"
+	"github.com/matjam/apogee/internal/bytecode"
 )
 
 const firstReserved = 257

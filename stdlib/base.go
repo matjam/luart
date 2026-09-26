@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/matjam/luart/lua"
+	"github.com/matjam/apogee/lua"
 )
 
 func baseNext(l *lua.State) int {
@@ -56,7 +56,7 @@ var gcOptionValues = []lua.GCOption{lua.GCStop, lua.GCRestart, lua.GCCollect, lu
 var gcParams = []string{"minormul", "majorminor", "minormajor", "pause", "stepmul", "stepsize"}
 
 // collectGarbage is collectgarbage, after lbaselib.c's luaB_collectgarbage.
-// See State.GC for what each option does in luart.
+// See State.GC for what each option does in apogee.
 // Inside a finalizer, as in C Lua, it returns fail.
 func collectGarbage(l *lua.State) int {
 	o := gcOptionValues[l.CheckOption(1, "collect", gcOptions)]

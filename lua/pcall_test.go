@@ -3,7 +3,7 @@ package lua_test
 import (
 	"testing"
 
-	"github.com/matjam/luart/lua"
+	"github.com/matjam/apogee/lua"
 )
 
 // ProtectedCall's error handler index is relative to the running

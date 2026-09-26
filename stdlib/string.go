@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/matjam/luart/lua"
+	"github.com/matjam/apogee/lua"
 )
 
 func relativePosition(pos, length int) int {

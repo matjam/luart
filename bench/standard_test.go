@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/matjam/luart/lua"
+	"github.com/matjam/apogee/lua"
 )
 
 // The standard benchmarks: the 14 of Are We Fast Yet (Marr, Daloze and
@@ -58,16 +58,16 @@ func clbg(name, body string) string {
 
 func BenchmarkStandard(b *testing.B) {
 	for _, w := range standard {
-		b.Run(w.name+"/luart", func(b *testing.B) {
-			l := newSuiteLuart(b, w.lua, lua.WithoutJIT())
+		b.Run(w.name+"/apogee", func(b *testing.B) {
+			l := newSuiteApogee(b, w.lua, lua.WithoutJIT())
 			for b.Loop() {
-				sink = runLuart(l)
+				sink = runApogee(l)
 			}
 		})
-		b.Run(w.name+"/luart-jit", func(b *testing.B) {
-			l := newSuiteLuart(b, w.lua)
+		b.Run(w.name+"/apogee-jit", func(b *testing.B) {
+			l := newSuiteApogee(b, w.lua)
 			for b.Loop() {
-				sink = runLuart(l)
+				sink = runApogee(l)
 			}
 		})
 		if w.noShopify == "" {
@@ -93,21 +93,21 @@ func BenchmarkStandard(b *testing.B) {
 func TestStandardAgrees(t *testing.T) {
 	for _, w := range standard {
 		t.Run(w.name, func(t *testing.T) {
-			lr := runLuart(newSuiteLuart(t, w.lua, lua.WithoutJIT()))
+			lr := runApogee(newSuiteApogee(t, w.lua, lua.WithoutJIT()))
 			if w.noShopify != "" {
 				t.Logf("go-lua skipped: %s", w.noShopify)
 			} else if sh := runShopify(newSuiteShopify(t, w.lua)); sh != lr {
-				t.Errorf("shopify %v, luart %v", sh, lr)
+				t.Errorf("shopify %v, apogee %v", sh, lr)
 			}
-			lj := newSuiteLuart(t, w.lua)
+			lj := newSuiteApogee(t, w.lua)
 			for range 2 { // the second run uses code compiled during the first
-				if j := runLuart(lj); j != lr {
-					t.Errorf("luart with JIT %v, luart %v", j, lr)
+				if j := runApogee(lj); j != lr {
+					t.Errorf("apogee with JIT %v, apogee %v", j, lr)
 				}
 			}
 			for _, c := range cLuas {
 				if v := runC(t, newSuiteC(t, c, w.lua)); v != lr {
-					t.Errorf("%s %v, luart %v", c.name, v, lr)
+					t.Errorf("%s %v, apogee %v", c.name, v, lr)
 				}
 			}
 		})

@@ -12,18 +12,18 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/matjam/luart/internal/jitvm"
+	"github.com/matjam/apogee/internal/jitvm"
 )
 
 // skipWithoutJIT skips a test of compiled code where nothing compiles: on
-// platforms without the JIT, or with LUART_JIT=off.
+// platforms without the JIT, or with APOGEE_JIT=off.
 func skipWithoutJIT(t *testing.T) {
 	t.Helper()
 	if !jitSupported {
 		t.Skip("no JIT on this platform")
 	}
 	if jitDisabled {
-		t.Skip("LUART_JIT=off")
+		t.Skip("APOGEE_JIT=off")
 	}
 }
 

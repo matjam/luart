@@ -5,10 +5,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/matjam/luart/lua"
+	"github.com/matjam/apogee/lua"
 )
 
-// The package library, after loadlib.c. luart cannot load dynamic
+// The package library, after loadlib.c. apogee cannot load dynamic
 // libraries: package.loadlib and the C searchers report that, as C Lua
 // built without them does.
 

@@ -1,16 +1,18 @@
-[![ci](https://github.com/matjam/luart/actions/workflows/ci.yml/badge.svg)](https://github.com/matjam/luart/actions/workflows/ci.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/matjam/luart/lua.svg)](https://pkg.go.dev/github.com/matjam/luart/lua)
+[![ci](https://github.com/matjam/apogee/actions/workflows/ci.yml/badge.svg)](https://github.com/matjam/apogee/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/matjam/apogee/lua.svg)](https://pkg.go.dev/github.com/matjam/apogee/lua)
 
-# luart
+# apogee
 
-luart ("Lua RT") is a Lua VM in pure Go, built for real-time use such as
+Apogee is a Lua 5.5 VM in pure Go, built for real-time use such as
 per-frame scripts in games, visualisers and audio tools. It is a fork of
-[Shopify/go-lua](https://github.com/Shopify/go-lua).
+[Shopify/go-lua](https://github.com/Shopify/go-lua). The name is the
+Moon's highest point: Lua is Portuguese for moon. It was called luart
+until September 2026.
 
 ## Why
 
 I embed Lua in Go programs I write. go-lua is stable, but it no longer
-receives updates, and it leaves a lot of performance on the table. luart is
+receives updates, and it leaves a lot of performance on the table. apogee is
 also an experiment: I wanted to see how far I could push an interpreter with
 generative AI doing the engineering, from modernising the code to writing a
 JIT compiler. Quite far, it turns out.
@@ -37,9 +39,9 @@ JIT compiler. Quite far, it turns out.
 
 | | |
 |---|---|
-| Lua version | 5.5; binary chunks are luart's own format |
+| Lua version | 5.5; binary chunks are apogee's own format |
 | Go | 1.27.1 or later, `CGO_ENABLED=0` |
-| API | Methods on `*lua.State`, following Lua's C API and auxiliary library, in `github.com/matjam/luart/lua`; standard libraries in `github.com/matjam/luart/stdlib` |
+| API | Methods on `*lua.State`, following Lua's C API and auxiliary library, in `github.com/matjam/apogee/lua`; standard libraries in `github.com/matjam/apogee/stdlib` |
 | JIT | linux and darwin on arm64 and amd64; elsewhere, Windows included, states interpret |
 
 - The language and standard library of Lua 5.5 are complete, including
@@ -56,10 +58,10 @@ JIT compiler. Quite far, it turns out.
 
 Differences from C Lua:
 
-- There is only the C locale, and C modules cannot load: luart has no
+- There is only the C locale, and C modules cannot load: apogee has no
   dynamic libraries.
 - Debug information calls Go functions `Go`, not `C`, unless
-  `LUART_GO_AS_C=1` is set.
+  `APOGEE_GO_AS_C=1` is set.
 - Go's collector frees memory. Weak tables and `__gc` finalizers come
   from a Lua collection that marks the Lua heap, clears weak entries and
   runs finalizers. It runs on `collectgarbage("collect")` or `"step"`,
@@ -74,9 +76,9 @@ Differences from C Lua:
 
 ## Performance
 
-[`bench/`](bench) runs the same Lua in luart with and without the JIT,
+[`bench/`](bench) runs the same Lua in apogee with and without the JIT,
 Shopify/go-lua, C Lua 5.4 and LuaJIT, and checks that they all compute
-the same results. With the JIT, luart runs the standard benchmarks (Are
+the same results. With the JIT, apogee runs the standard benchmarks (Are
 We Fast Yet and three from the Benchmarks Game) faster than C Lua 5.4,
 and everything several times faster than go-lua. Each cell is the
 geometric mean of each benchmark's time divided by C Lua 5.4's or native
@@ -84,7 +86,7 @@ Go's; below 1× is faster. The two machines were measured at different
 commits, which [`bench/README.md`](bench/README.md) gives.
 
 <!-- suite-table summary -->
-| Geometric mean | Luart (JIT) | Luart (no JIT) | go-lua | Lua 5.4 | LuaJIT |
+| Geometric mean | Apogee (JIT) | Apogee (no JIT) | go-lua | Lua 5.4 | LuaJIT |
 |---|---:|---:|---:|---:|---:|
 | Standard benchmarks against C Lua 5.4, AMD Ryzen 9 9900X3D | **0.78×** | 1.8× | 5.9× | 1× | 0.18× |
 | Standard benchmarks against C Lua 5.4, Apple M1 Pro | **0.75×** | 1.5× | 4.8× | 1× | 0.20× |
@@ -94,7 +96,7 @@ commits, which [`bench/README.md`](bench/README.md) gives.
 
 ![Each interpreter's time on each standard benchmark divided by C Lua 5.4's, on AMD Ryzen 9 9900X3D](bench/standard-amd64.svg)
 
-luart allocates nothing for numbers, booleans or calls, only the tables,
+apogee allocates nothing for numbers, booleans or calls, only the tables,
 closures and strings a script creates; go-lua allocates up to millions of
 times a run. [`bench/README.md`](bench/README.md) has every benchmark on
 both machines, allocations, notes and how to reproduce the results.
@@ -103,7 +105,7 @@ both machines, allocations, notes and how to reproduce the results.
 
 `lua.NewState()` compiles hot Lua functions to machine code.
 `lua.NewState(lua.WithoutJIT())` makes a state that only interprets, and
-the environment variable `LUART_JIT=off` does that for every state.
+the environment variable `APOGEE_JIT=off` does that for every state.
 
 - Platforms: linux and darwin on arm64 and amd64. Elsewhere, Windows
   included, states interpret.
@@ -123,16 +125,16 @@ the environment variable `LUART_JIT=off` does that for every state.
   `table.sort` comparator, is interpreted, which is faster there.
 - It pauses while a debug hook is set.
 - CI runs the whole test suite with the JIT, with every function compiled
-  (`LUART_JIT_TEST=1`) on linux/amd64, linux/arm64 and macOS, and
-  interpreted (`LUART_JIT=off`).
+  (`APOGEE_JIT_TEST=1`) on linux/amd64, linux/arm64 and macOS, and
+  interpreted (`APOGEE_JIT=off`).
 
-## The luart command
+## The apogee command
 
 ```sh
-go install github.com/matjam/luart/cmd/luart@latest
+go install github.com/matjam/apogee/cmd/apogee@latest
 ```
 
-`luart` runs scripts as the standalone `lua` does, with the same options:
+`apogee` runs scripts as the standalone `lua` does, with the same options:
 `-e`, `-l`, `-i`, `-v`, `-E`, `-` for stdin, the `arg` table, `LUA_INIT`,
 and Ctrl-C to interrupt. On a terminal its REPL:
 
@@ -140,23 +142,23 @@ and Ctrl-C to interrupt. On a terminal its REPL:
   (an unfinished one gets another line; Alt-Enter adds one);
 - prints an expression's value, and tables as trees;
 - completes globals, fields and methods with Tab, from the running state;
-- keeps history in `~/.luart_history` (`$LUART_HISTORY` to move it, or
+- keeps history in `~/.apogee_history` (`$APOGEE_HISTORY` to move it, or
   empty for none);
 - stops a runaway evaluation with Esc or Ctrl-C;
 - takes `/help`, `/load file.lua`, `/reset`, `/jit on|off`, `/clear` and
   `/quit`.
 
-When stdin or stdout is not a terminal, `luart` behaves exactly as `lua.c`
+When stdin or stdout is not a terminal, `apogee` behaves exactly as `lua.c`
 does: it runs piped input as a script, and `-i` gives its plain REPL.
 
 ## Usage
 
 ```sh
-go get github.com/matjam/luart@latest
+go get github.com/matjam/apogee@latest
 ```
 
-Import `github.com/matjam/luart/lua`, the VM and its API, and
-`github.com/matjam/luart/stdlib`, the standard libraries. A host registers
+Import `github.com/matjam/apogee/lua`, the VM and its API, and
+`github.com/matjam/apogee/stdlib`, the standard libraries. A host registers
 Go functions, loads a script, and calls the script's functions, here once
 a frame:
 
@@ -167,8 +169,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/matjam/luart/lua"
-	"github.com/matjam/luart/stdlib"
+	"github.com/matjam/apogee/lua"
+	"github.com/matjam/apogee/stdlib"
 )
 
 func main() {
@@ -207,7 +209,7 @@ func main() {
 `Arg[T]` reads an argument as a `float64`, `int`, `string` or `bool`, and
 raises a Lua error when it does not convert. Each example below is
 [tested](lua/example_test.go) and on
-[pkg.go.dev](https://pkg.go.dev/github.com/matjam/luart/lua#pkg-examples).
+[pkg.go.dev](https://pkg.go.dev/github.com/matjam/apogee/lua#pkg-examples).
 
 **Errors.** A Lua error reaches Go as the error `ProtectedCall` returns,
 with the chunk name and line, and the message is left on the stack:

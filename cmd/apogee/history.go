@@ -17,17 +17,17 @@ type history struct {
 	entries []string
 }
 
-// historyPath is where the history lives: $LUART_HISTORY, else
-// ~/.luart_history. An empty $LUART_HISTORY keeps no file.
+// historyPath is where the history lives: $APOGEE_HISTORY, else
+// ~/.apogee_history. An empty $APOGEE_HISTORY keeps no file.
 func historyPath() string {
-	if p, ok := os.LookupEnv("LUART_HISTORY"); ok {
+	if p, ok := os.LookupEnv("APOGEE_HISTORY"); ok {
 		return p
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".luart_history")
+	return filepath.Join(home, ".apogee_history")
 }
 
 func loadHistory(path string) *history {

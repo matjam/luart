@@ -60,7 +60,7 @@ func TestEmptyString(t *testing.T) {
 	l.Call(0, 0)
 }
 
-// Every file of the Lua 5.5 test suite that luart compiles survives a dump
+// Every file of the Lua 5.5 test suite that apogee compiles survives a dump
 // and load unchanged.
 func TestDumpRoundTripsTheSuite(t *testing.T) {
 	matches, err := filepath.Glob(filepath.Join("../lua-5.5-tests", "*.lua"))

@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/matjam/luart/lua"
+	"github.com/matjam/apogee/lua"
 )
 
 func upValueHelper(f func(*lua.State, int, int) (string, bool), returnValueCount int) lua.Function {

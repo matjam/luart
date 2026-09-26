@@ -5,7 +5,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/matjam/luart/internal/bytecode"
+	"github.com/matjam/apogee/internal/bytecode"
 )
 
 func isCallable(v value) bool { return v.isFunction() }

@@ -6,7 +6,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/matjam/luart/lua"
+	"github.com/matjam/apogee/lua"
 )
 
 // The math library, after Lua 5.5's lmathlib.c.

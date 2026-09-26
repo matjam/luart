@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	shopify "github.com/Shopify/go-lua"
-	"github.com/matjam/luart/lua"
-	"github.com/matjam/luart/stdlib"
+	"github.com/matjam/apogee/lua"
+	"github.com/matjam/apogee/stdlib"
 )
 
 // A workload is one unit of work, written once in Lua (as a global function
@@ -210,7 +210,7 @@ func identity(x float64) float64 { return x }
 //go:noinline
 func nativeCall(f func(float64) float64, x float64) float64 { return f(x) }
 
-func newSuiteLuart(tb testing.TB, src string, options ...lua.Option) *lua.State {
+func newSuiteApogee(tb testing.TB, src string, options ...lua.Option) *lua.State {
 	l := lua.NewState(options...)
 	stdlib.Open(l)
 	l.Register("gofn", func(l *lua.State) int { v, _ := l.ToNumber(1); l.PushNumber(v); return 1 })
@@ -244,7 +244,7 @@ func newSuiteShopify(tb testing.TB, src string) *shopify.State {
 	return l
 }
 
-func runLuart(l *lua.State) float64 {
+func runApogee(l *lua.State) float64 {
 	l.Global("run")
 	l.Call(0, 1)
 	v, _ := l.ToNumber(-1)
@@ -264,24 +264,24 @@ func runShopify(l *shopify.State) float64 {
 func TestSuiteAgrees(t *testing.T) {
 	for _, w := range workloads {
 		t.Run(w.name, func(t *testing.T) {
-			lr, sh := runLuart(newSuiteLuart(t, w.lua, lua.WithoutJIT())), runShopify(newSuiteShopify(t, w.lua))
+			lr, sh := runApogee(newSuiteApogee(t, w.lua, lua.WithoutJIT())), runShopify(newSuiteShopify(t, w.lua))
 			if lr != sh {
-				t.Errorf("luart %v, shopify %v", lr, sh)
+				t.Errorf("apogee %v, shopify %v", lr, sh)
 			}
-			lj := newSuiteLuart(t, w.lua)
+			lj := newSuiteApogee(t, w.lua)
 			for range 3 { // later runs use code compiled during earlier ones
-				if j := runLuart(lj); j != lr {
-					t.Errorf("luart with JIT %v, luart %v", j, lr)
+				if j := runApogee(lj); j != lr {
+					t.Errorf("apogee with JIT %v, apogee %v", j, lr)
 				}
 			}
 			if w.native != nil {
 				if g := w.native(); g != lr {
-					t.Errorf("go %v, luart %v", g, lr)
+					t.Errorf("go %v, apogee %v", g, lr)
 				}
 			}
 			for _, c := range cLuas {
 				if v := runC(t, newSuiteC(t, c, w.lua)); v != lr {
-					t.Errorf("%s %v, luart %v", c.name, v, lr)
+					t.Errorf("%s %v, apogee %v", c.name, v, lr)
 				}
 			}
 		})
@@ -297,16 +297,16 @@ func BenchmarkSuite(b *testing.B) {
 				}
 			})
 		}
-		b.Run(w.name+"/luart", func(b *testing.B) {
-			l := newSuiteLuart(b, w.lua, lua.WithoutJIT())
+		b.Run(w.name+"/apogee", func(b *testing.B) {
+			l := newSuiteApogee(b, w.lua, lua.WithoutJIT())
 			for b.Loop() {
-				sink = runLuart(l)
+				sink = runApogee(l)
 			}
 		})
-		b.Run(w.name+"/luart-jit", func(b *testing.B) {
-			l := newSuiteLuart(b, w.lua)
+		b.Run(w.name+"/apogee-jit", func(b *testing.B) {
+			l := newSuiteApogee(b, w.lua)
 			for b.Loop() {
-				sink = runLuart(l)
+				sink = runApogee(l)
 			}
 		})
 		b.Run(w.name+"/shopify", func(b *testing.B) {

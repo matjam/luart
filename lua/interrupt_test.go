@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/matjam/luart/lua"
-	"github.com/matjam/luart/stdlib"
+	"github.com/matjam/apogee/lua"
+	"github.com/matjam/apogee/stdlib"
 )
 
 // Interrupt, from another goroutine, stops every kind of loop, interpreted
