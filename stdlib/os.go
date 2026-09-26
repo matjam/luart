@@ -1,6 +1,7 @@
 package stdlib
 
 import (
+	"math"
 	"os"
 	"os/exec"
 	"syscall"
@@ -9,17 +10,51 @@ import (
 	"github.com/matjam/luart/lua"
 )
 
-func field(l *lua.State, key string, def int) int {
-	l.Field(-1, key)
+// field is loslib.c's getfield: the integer field key of the table on top
+// of the stack, less delta, which must fit a C int as struct tm's fields
+// do; def when it is absent, or an error when def < 0.
+func field(l *lua.State, key string, def, delta int) int {
+	t := l.Field(-1, key)
 	r, ok := l.ToInteger(-1)
 	if !ok {
-		if def < 0 {
+		if t != lua.TypeNil {
+			l.Errorf("field '%s' is not an integer", key)
+		} else if def < 0 {
 			l.Errorf("field '%s' missing in date table", key)
 		}
 		r = int64(def)
+	} else {
+		if r >= 0 && r-int64(delta) > math.MaxInt32 || r < 0 && r < math.MinInt32+int64(delta) {
+			l.Errorf("field '%s' is out-of-bound", key)
+		}
+		r -= int64(delta)
 	}
 	l.Pop(1)
 	return int(r)
+}
+
+// setDateFields is loslib.c's setallfields: t's fields, into the table on
+// top of the stack.
+func setDateFields(l *lua.State, t time.Time) {
+	for _, f := range []struct {
+		name  string
+		value int
+	}{
+		{"year", t.Year()}, {"month", int(t.Month())}, {"day", t.Day()},
+		{"hour", t.Hour()}, {"min", t.Minute()}, {"sec", t.Second()},
+		{"yday", t.YearDay()}, {"wday", int(t.Weekday()) + 1},
+	} {
+		l.PushInteger(f.value)
+		l.SetField(-2, f.name)
+	}
+	l.PushBoolean(t.IsDST())
+	l.SetField(-2, "isdst")
+}
+
+// representable reports whether t's year fits struct tm's int tm_year.
+func representable(t time.Time) bool {
+	y := int64(t.Year()) - 1900
+	return math.MinInt32 <= y && y <= math.MaxInt32
 }
 
 // shellCommand runs c with the shell, as C's system and popen do.
@@ -83,9 +118,10 @@ var osLibrary = []lua.RegistryFunction{
 		} else {
 			status = optInt(l, 1, status)
 		}
-		// if l.ToBoolean(2) {
-		// 	Close(l)
-		// }
+		if l.ToBoolean(2) {
+			l.Close()
+		}
+		flushAll() // as C's exit flushes every FILE
 		os.Exit(status)
 		panic("unreachable")
 	}},
@@ -100,15 +136,21 @@ var osLibrary = []lua.RegistryFunction{
 			l.CheckType(1, lua.TypeTable)
 			l.SetTop(1)
 			// In loslib.c's order, which decides which missing field an
-			// error names. Out-of-range fields normalise, as with mktime;
-			// isdst is not used: Go resolves the offset from the zone.
-			sec := field(l, "sec", 0)
-			min := field(l, "min", 0)
-			hour := field(l, "hour", 12)
-			day := field(l, "day", -1)
-			month := field(l, "month", -1)
-			year := field(l, "year", -1)
-			l.PushInteger(time.Date(year, time.Month(month), day, hour, min, sec, 0, time.Local).Unix())
+			// error names. Out-of-range fields normalise, as with mktime,
+			// and the table gets the normalised fields; isdst is not used:
+			// Go resolves the offset from the zone.
+			year := field(l, "year", -1, 1900)
+			month := field(l, "month", -1, 1)
+			day := field(l, "day", -1, 0)
+			hour := field(l, "hour", 12, 0)
+			min := field(l, "min", 0, 0)
+			sec := field(l, "sec", 0, 0)
+			t := time.Date(year+1900, time.Month(month+1), day, hour, min, sec, 0, time.Local)
+			if !representable(t) {
+				l.Errorf("time result cannot be represented in this installation")
+			}
+			setDateFields(l, t)
+			l.PushInteger(t.Unix())
 		}
 		return 1
 	}},

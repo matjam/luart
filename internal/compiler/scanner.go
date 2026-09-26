@@ -104,8 +104,8 @@ func (s *scanner) tokenToString(t rune) string {
 	switch {
 	case t < firstReserved && ' ' <= t && t < 0x7f:
 		return fmt.Sprintf("'%c'", t)
-	case t < firstReserved:
-		return fmt.Sprintf("char(%d)", t)
+	case t < firstReserved: // a control character, as Lua 5.5 shows it
+		return fmt.Sprintf("'<\\%d>'", t)
 	case t < tkEOS:
 		return fmt.Sprintf("'%s'", tokens[t-firstReserved])
 	}

@@ -86,20 +86,23 @@ func (l *State) Traceback(l1 *State, message string, level int) {
 }
 
 // MetaField pushes onto the stack the field event from the metatable of the
-// object at index. If the object does not have a metatable, or if the
-// metatable does not have this field, returns false and pushes nothing.
-func (l *State) MetaField(index int, event string) bool {
+// object at index, and returns its type. If the object does not have a
+// metatable, or if the metatable does not have this field, it returns
+// TypeNil and pushes nothing.
+//
+// https://www.lua.org/manual/5.5/manual.html#luaL_getmetafield
+func (l *State) MetaField(index int, event string) Type {
 	if !l.MetaTable(index) {
-		return false
+		return TypeNil
 	}
 	l.PushString(event)
-	l.RawGet(-2)
-	if l.IsNil(-1) {
+	t := l.RawGet(-2)
+	if t == TypeNil {
 		l.Pop(2) // remove metatable and metafield
-		return false
+		return TypeNil
 	}
 	l.Remove(-2) // remove only metatable
-	return true
+	return t
 }
 
 // CallMeta calls a metamethod.
@@ -111,7 +114,7 @@ func (l *State) MetaField(index int, event string) bool {
 // function returns false (without pushing any value on the stack).
 func (l *State) CallMeta(index int, event string) bool {
 	index = l.AbsIndex(index)
-	if !l.MetaField(index, event) {
+	if l.MetaField(index, event) == TypeNil {
 		return false
 	}
 	l.PushValue(index)
@@ -199,8 +202,16 @@ func pushGlobalFunctionName(l, l1 *State, f Frame) bool {
 	return false
 }
 
+// typeError is luaL_typeerror: the argument's type is its metatable's
+// __name, if that is a string.
 func typeError(l *State, argCount int, typeName string) {
-	l.ArgumentError(argCount, l.PushFString("%s expected, got %s", typeName, l.TypeName(argCount)))
+	actual := l.TypeName(argCount)
+	if t := l.MetaField(argCount, "__name"); t == TypeString {
+		actual, _ = l.ToString(-1)
+	} else if t == TypeNil && l.TypeOf(argCount) == TypeLightUserData {
+		actual = "light userdata"
+	}
+	l.ArgumentError(argCount, l.PushFString("%s expected, got %s", typeName, actual))
 }
 
 func tagError(l *State, argCount int, tag Type) { typeError(l, argCount, tag.String()) }
@@ -269,10 +280,10 @@ func (l *State) ToStringMeta(index int) (string, bool) {
 			l.PushString("nil")
 		default: // its metatable's __name, as Lua 5.3 on, or its type
 			kind := l.TypeName(index)
-			if l.MetaField(index, "__name") {
-				if l.TypeOf(-1) == TypeString {
-					kind, _ = l.ToString(-1)
-				}
+			if t := l.MetaField(index, "__name"); t == TypeString {
+				kind, _ = l.ToString(-1)
+				l.Pop(1)
+			} else if t != TypeNil {
 				l.Pop(1)
 			}
 			l.PushFString("%s: %p", kind, l.ToValue(index))

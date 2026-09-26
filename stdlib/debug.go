@@ -301,7 +301,16 @@ var debugLibrary = []lua.RegistryFunction{
 		l.UpValueJoin(1, n1, 3, n2)
 		return 0
 	}},
-	{Name: "upvalueid", Function: func(l *lua.State) int { l.PushLightUserData(l.UpValueID(1, checkUpValue(l, 1, 2))); return 1 }},
+	{Name: "upvalueid", Function: func(l *lua.State) int {
+		n := checkInt(l, 2)
+		l.CheckType(1, lua.TypeFunction)
+		if id := l.UpValueID(1, n); id != nil {
+			l.PushLightUserData(id)
+		} else {
+			l.PushNil() // fail
+		}
+		return 1
+	}},
 	{Name: "setuservalue", Function: func(l *lua.State) int {
 		n := int(l.OptInteger(3, 1))
 		if l.TypeOf(1) == lua.TypeLightUserData {

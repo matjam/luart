@@ -75,17 +75,6 @@ func (l *State) objectLength(v value) value {
 	return l.callTagMethod(tm, v, v)
 }
 
-func (l *State) equalTagMethod(mt1, mt2 *table, event tm) value {
-	if tm1 := l.fastTagMethod(mt1, event); tm1.isNil() { // no metamethod
-	} else if mt1 == mt2 { // same metatables => same metamethods
-		return tm1
-	} else if tm2 := l.fastTagMethod(mt2, event); tm2.isNil() { // no metamethod
-	} else if rawEqual(tm1, tm2) { // same metamethods
-		return tm1
-	}
-	return nilValue
-}
-
 func (l *State) equalObjects(t1, t2 value) bool {
 	var tm value
 	switch t1.kind() {
@@ -93,13 +82,17 @@ func (l *State) equalObjects(t1, t2 value) bool {
 		if t1.identical(t2) {
 			return true
 		} else if o2 := t2.userData(); o2 != nil {
-			tm = l.equalTagMethod(t1.userData().metaTable, o2.metaTable, tmEq)
+			if tm = l.fastTagMethod(t1.userData().metaTable, tmEq); tm.isNil() { // either operand's, as Lua 5.4 on
+				tm = l.fastTagMethod(o2.metaTable, tmEq)
+			}
 		}
 	case vkTable:
 		if t1.identical(t2) {
 			return true
 		} else if o2 := t2.table(); o2 != nil {
-			tm = l.equalTagMethod(t1.table().metaTable, o2.metaTable, tmEq)
+			if tm = l.fastTagMethod(t1.table().metaTable, tmEq); tm.isNil() { // either operand's, as Lua 5.4 on
+				tm = l.fastTagMethod(o2.metaTable, tmEq)
+			}
 		}
 	default:
 		return rawEqual(t1, t2)
@@ -146,10 +139,8 @@ func (l *State) lessOrEqual(left, right value) bool {
 			return ls <= rs
 		}
 	}
-	if result, ok := l.callOrderTagMethod(left, right, tmLE); ok {
+	if result, ok := l.callOrderTagMethod(left, right, tmLE); ok { // no "not (b < a)" fallback, as Lua 5.4 on
 		return result
-	} else if result, ok := l.callOrderTagMethod(right, left, tmLT); ok {
-		return !result
 	}
 	l.orderError(left, right)
 	return false

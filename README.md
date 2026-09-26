@@ -23,9 +23,9 @@ JIT compiler. Quite far, it turns out.
 - **Speed through JIT compilation.** Hot functions compile to machine code
   on arm64 and amd64, and numbers, booleans and calls never allocate, so a
   script can run every frame without pressure on the garbage collector.
-- **Lua 5.5 compatibility.** Move on from Lua 5.2 to the current language:
-  integers, bitwise operators, `global`, `<const>` and `<close>` (done),
-  `utf8`, and 5.5's other changes.
+- **Lua 5.5 compatibility.** The current language: integers, bitwise
+  operators, `global`, `<const>`, `<close>`, named varargs, `utf8`,
+  `string.pack` and 5.5's library.
 - **Pure Go, easy to embed.** No cgo and no dependencies in the library,
   an API that reads like Go (typed arguments, generic userdata, number
   functions, `Interrupt`), and the interpreter everywhere the JIT does not
@@ -37,24 +37,20 @@ JIT compiler. Quite far, it turns out.
 
 | | |
 |---|---|
-| Lua version | 5.2 moving to 5.5: 5.4's integers, bitwise operators and number formatting are in; binary chunks are luart's own format |
+| Lua version | 5.5; binary chunks are luart's own format |
 | Go | 1.27.1 or later, `CGO_ENABLED=0` |
 | API | Methods on `*lua.State`, following Lua's C API and auxiliary library, in `github.com/matjam/luart/lua`; standard libraries in `github.com/matjam/luart/stdlib` |
 | JIT | linux and darwin on arm64 and amd64; elsewhere, Windows included, states interpret |
 
-- The language and standard library of Lua 5.2 are complete, including
+- The language and standard library of Lua 5.5 are complete, including
   coroutines (yielding across `pcall`, metamethods and iterators), Lua
-  patterns, weak tables and `__gc` finalizers, `io`, `os` and `debug`.
-  On top of them: Lua 5.4's integer subtype, `//` and the bitwise
-  operators, exact integer/float comparisons, integer for loops, 5.4's
-  math library (`math.type`, `tointeger`, `ult`, xoshiro256** `random`)
-  and `string.format`; to-be-closed variables and `coroutine.close`; and
-  5.5's number printing, `global` declarations and `<const>` locals.
-  `bit32` is gone, as in 5.4.
-- The official Lua 5.5 suite runs from `lua-5.5-tests/`; its pending list
-  in [lua/lua55_test.go](lua/lua55_test.go) says what each file still
-  needs. The files of the Lua 5.2 suite whose behaviour 5.5 kept still
-  pass.
+  patterns, weak tables and `__gc` finalizers, warnings, `io`, `os`,
+  `utf8` and `debug`. `bit32` is gone, as in 5.4.
+- The official Lua 5.5 suite runs from `lua-5.5-tests/`, unmodified, and
+  every file that does not need C Lua's internal test library passes,
+  but for `calls.lua`, which checks C Lua's binary chunk header byte for
+  byte ([lua/lua55_test.go](lua/lua55_test.go)). The files of the Lua
+  5.2 suite whose behaviour 5.5 kept still pass.
 - With the JIT it is faster than C Lua 5.4 on the standard benchmarks; see
   [Performance](#performance).
 
@@ -73,6 +69,8 @@ Differences from C Lua:
   counts as garbage. `collectgarbage` cannot stop or tune Go's
   collector, which serves the whole process; `"count"` reports the Go
   heap.
+- As in C, files a script opens are buffered, and `os.exit` flushes them;
+  a host that ends its process otherwise should call `State.Close`.
 
 ## Performance
 

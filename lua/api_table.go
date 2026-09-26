@@ -1,10 +1,12 @@
 package lua
 
-// Global pushes onto the stack the value of the global name.
+// Global pushes onto the stack the value of the global name, and returns
+// its type.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_getglobal
-func (l *State) Global(name string) {
+// https://www.lua.org/manual/5.5/manual.html#lua_getglobal
+func (l *State) Global(name string) Type {
 	l.field(l.global.registry.atInt(RegistryIndexGlobals), name, false)
+	return l.valueToType(l.stack[l.top-1])
 }
 
 // field pushes t[name]. A raw hit skips boxing name, which would allocate.
@@ -28,40 +30,70 @@ func (l *State) field(t value, name string, check bool) {
 }
 
 // Field pushes onto the stack the value table[name], where table is the
-// table on the stack at the given index. This call may trigger a
-// metamethod for the __index event.
+// table on the stack at the given index, and returns its type. This call
+// may trigger a metamethod for the __index event.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_getfield
-func (l *State) Field(index int, name string) {
+// https://www.lua.org/manual/5.5/manual.html#lua_getfield
+func (l *State) Field(index int, name string) Type {
 	l.field(l.indexToValue(index), name, true)
+	return l.valueToType(l.stack[l.top-1])
 }
 
-// RawGet is similar to GetTable, but does a raw access (without metamethods).
+// FieldInt pushes t[i], where t is the value at index, and returns its
+// type. As in Lua, this may trigger a metamethod for the "index" event.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_rawget
-func (l *State) RawGet(index int) {
+// http://www.lua.org/manual/5.5/manual.html#lua_geti
+func (l *State) FieldInt[T Integer](index int, i T) Type {
+	v := l.tableAt(l.indexToValue(index), integerValue(int64(i)))
+	l.apiPush(v)
+	return l.valueToType(v)
+}
+
+// SetFieldInt does t[i] = v, where t is the value at index and v the value
+// on top of the stack, which it pops. As in Lua, this may trigger a
+// metamethod for the "newindex" event.
+//
+// http://www.lua.org/manual/5.5/manual.html#lua_seti
+func (l *State) SetFieldInt[T Integer](index int, i T) {
+	l.checkElementCount(1)
+	t := l.indexToValue(index)
+	l.setTableAt(t, integerValue(int64(i)), l.stack[l.top-1])
+	l.top--
+}
+
+// RawGet is similar to Table, but does a raw access (without metamethods).
+// It returns the type of the value.
+//
+// https://www.lua.org/manual/5.5/manual.html#lua_rawget
+func (l *State) RawGet(index int) Type {
 	t := l.indexToValue(index).table()
-	l.stack[l.top-1] = t.at(l.stack[l.top-1])
+	v := t.at(l.stack[l.top-1])
+	l.stack[l.top-1] = v
+	return l.valueToType(v)
 }
 
 // RawGetInt pushes onto the stack the value table[key] where table is the
 // value at index on the stack. The access is raw, as it doesn't invoke
-// metamethods.
+// metamethods. It returns the type of the value.
 //
-// http://www.lua.org/manual/5.5/manual.html#lua_rawgeti
-func (l *State) RawGetInt[T Integer](index int, key T) {
+// https://www.lua.org/manual/5.5/manual.html#lua_rawgeti
+func (l *State) RawGetInt[T Integer](index int, key T) Type {
 	t := l.indexToValue(index).table()
-	l.apiPush(t.at(integerValue(int64(key))))
+	v := t.at(integerValue(int64(key)))
+	l.apiPush(v)
+	return l.valueToType(v)
 }
 
 // RawGetValue pushes onto the stack value table[p] where table is the
 // value at index on the stack, and p is a light userdata.  The access is
-// raw, as it doesn't invoke metamethods.
+// raw, as it doesn't invoke metamethods. It returns the type of the value.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_rawgetp
-func (l *State) RawGetValue(index int, p any) {
+// https://www.lua.org/manual/5.5/manual.html#lua_rawgetp
+func (l *State) RawGetValue(index int, p any) Type {
 	t := l.indexToValue(index).table()
-	l.apiPush(t.at(l.valueOf(p)))
+	v := t.at(l.valueOf(p))
+	l.apiPush(v)
+	return l.valueToType(v)
 }
 
 // CreateTable creates a new empty table and pushes it onto the stack.
@@ -267,9 +299,11 @@ func (l *State) Register(name string, f Function) {
 // value at index, and top is the value at the top of the stack. This
 // function pops the key from the stack, putting the resulting value in its
 // place.  As in Lua, this function may trigger a metamethod for the __index
-// event.
+// event. It returns the type of the value.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_gettable
-func (l *State) Table(index int) {
-	l.stack[l.top-1] = l.tableAt(l.indexToValue(index), l.stack[l.top-1])
+// https://www.lua.org/manual/5.5/manual.html#lua_gettable
+func (l *State) Table(index int) Type {
+	v := l.tableAt(l.indexToValue(index), l.stack[l.top-1])
+	l.stack[l.top-1] = v
+	return l.valueToType(v)
 }

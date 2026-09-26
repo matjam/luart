@@ -559,6 +559,9 @@ func (p *prototype) objectName(reg int, lastPC pc) (name, kind string) {
 				return s, "constant"
 			}
 		case bytecode.OpSelf:
+			if !bytecode.IsConstant(i.C()) { // as 5.5, which does a GETTABLE when the key is not a constant
+				return p.constantName(i.C(), pc), "field"
+			}
 			return p.constantName(i.C(), pc), "method"
 		}
 	}

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/matjam/luart/lua"
 )
@@ -17,23 +18,63 @@ const fileHandle = "FILE*"
 const input = "_IO_input"
 const output = "_IO_output"
 
-// A stream is a Lua file handle: an os.File, read through a buffer as C's
-// FILE is. Writes are not buffered unless a script asks with setvbuf, so
-// by default a host that exits without closing its files loses no output.
+// A stream is a Lua file handle: an os.File, read and written through
+// buffers as C's FILE is. As in C, files a script opens are fully
+// buffered, and the standard files are not. A buffer is written out when
+// the file is flushed, closed or collected, when the state is closed, and
+// when os.exit ends the process, as C's exit flushes every FILE; a host
+// that ends the process otherwise should close its states.
 type stream struct {
 	f     *os.File
 	close lua.Function  // closes f; nil while the stream is closed
 	r     *bufio.Reader // created by the first read
-	w     *bufio.Writer // set by setvbuf "full" or "line"
+	w     *bufio.Writer // nil when writes are not buffered: setvbuf "no"
 	line  bool          // flush w at each new line
 }
 
-// flush writes out what s has buffered.
+// fileBufferSize is the write buffer of the files a script opens.
+const fileBufferSize = 4096
+
+// buffered holds the streams with write buffers, for flushAll.
+var buffered sync.Map // *stream to struct{}
+
+// setBuffer gives s a write buffer of size bytes, or none for size 0.
+func (s *stream) setBuffer(size int, line bool) {
+	s.w, s.line = nil, line
+	buffered.Delete(s)
+	if size > 0 {
+		s.w = bufio.NewWriterSize(s.f, size)
+		buffered.Store(s, struct{}{})
+	}
+}
+
+// flushAll writes out every stream's buffer, as C's exit does.
+func flushAll() {
+	buffered.Range(func(k, _ any) bool {
+		k.(*stream).flush()
+		return true
+	})
+}
+
+// flush writes out what s has buffered. A failed flush drops the buffer,
+// so that later writes go on, as C's FILE takes them after an error;
+// bufio would refuse them.
 func (s *stream) flush() error {
 	if s.w == nil {
 		return nil
 	}
-	return s.w.Flush()
+	err := s.w.Flush()
+	if err != nil {
+		s.w.Reset(s.f)
+	}
+	return err
+}
+
+// finish flushes s, which is closing, and drops its buffer.
+func (s *stream) finish() error {
+	err := s.flush()
+	s.setBuffer(0, false)
+	return err
 }
 
 // reader returns s's read buffer.
@@ -85,7 +126,7 @@ func newStream(l *lua.State, f *os.File, close lua.Function) *stream {
 
 func fileClose(l *lua.State) int {
 	s := toStream(l)
-	return l.FileResult(errors.Join(s.flush(), s.f.Close()), "")
+	return l.FileResult(errors.Join(s.finish(), s.f.Close()), "")
 }
 
 // checkMode reports whether mode is one liolib.c's checkmode accepts: r,
@@ -123,6 +164,9 @@ func openFile(s *stream, name, mode string) error {
 		return err
 	}
 	s.f, s.close = f, fileClose
+	if mode[0] != 'r' || strings.Contains(mode, "+") { // it writes: fully buffered, as fopen's files
+		s.setBuffer(fileBufferSize, false)
+	}
 	return nil
 }
 
@@ -204,12 +248,15 @@ func ioPopen(l *lua.State) int {
 		return l.FileResult(err, prog)
 	}
 	theirs.Close() // the command has its own copy
-	newStream(l, ours, func(l *lua.State) int {
+	s := newStream(l, ours, func(l *lua.State) int {
 		s := toStream(l)
-		s.flush()
+		s.finish()
 		s.f.Close()
 		return execResult(l, cmd.Wait())
 	})
+	if mode == "w" {
+		s.setBuffer(fileBufferSize, false)
+	}
 	return 1
 }
 
@@ -222,10 +269,11 @@ func ioTmpfile(l *lua.State) int {
 		return l.FileResult(err, "")
 	}
 	s.f, s.close = f, func(l *lua.State) int {
-		err := errors.Join(s.flush(), f.Close())
+		err := errors.Join(s.finish(), f.Close())
 		os.Remove(f.Name())
 		return l.FileResult(err, "")
 	}
+	s.setBuffer(fileBufferSize, false)
 	return 1
 }
 
@@ -540,10 +588,10 @@ var fileHandleMethods = []lua.RegistryFunction{
 		if err := s.flush(); err != nil {
 			return l.FileResult(err, "")
 		}
-		s.w, s.line = nil, mode == 2
-		if mode != 0 {
-			s.w = bufio.NewWriterSize(s.f, size)
+		if mode == 0 {
+			size = 0
 		}
+		s.setBuffer(max(size, 0), mode == 2)
 		return l.FileResult(nil, "")
 	}},
 	{Name: "write", Function: func(l *lua.State) int {

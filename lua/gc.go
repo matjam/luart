@@ -17,7 +17,7 @@ import (
 // A Lua collection runs on collectgarbage "collect" and "step", and
 // automatically, once a metatable with __mode or __gc has been set, as C
 // Lua paces its collector: when the state has allocated (pause - 100)
-// percent (setpause, 200 by default) of the heap the last one kept. It
+// percent (the "pause" parameter, 250 by default) of the heap the last one kept. It
 // checks where C Lua steps its collector: when Lua is called or resumed
 // from Go, and at NEWTABLE, CONCAT and CLOSURE.
 //
@@ -56,21 +56,46 @@ const (
 	GCCollect                      // run a full collection
 	GCCount                        // the Go heap in use, in kilobytes
 	GCCountBytes                   // the remainder of GCCount, in bytes
-	GCStep                         // do data kilobytes' worth of work; returns 1 if that finished a collection
-	GCSetPause                     // set the pause percentage; returns the old
-	GCSetStepMul                   // set the step multiplier, which luart does not use; returns the old
-	GCSetMajorInc                  // set the major increment, which luart does not use; returns the old
+	GCStep                         // GC(GCStep, n): do n bytes' worth of work; returns 1 if that finished a collection
 	GCIsRunning                    // 1 if automatic collections are on
-	GCGenerational                 // no effect in luart
-	GCIncremental                  // no effect in luart
+	GCGenerational                 // switch to generational mode; returns the previous mode
+	GCIncremental                  // switch to incremental mode; returns the previous mode
+	GCParam                        // GC(GCParam, p, v): returns parameter p, then sets it to v if v >= 0
 )
 
+// Collector parameters for GCParam, as lua_gc's LUA_GCP values. luart's
+// collector uses only GCPPause; it keeps the others for collectgarbage.
+const (
+	GCPMinorMul   = iota // generational mode: minor collection frequency
+	GCPMajorMinor        // generational mode: shift from major to minor
+	GCPMinorMajor        // generational mode: shift from minor to major
+	GCPPause             // collect when the heap reaches this percentage of the last
+	GCPStepMul           // incremental mode: the collector's speed
+	GCPStepSize          // incremental mode: bytes per step
+	gcParamCount
+)
+
+// defaultGCParams are C Lua 5.5's defaults (lgc.h).
+var defaultGCParams = [gcParamCount]int{GCPMinorMul: 20, GCPMajorMinor: 50, GCPMinorMajor: 70,
+	GCPPause: 250, GCPStepMul: 200, GCPStepSize: 200 * int(unsafe.Sizeof(table{}))}
+
 // GC controls the collector, as lua_gc does; see the gc.go comment for
-// what a collection does in luart. It returns -1 for an invalid option.
+// what a collection does in luart. It returns -1 for an invalid option,
+// and for any option while a collection or a finalizer runs.
+// GCGenerational and GCIncremental return the previous mode, one of them.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_gc
-func (l *State) GC(what GCOption, data int) int {
+// https://www.lua.org/manual/5.5/manual.html#lua_gc
+func (l *State) GC(what GCOption, args ...int) int {
 	g := l.global
+	if g.gcBusy {
+		return -1
+	}
+	arg := func(i int) int {
+		if i < len(args) {
+			return args[i]
+		}
+		return 0
+	}
 	switch what {
 	case GCStop:
 		g.gcStopped = true
@@ -79,8 +104,16 @@ func (l *State) GC(what GCOption, data int) int {
 		g.gcStopped = false
 	case GCCollect:
 		l.fullCollect()
-	case GCStep: // as much work as data kilobytes allocated would pay for
-		g.gcStepWork += uint64(max(data, 1)) * 1024 * uint64(max(g.gcStepMul, 0)) / 100
+	case GCStep: // as much work as n bytes allocated would pay for, or a basic step
+		if g.gcGenerational { // a minor collection, which does not end a cycle
+			l.fullCollect()
+			return 0
+		}
+		n := arg(0)
+		if n <= 0 {
+			n = g.gcParams[GCPStepSize]
+		}
+		g.gcStepWork += uint64(n) * uint64(max(g.gcParams[GCPStepMul], 0)) / 100
 		if g.gcStepWork < heapObjects() {
 			return 0
 		}
@@ -104,23 +137,27 @@ func (l *State) GC(what GCOption, data int) int {
 			return int(n >> 10)
 		}
 		return int(n & 0x3ff)
-	case GCSetPause:
-		old := g.gcPause
-		g.gcPause = data
-		return old
-	case GCSetStepMul:
-		old := g.gcStepMul
-		g.gcStepMul = data
-		return old
-	case GCSetMajorInc:
-		old := g.gcMajorInc
-		g.gcMajorInc = data
-		return old
 	case GCIsRunning:
 		if !g.gcStopped {
 			return 1
 		}
 	case GCGenerational, GCIncremental:
+		old := GCIncremental
+		if g.gcGenerational {
+			old = GCGenerational
+		}
+		g.gcGenerational = what == GCGenerational
+		return int(old)
+	case GCParam:
+		p, v := arg(0), arg(1)
+		if p < 0 || p >= gcParamCount {
+			panic("invalid parameter")
+		}
+		old := g.gcParams[p]
+		if v >= 0 {
+			g.gcParams[p] = v
+		}
+		return old
 	default:
 		return -1
 	}
@@ -199,7 +236,7 @@ func (l *State) checkGC() {
 	if cycles := goGCCycles.Load(); cycles != g.gcCycles {
 		g.gcCycles = cycles
 		_, allocated := readHeap()
-		due := g.gcHeapBase / 100 * uint64(max(g.gcPause-100, 0)) << g.gcBackoff
+		due := g.gcHeapBase / 100 * uint64(max(g.gcParams[GCPPause]-100, 0)) << g.gcBackoff
 		if allocated-g.gcAllocatedBase >= due {
 			l.collect()
 		}
@@ -221,7 +258,7 @@ func (l *State) noteMetaTable(v value, mt *table) {
 	if !mt.atString("__mode").isNil() {
 		g.gcWatch, g.gcBackoff = true, 0
 	}
-	if mt.atString("__gc").isNil() {
+	if mt.atString("__gc").isNil() || g.closed { // no finalizers once Close has begun, as in C
 		return
 	}
 	g.gcWatch = true
@@ -295,8 +332,25 @@ func (l *State) collect() {
 	l.runFinalizers()
 }
 
+// Close closes the state, as lua_close does: it closes the main thread's
+// pending to-be-closed variables, and then calls the __gc metamethods of
+// every object that has one, newest first, reachable or not. Errors in
+// them are warnings. Nothing may use the state afterwards.
+//
+// https://www.lua.org/manual/5.5/manual.html#lua_close
+func (l *State) Close() {
+	l = l.global.mainThread
+	g := l.global
+	l.CloseThread(nil)
+	g.closed, g.gcStopped = true, true
+	for i := len(g.finalizable) - 1; i >= 0; i-- {
+		g.toFinalize = append(g.toFinalize, g.finalizable[i])
+	}
+	g.finalizable = nil
+	l.runFinalizers()
+}
+
 // runFinalizers calls the __gc metamethods of the objects due, in order.
-// An error in one stops them: the rest wait for the next collection.
 func (l *State) runFinalizers() {
 	g := l.global
 	for len(g.toFinalize) > 0 {
@@ -309,7 +363,7 @@ func (l *State) runFinalizers() {
 // callFinalizer calls o's __gc metamethod, if it still has one, without
 // hooks, after lgc.c's GCTM. It runs on the state's finalizer thread, not
 // on l, so that a collection never moves l's stack: the interpreter keeps
-// its frame across NEWTABLE and CLOSURE. An error in it is raised in l.
+// its frame across NEWTABLE and CLOSURE. An error in it is a warning.
 func (l *State) callFinalizer(o value) {
 	tm := l.tagMethodByObject(o, tmGC)
 	if !tm.isFunction() {
@@ -330,18 +384,11 @@ func (l *State) callFinalizer(o value) {
 	f.push(o)
 	err := f.protectedCall(func() { f.call(base, 0, false) }, base, 0)
 	g.gcBusy = busy
-	msg, ok := f.stack[f.top-1].str()
+	if err != nil { // a warning, as Lua 5.4 on, with the error value on top
+		f.warnError("__gc")
+	}
 	clear(f.stack[base:f.top])
 	f.top = base
-	if err != nil {
-		if !ok {
-			msg = "no message"
-		}
-		msg = "error in __gc metamethod (" + msg + ")"
-		l.checkStack(1)
-		l.push(stringValue(msg))
-		l.throw(RuntimeError(msg))
-	}
 }
 
 // A collector marks the objects a Lua collection reaches.
@@ -411,12 +458,28 @@ func (c *collector) propagate() {
 			for _, s := range th.stack[:th.top] {
 				c.mark(s)
 			}
+			th.clearDeadStack()
 		}
+	}
+}
+
+// clearDeadStack clears l's stack above its top, as lgc.c's
+// traversethread clears it, so that Go frees what the dead slots held.
+// Above a Go function's top, the frames below it hold nothing live; a
+// collection from the VM (see checkGC) leaves a Lua function's frame.
+func (l *State) clearDeadStack() {
+	limit := l.top
+	if ci := l.callInfo; ci != nil && ci.isLua() {
+		limit = max(limit, ci.top)
+	}
+	if limit < len(l.stack) {
+		clear(l.stack[limit:])
 	}
 }
 
 // traverseTable marks t's metatable and what its weakness lets it keep.
 func (c *collector) traverseTable(t *table) {
+	t.buryDeadKeys()
 	weakKeys, weakValues := false, false
 	if mt := t.metaTable; mt != nil {
 		c.mark(objectValue(mt))
@@ -513,5 +576,14 @@ func (t *table) removeWhere(l *State, dead func(k, v value) bool) int {
 	for _, k := range keys {
 		t.put(l, k, nilValue)
 	}
+	t.buryDeadKeys()
 	return len(keys)
+}
+
+// buryDeadKeys lets Go free the keys of a dictionary's nil slots.
+func (t *table) buryDeadKeys() {
+	if t.shape != nil && t.shape.dict && t.extra != nil && t.extra.dead > t.extra.buried {
+		t.shape = t.shape.buried(t.slots)
+		t.extra.buried = t.extra.dead
+	}
 }

@@ -69,11 +69,11 @@ func TestLua(t *testing.T) {
 		// {name: "code"}, // needs the C test library (T)
 		{name: "constructs"},
 		// {name: "db", goAsC: true}, // retired: traces 5.2 for-loop lines; lua-5.5-tests has its 5.5 version
-		{name: "errors"},
+		// {name: "errors"}, // retired: expects 5.2's error messages; lua-5.5-tests has its 5.5 version
 		// {name: "events"}, // retired: expects __tostring to return a non-string; lua-5.5-tests has its 5.5 version
 		// {name: "files"}, // retired: load(io.lines(...)) gets io.lines' 5.4 closing value as its environment; lua-5.5-tests has its 5.5 version
 		// {name: "gc"}, // retired: expects collectgarbage("count") to return two results; lua-5.5-tests has its 5.5 version
-		{name: "coroutine"},
+		// {name: "coroutine"}, // retired: expects 5.2's __le from __lt; lua-5.5-tests has its 5.5 version
 		// {name: "goto"}, // retired: expects 5.2's goto error messages; lua-5.5-tests has its 5.5 version
 		// {name: "literals"}, // retired: expects 5.2's shorter escape errors; lua-5.5-tests has its 5.5 version
 		{name: "locals"},

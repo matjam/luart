@@ -22,6 +22,7 @@ var suite55 = []struct {
 	wrapped bool   // runs in a coroutine, yielding 'b' and returning 'a', with _soft unset (all.lua skips it when soft)
 	pending string // why the file cannot pass yet, or ""
 	skip    string // why it never runs here, or ""
+	needs   string // a device the file uses, which some systems lack, such as macOS /dev/full
 }{
 	{name: "api", skip: "needs C Lua's internal test library (T)"},
 	{name: "attrib", returns: "27"},
@@ -29,17 +30,17 @@ var suite55 = []struct {
 	{name: "bitwise"},
 	{name: "bwcoercion", skip: "a module bitwise.lua loads"},
 	{name: "calls", returns: "deep", pending: "checks C Lua's binary chunk header byte for byte; luart's chunks are its own format"},
-	{name: "closure", pending: "debug.upvalueid fails for a bad index (5.4)"},
+	{name: "closure"},
 	{name: "code", skip: "needs C Lua's internal test library (T)"},
 	{name: "constructs"},
-	{name: "coroutine", pending: "coroutine.isyieldable"},
+	{name: "coroutine"},
 	{name: "cstack"},
 	{name: "db"},
-	{name: "errors", pending: "error(nil) gives \"<no error object>\" (5.5)"},
-	{name: "events", returns: "12", pending: "__eq from either operand (5.4)"},
-	{name: "files", pending: "os.date and os.time checks; /dev/full, which macOS lacks"},
-	{name: "gc", pending: "collectgarbage returns the previous mode"},
-	{name: "gengc", pending: "collectgarbage returns the previous mode"},
+	{name: "errors"},
+	{name: "events", returns: "12"},
+	{name: "files", needs: "/dev/full"},
+	{name: "gc"},
+	{name: "gengc"},
 	{name: "goto", strip: true},
 	{name: "heavy", skip: "not in all.lua: needs gigabytes of memory"},
 	{name: "literals"},
@@ -47,9 +48,9 @@ var suite55 = []struct {
 	{name: "main", skip: "tests the standalone interpreter, lua.c"},
 	{name: "math"},
 	{name: "memerr", skip: "needs C Lua's internal test library (T) to fail allocations"},
-	{name: "nextvar", pending: "table.create"},
+	{name: "nextvar"},
 	{name: "pm"},
-	{name: "sort", strip: true, pending: "table.create"},
+	{name: "sort", strip: true},
 	{name: "strings"},
 	{name: "tpack"},
 	{name: "tracegc", skip: "a module gc.lua loads"},
@@ -71,6 +72,9 @@ func TestLua55(t *testing.T) {
 				t.Skip(f.skip)
 			case f.pending != "" && !progress:
 				t.Skip("pending: " + f.pending)
+			}
+			if _, err := os.Stat(f.needs); f.needs != "" && err != nil {
+				t.Skip("needs " + f.needs)
 			}
 			err := runSuiteFile(t, dir, f.name, f.returns, f.strip, f.wrapped)
 			switch {

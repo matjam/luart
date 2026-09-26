@@ -495,7 +495,7 @@ func (c *amd64Compiler) compare(op bytecode.OpCode, jump bool, x, y XReg, yes, n
 // floats. Other values are equal when both words are, and when they are
 // not can be equal only as strings of the same length, whose bytes it
 // compares up to maxInlineCompare, or through __eq, which only two tables or two userdata try: it exits
-// for those, unless the first table's metatable is known to lack __eq.
+// for those, unless both tables' metatables are known to lack __eq.
 func (c *amd64Compiler) equal(ip int, i bytecode.Instruction) {
 	a := &c.a
 	target, ok := c.jumpAfter(ip)
@@ -613,8 +613,16 @@ func (c *amd64Compiler) equal(ip int, i bytecode.Instruction) {
 	a.SubImm(rIdx, 1)
 	a.J(NE, loop)
 	a.Jmp(eq)
-	a.Bind(tables)
+	a.Bind(tables) // either table's __eq, as Lua 5.4 on
+	second := a.NewLabel()
 	a.Load(rT, rP, offTMeta)
+	a.Test(rT, rT)
+	a.J(E, second)
+	a.Load8(rIdx, rT, offTFlags)
+	a.Bt(rIdx, uint8(tmEq))
+	a.J(AE, exit) // the metatable may have __eq
+	a.Bind(second)
+	a.Load(rT, rTmp, offTMeta)
 	a.Test(rT, rT)
 	a.J(E, ne)
 	a.Load8(rIdx, rT, offTFlags)

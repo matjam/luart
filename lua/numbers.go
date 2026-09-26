@@ -295,5 +295,5 @@ func (l *State) forLimit(init int64, limit value, step int64) (last int64, skip 
 
 // forError raises "bad 'for' <what> (number expected, got <type>)".
 func (l *State) forError(v value, what string) {
-	l.runtimeError(fmt.Sprintf("bad 'for' %s (number expected, got %s)", what, l.valueToType(v)))
+	l.runtimeError(fmt.Sprintf("bad 'for' %s (number expected, got %s)", what, objectTypeName(v)))
 }

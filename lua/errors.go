@@ -10,13 +10,11 @@ import (
 func (l *State) runtimeError(message string) {
 	l.push(stringValue(message))
 	if ci := l.callInfo; ci.isLua() {
-		line, source := l.currentLine(ci), l.prototype(ci).Source
-		if source == "" {
-			source = "?"
+		if source := l.prototype(ci).Source; source == "" || source == "=?" { // no debug information (see internal/chunk)
+			l.push(stringValue("?:?: " + message))
 		} else {
-			source = compiler.ChunkID(source)
+			l.push(stringValue(fmt.Sprintf("%s:%d: %s", compiler.ChunkID(source), l.currentLine(ci), message)))
 		}
-		l.push(stringValue(fmt.Sprintf("%s:%d: %s", source, line, message)))
 	}
 	l.errorMessage()
 }
@@ -24,7 +22,37 @@ func (l *State) runtimeError(message string) {
 // typeError raises "attempt to <operation> a <type> value", with where the
 // value came from, as Lua 5.4's luaG_typeerror does.
 func (l *State) typeError(v value, operation string) {
-	l.runtimeError(fmt.Sprintf("attempt to %s a %s value%s", operation, l.valueToType(v), l.varInfo(v)))
+	l.runtimeError(fmt.Sprintf("attempt to %s a %s value%s", operation, objectTypeName(v), l.varInfo(v)))
+}
+
+// callError raises "attempt to call a <type> value", naming the value as
+// the function the calling instruction calls, as luaG_callerror does: a
+// metamethod, say, rather than where the value came from.
+func (l *State) callError(v value) {
+	extra := l.varInfo(v)
+	if name, kind := l.callerName(l.callInfo); kind != "" {
+		extra = fmt.Sprintf(" (%s '%s')", kind, name)
+	}
+	l.runtimeError(fmt.Sprintf("attempt to call a %s value%s", objectTypeName(v), extra))
+}
+
+// objectTypeName is v's type name for error messages, as luaT_objtypename
+// gives it: the __name field of a table's or full userdata's metatable, if
+// that is a string, or else its type's name.
+func objectTypeName(v value) string {
+	var mt *table
+	switch v.kind() {
+	case vkTable:
+		mt = v.table().metaTable
+	case vkUserData:
+		mt = v.userData().metaTable
+	}
+	if mt != nil {
+		if name, ok := mt.atString("__name").str(); ok {
+			return name
+		}
+	}
+	return typeOf(v).String()
 }
 
 // varInfo says where the failing instruction found v, as ldebug.c's
@@ -95,7 +123,7 @@ func operandRegister(i bytecode.Instruction, frame []value, v value) (int, bool)
 }
 
 func (l *State) orderError(left, right value) {
-	leftType, rightType := l.valueToType(left).String(), l.valueToType(right).String()
+	leftType, rightType := objectTypeName(left), objectTypeName(right)
 	if leftType == rightType {
 		l.runtimeError(fmt.Sprintf("attempt to compare two %s values", leftType))
 	}
@@ -152,6 +180,9 @@ func (l *State) errorMessage() {
 		l.stack[l.top-1] = errorFunction  // push function
 		l.top++
 		l.call(l.top-2, 1, false)
+	}
+	if l.stack[l.top-1].isNil() { // as 5.5, a nil error object becomes a message
+		l.stack[l.top-1] = stringValue("<no error object>")
 	}
 	// The error value stays on the stack, whatever its type; the Go error
 	// carries it as text, or says what it is.

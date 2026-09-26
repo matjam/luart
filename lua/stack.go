@@ -328,7 +328,7 @@ func (l *State) preCall(function int, resultCount int) bool {
 			// to 15 deep, as Lua 5.5 allows.
 			tm := l.tagMethodByObject(l.stack[function], tmCall)
 			if tm.isNil() {
-				l.typeError(l.stack[function], "call")
+				l.callError(l.stack[function])
 			}
 			if metamethods == 15 {
 				l.runtimeError("'__call' chain too long")

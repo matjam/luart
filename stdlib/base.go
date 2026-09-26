@@ -22,15 +22,18 @@ func baseNext(l *lua.State) int {
 // returns the same function each time, unless __pairs says otherwise.
 func pairs(l *lua.State) int {
 	l.CheckAny(1)
-	if l.MetaField(1, "__pairs") {
+	if l.MetaField(1, "__pairs") != lua.TypeNil {
 		l.PushValue(1) // argument 'self' to metamethod
-		l.Call(1, 3)   // get 3 values from metamethod
-		return 3
+		// 4 values, the last a closing value, as Lua 5.5; the metamethod
+		// may yield.
+		l.CallWithContinuation(1, 4, 0, func(*lua.State) int { return 4 })
+		return 4
 	}
 	l.PushValue(lua.UpValueIndex(1))
 	l.PushValue(1)
 	l.PushNil()
-	return 3
+	l.PushNil() // no closing value
+	return 4
 }
 
 // ipairs returns its iterator, an upvalue so that it is the same function
@@ -43,28 +46,61 @@ func ipairs(l *lua.State) int {
 	return 3
 }
 
-var gcOptions = []string{"stop", "restart", "collect", "count", "step", "setpause", "setstepmul", "setmajorinc", "isrunning", "generational", "incremental"}
+var gcOptions = []string{"stop", "restart", "collect", "count", "step", "isrunning", "generational", "incremental", "param"}
 
 // gcOptionValues are the GC options for gcOptions, in order.
 var gcOptionValues = []lua.GCOption{lua.GCStop, lua.GCRestart, lua.GCCollect, lua.GCCount, lua.GCStep,
-	lua.GCSetPause, lua.GCSetStepMul, lua.GCSetMajorInc, lua.GCIsRunning, lua.GCGenerational, lua.GCIncremental}
+	lua.GCIsRunning, lua.GCGenerational, lua.GCIncremental, lua.GCParam}
+
+// gcParams are collectgarbage "param"'s parameters, as lua.GCP values.
+var gcParams = []string{"minormul", "majorminor", "minormajor", "pause", "stepmul", "stepsize"}
 
 // collectGarbage is collectgarbage, after lbaselib.c's luaB_collectgarbage.
 // See State.GC for what each option does in luart.
+// Inside a finalizer, as in C Lua, it returns fail.
 func collectGarbage(l *lua.State) int {
 	o := gcOptionValues[l.CheckOption(1, "collect", gcOptions)]
-	res := l.GC(o, int(l.OptInteger(2, 0)))
+	var res int
 	switch o {
-	case lua.GCCount:
-		b := l.GC(lua.GCCountBytes, 0)
-		l.PushNumber(float64(res) + float64(b)/1024) // kilobytes, with the remainder
+	case lua.GCStep:
+		res = l.GC(o, int(l.OptInteger(2, 0)))
+	case lua.GCParam:
+		p := l.CheckOption(2, "", gcParams)
+		l.PushInteger(int64(l.GC(o, p, int(l.OptInteger(3, -1)))))
 		return 1
-	case lua.GCStep, lua.GCIsRunning:
-		l.PushBoolean(res != 0)
 	default:
-		l.PushInteger(res)
+		res = l.GC(o)
+	}
+	switch {
+	case res == -1:
+		l.PushNil() // fail
+	case o == lua.GCCount:
+		l.PushNumber(float64(res) + float64(l.GC(lua.GCCountBytes))/1024) // kilobytes, with the remainder
+	case o == lua.GCStep, o == lua.GCIsRunning:
+		l.PushBoolean(res != 0)
+	case o == lua.GCGenerational, o == lua.GCIncremental:
+		if lua.GCOption(res) == lua.GCIncremental {
+			l.PushString("incremental")
+		} else {
+			l.PushString("generational")
+		}
+	default:
+		l.PushInteger(int64(res))
 	}
 	return 1
+}
+
+// baseError is error(message [, level]).
+func baseError(l *lua.State) int {
+	level := l.OptInteger(2, 1)
+	l.SetTop(1)
+	if l.TypeOf(1) == lua.TypeString && level > 0 { // a string, not a number, as luaB_error
+		l.Where(int(level))
+		l.PushValue(1)
+		l.Concat(2)
+	}
+	l.Error()
+	panic("unreachable")
 }
 
 // intPairs is ipairs' iterator: the next index, and the value there,
@@ -149,11 +185,15 @@ func (r *genericReader) Read(b []byte) (n int, err error) {
 
 var baseLibrary = []lua.RegistryFunction{
 	{Name: "assert", Function: func(l *lua.State) int {
-		if !l.ToBoolean(1) {
-			l.Errorf("%s", l.OptString(2, "assertion failed!"))
-			panic("unreachable")
+		if l.ToBoolean(1) {
+			return l.Top()
 		}
-		return l.Top()
+		// The message, which may be any value, as luaB_assert raises it.
+		l.CheckAny(1)
+		l.Remove(1)
+		l.PushString("assertion failed!")
+		l.SetTop(1)
+		return baseError(l)
 	}},
 	{Name: "collectgarbage", Function: collectGarbage},
 	{Name: "dofile", Function: func(l *lua.State) int {
@@ -166,16 +206,20 @@ var baseLibrary = []lua.RegistryFunction{
 		l.CallWithContinuation(0, lua.MultipleReturns, 0, continuation)
 		return continuation(l)
 	}},
-	{Name: "error", Function: func(l *lua.State) int {
-		level := l.OptInteger(2, 1)
-		l.SetTop(1)
-		if l.TypeOf(1) == lua.TypeString && level > 0 { // a string, not a number, as luaB_error
-			l.Where(int(level))
-			l.PushValue(1)
-			l.Concat(2)
+	{Name: "error", Function: baseError},
+	{Name: "warn", Function: func(l *lua.State) int { // after lbaselib.c's luaB_warn
+		n := l.Top()
+		l.CheckString(1) // at least one argument
+		for i := 2; i <= n; i++ {
+			l.CheckString(i) // all strings
 		}
-		l.Error()
-		panic("unreachable")
+		for i := 1; i < n; i++ {
+			s, _ := l.ToString(i)
+			l.Warning(s, true)
+		}
+		s, _ := l.ToString(n)
+		l.Warning(s, false)
+		return 0
 	}},
 	{Name: "getmetatable", Function: func(l *lua.State) int {
 		l.CheckAny(1)
@@ -286,7 +330,7 @@ var baseLibrary = []lua.RegistryFunction{
 		t := l.TypeOf(2)
 		l.CheckType(1, lua.TypeTable)
 		l.ArgumentCheck(t == lua.TypeNil || t == lua.TypeTable, 2, "nil or table expected")
-		if l.MetaField(1, "__metatable") {
+		if l.MetaField(1, "__metatable") != lua.TypeNil {
 			l.Errorf("cannot change a protected metatable")
 		}
 		l.SetTop(2)
