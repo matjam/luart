@@ -292,7 +292,11 @@ func (l *State) preCall(function int, resultCount int) bool {
 		case vkLuaClosure:
 			f := fv.luaClosure()
 			p := f.prototype
-			l.checkStack(p.MaxStackSize)
+			if p.IsVarArg { // the fixed parameters move above the arguments, nils filling any missing
+				l.checkStack(p.MaxStackSize + p.ParameterCount)
+			} else {
+				l.checkStack(p.MaxStackSize)
+			}
 			argCount, parameterCount := l.top-function-1, p.ParameterCount
 			if argCount < parameterCount {
 				extra := parameterCount - argCount
@@ -346,6 +350,12 @@ func (l *State) adjustVarArgs(p *prototype, argCount int) int {
 	fixedArgs := l.stack[fixed : fixed+fixedArgCount]
 	copy(l.stack[base:base+fixedArgCount], fixedArgs)
 	clear(fixedArgs)
+	switch p.VarArgKind { // Lua 5.5's named vararg table, after the parameters
+	case bytecode.VarArgView:
+		l.stack[base+fixedArgCount] = varArgView
+	case bytecode.VarArgTable:
+		l.stack[base+fixedArgCount] = l.varArgTable(l.stack[fixed+fixedArgCount : base])
+	}
 	return base
 }
 

@@ -245,9 +245,10 @@ var stringLibrary = []lua.RegistryFunction{
 	}},
 	{Name: "dump", Function: func(l *lua.State) int {
 		l.CheckType(1, lua.TypeFunction)
+		strip := l.ToBoolean(2)
 		l.SetTop(1)
 		var b bytes.Buffer
-		if err := l.Dump(&b); err != nil {
+		if err := l.Dump(&b, strip); err != nil {
 			l.Errorf("unable to dump given function")
 		}
 		l.PushString(b.String())

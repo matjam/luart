@@ -19,6 +19,8 @@ func (l *State) tableAt(t value, key value) value {
 			} else if tm = l.fastTagMethod(table.metaTable, tmIndex); tm.isNil() {
 				return nilValue
 			}
+		} else if t.p == varArgView.p { // a named vararg table, only indexed
+			return varArgAt(l, l.callInfo, key)
 		} else if tm = l.tagMethodByObject(t, tmIndex); tm.isNil() {
 			l.typeError(t, "index")
 		}
@@ -220,8 +222,11 @@ func (l *State) traceExecution() {
 	if mask&MaskLine != 0 {
 		p := l.prototype(callInfo)
 		npc := callInfo.savedPC - 1
-		newline := p.LineInfo[npc]
-		if npc == 0 || callInfo.savedPC <= l.oldPC || newline != p.LineInfo[l.oldPC-1] {
+		if len(p.LineInfo) == 0 { // stripped: only a function's start, at line -1, as ldebug.c
+			if npc == 0 {
+				l.hook(HookLine, -1)
+			}
+		} else if newline := p.LineInfo[npc]; npc == 0 || callInfo.savedPC <= l.oldPC || newline != p.LineInfo[l.oldPC-1] {
 			l.hook(HookLine, int(newline))
 		}
 	}
@@ -934,25 +939,7 @@ func (l *State) executeSwitch() {
 			}
 			clear(frame[a+1:])
 		case bytecode.OpVarArg:
-			a, b := i.A(), i.B()-1
-			n := ci.base() - ci.function - closure.prototype.ParameterCount - 1
-			if b < 0 {
-				b = n // get all var arguments
-				l.checkStack(n)
-				l.top = ci.base() + a + n
-				if ci.top < l.top {
-					ci.setTop(l.top)
-					ci.frame = l.stack[ci.base():ci.top]
-				}
-				frame = ci.frame
-			}
-			for j := range b {
-				if j < n {
-					frame[a+j] = l.stack[ci.base()-n+j]
-				} else {
-					frame[a+j] = nilValue
-				}
-			}
+			frame = l.varArgs(ci, i) // out of line: code here slows the whole loop
 		case bytecode.OpErrNNil:
 			if !frame[i.A()].isNil() {
 				name := "?"

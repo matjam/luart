@@ -122,7 +122,10 @@ today, the rules it depends on, and where performance work should go next.
   `//` and `%` floor, comparisons between integers and floats are exact
   (numbers.go), and a numeric for loop whose start and step are integers
   counts on integers (`forPrep`), never wrapping.
-- `executeSwitch` (vm.go) is the interpreter loop. `prototype.exec`
+- `executeSwitch` (vm.go) is the interpreter loop. Keep rare work out of
+  it, behind a call: one extra branch and a load in VARARG, or the
+  to-be-closed code in RETURN, measured 10–20% slower on fib and closures,
+  which never ran them. A/B any change to it on fib and closures. `prototype.exec`
   (specialise.go) holds a specialised copy of the bytecode with the same pc
   for every instruction: RR, RK and KR arithmetic, field instructions with
   constant string keys, and `opMulAddRKR`.
@@ -196,6 +199,17 @@ TBC with B set swaps it below the control variable (5.5's TFORPREP).
   2% on the standard benchmarks with the JIT (every generic for has a
   TBC); compiling TBC for a nil closing value, and RETURN and closing
   JMPs when nothing is pending, would win it back.
+
+## Named vararg tables
+
+Lua 5.5's `function f(...t)` (vararg.go). The compiler tracks the name:
+used only as `t[k]` or `t.k`, the proto is `VarArgView` and the register
+holds `varArgView`, a sentinel that `tableAt` answers from the frame's
+extra arguments, so nothing allocates; used any other way (passed,
+returned, captured, assigned into, `_ENV`), it is `VarArgTable`, entry
+builds `{n = #extras, ...}`, and `...` reads the table, checking `n`. The
+opcode space is full, which is why the view is a value, not C Lua's
+GETVARG instruction.
 
 ## Garbage collection
 

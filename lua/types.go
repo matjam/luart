@@ -67,6 +67,7 @@ func tagOf(k valueKind) uint64 { return uint64(k) << kindShift }
 var (
 	numberSentinels                                 [2]byte
 	boolSentinel, noneSentinel, emptyStringSentinel byte
+	varArgSentinel                                  byte
 )
 
 // The sentinel addresses are functions, not variables, so each check
@@ -77,6 +78,11 @@ func integerPtr() unsafe.Pointer     { return unsafe.Pointer(&numberSentinels[1]
 func boolPtr() unsafe.Pointer        { return unsafe.Pointer(&boolSentinel) }
 func nonePtr() unsafe.Pointer        { return unsafe.Pointer(&noneSentinel) }
 func emptyStringPtr() unsafe.Pointer { return unsafe.Pointer(&emptyStringSentinel) }
+
+// varArgView is the value of a named vararg table that is only indexed
+// (bytecode.VarArgView): indexing it reads the frame's extra arguments,
+// and nothing else ever sees it.
+var varArgView = value{p: unsafe.Pointer(&varArgSentinel)}
 
 var (
 	nilValue   = value{}
@@ -471,6 +477,7 @@ type prototype struct {
 	LineDefined, LastLineDefined int
 	ParameterCount, MaxStackSize int
 	IsVarArg                     bool
+	VarArgKind                   bytecode.VarArgKind
 
 	// JIT state, last so the interpreter's hot fields stay together.
 	jitOn   bool                   // loaded by a state that compiles

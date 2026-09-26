@@ -105,9 +105,9 @@ func TestErrorValues(t *testing.T) {
 		local e = {}
 		ok, v = pcall(error, e)
 		assert(not ok and v == e)
-		-- A number is a string to error; pcall, at level 1, has no position.
+		-- A number stays a number: only strings get a position, as in 5.4.
 		ok, v = pcall(error, 42)
-		assert(not ok and v == "42")
+		assert(not ok and v == 42)
 		ok, v = pcall(error, "msg", 0)
 		assert(not ok and v == "msg")
 		ok, v = pcall(function() error("msg") end)

@@ -27,7 +27,7 @@ func compile(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	var b bytes.Buffer
-	if err := Dump(&b, p); err != nil {
+	if err := Dump(&b, p, false); err != nil {
 		t.Fatal(err)
 	}
 	return b.Bytes()
@@ -66,7 +66,7 @@ func TestEmptyStrings(t *testing.T) {
 			t.Fatal(err)
 		}
 		var b bytes.Buffer
-		if err := Dump(&b, p); err != nil {
+		if err := Dump(&b, p, false); err != nil {
 			t.Fatal(err)
 		}
 		return b.Bytes()

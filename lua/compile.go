@@ -40,6 +40,7 @@ func prototypeOf(bp *bytecode.Proto) prototype {
 		ParameterCount:  bp.ParameterCount,
 		MaxStackSize:    bp.MaxStackSize,
 		IsVarArg:        bp.IsVarArg,
+		VarArgKind:      bp.VarArgKind,
 	}
 	if len(bp.Constants) > 0 {
 		p.Constants = make([]value, len(bp.Constants))
@@ -135,6 +136,7 @@ func protoOf(p *prototype) *bytecode.Proto {
 		ParameterCount:  p.ParameterCount,
 		MaxStackSize:    p.MaxStackSize,
 		IsVarArg:        p.IsVarArg,
+		VarArgKind:      p.VarArgKind,
 	}
 	if len(p.Constants) > 0 {
 		bp.Constants = make([]any, len(p.Constants))

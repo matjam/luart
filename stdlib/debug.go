@@ -91,6 +91,7 @@ func stringToMask(s string, maskCount bool) (mask byte) {
 func getInfo(l *lua.State) int {
 	arg, l1 := threadArg(l)
 	options := l.OptString(arg+2, "flnStu")
+	l.ArgumentCheck(!strings.HasPrefix(options, ">"), arg+2, "invalid option '>'")
 	var frame lua.Frame
 	if l.IsNumber(arg + 1) {
 		level, _ := l.ToInteger(arg + 1)

@@ -596,25 +596,7 @@ func (l *State) executeSwitchJIT() {
 			}
 			clear(frame[a+1:])
 		case bytecode.OpVarArg:
-			a, b := i.A(), i.B()-1
-			n := ci.base() - ci.function - closure.prototype.ParameterCount - 1
-			if b < 0 {
-				b = n // get all var arguments
-				l.checkStack(n)
-				l.top = ci.base() + a + n
-				if ci.top < l.top {
-					ci.setTop(l.top)
-					ci.frame = l.stack[ci.base():ci.top]
-				}
-				frame = ci.frame
-			}
-			for j := range b {
-				if j < n {
-					frame[a+j] = l.stack[ci.base()-n+j]
-				} else {
-					frame[a+j] = nilValue
-				}
-			}
+			frame = l.varArgs(ci, i) // out of line: code here slows the whole loop
 		case bytecode.OpErrNNil:
 			if !frame[i.A()].isNil() {
 				name := "?"

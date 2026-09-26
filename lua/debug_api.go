@@ -18,7 +18,10 @@ func (l *State) prototype(ci *callInfo) *prototype {
 }
 
 func (l *State) currentLine(ci *callInfo) int {
-	return int(l.prototype(ci).LineInfo[ci.savedPC-1])
+	if p := l.prototype(ci); len(p.LineInfo) > 0 {
+		return int(p.LineInfo[ci.savedPC-1])
+	}
+	return -1 // stripped
 }
 
 // SetHook sets the debugging hook function.
@@ -221,7 +224,11 @@ func (l *State) Local(frame Frame, n int) (string, bool) {
 	if name == "" {
 		return "", false
 	}
-	l.apiPush(l.stack[pos])
+	if v := l.stack[pos]; v.p == varArgView.p { // a vararg table never made: nil, as in C Lua
+		l.apiPush(nilValue)
+	} else {
+		l.apiPush(v)
+	}
 	return name, true
 }
 

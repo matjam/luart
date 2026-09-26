@@ -178,14 +178,15 @@ var errNotLuaFunction = errors.New("lua: not a Lua function")
 
 // Dump dumps a function as a binary chunk. It receives a Lua function on
 // the top of the stack and produces a binary chunk that, if loaded again,
-// results in a function equivalent to the one dumped. It returns an error
-// if the value on the top of the stack is not a Lua function.
+// results in a function equivalent to the one dumped. With strip set, the
+// chunk has no debug information. It returns an error if the value on the
+// top of the stack is not a Lua function.
 //
-// http://www.lua.org/manual/5.2/manual.html#lua_dump
-func (l *State) Dump(w io.Writer) error {
+// http://www.lua.org/manual/5.5/manual.html#lua_dump
+func (l *State) Dump(w io.Writer, strip bool) error {
 	l.checkElementCount(1)
 	if f := l.stack[l.top-1].luaClosure(); f != nil {
-		return chunk.Dump(w, protoOf(f.prototype))
+		return chunk.Dump(w, protoOf(f.prototype), strip)
 	}
 	return errNotLuaFunction
 }
