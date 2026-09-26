@@ -72,8 +72,8 @@ type globalState struct {
 	closed               bool              // Close has begun
 	gcWatch              bool              // a metatable with __mode or __gc was set
 	gcBusy               bool              // collecting or finalizing: no nested collection
-	gcParams             [gcParamCount]int // collectgarbage "param"; luart's collector uses only the pause
-	gcGenerational       bool              // collectgarbage's mode, which luart's collector ignores
+	gcParams             [gcParamCount]int // collectgarbage "param"; apogee's collector uses only the pause
+	gcGenerational       bool              // collectgarbage's mode, which apogee's collector ignores
 	gcCycles             uint64            // goGCCycles when checkGC last looked
 	gcHeapBase           uint64            // Go's live heap at the last Lua collection
 	gcAllocatedBase      uint64            // Go's allocated bytes at the last Lua collection
@@ -131,7 +131,7 @@ func NewState(options ...Option) *State {
 	copy(g.tagMethodNames[:], eventNames)
 	g.jit = jitDefault && jitSupported && !jitDisabled
 	g.goName = "Go"
-	if os.Getenv("LUART_GO_AS_C") == "1" {
+	if os.Getenv("APOGEE_GO_AS_C") == "1" {
 		g.goName = "C"
 	}
 	for _, o := range options {

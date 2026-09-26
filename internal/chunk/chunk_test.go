@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/matjam/luart/internal/compiler"
+	"github.com/matjam/apogee/internal/compiler"
 )
 
 const source = `

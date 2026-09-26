@@ -3,7 +3,7 @@ package lua
 import (
 	"errors"
 
-	"github.com/matjam/luart/internal/chunk"
+	"github.com/matjam/apogee/internal/chunk"
 )
 
 // MultipleReturns is the argument for argCount or resultCount in ProtectedCall and Call.
@@ -155,7 +155,7 @@ type Debug struct {
 	// What is the string "Lua" if the function is a Lua function, "Go" if it is
 	// a Go function, "main" if it is the main part of a chunk.
 	//
-	// With the environment variable LUART_GO_AS_C=1 when a state is created,
+	// With the environment variable APOGEE_GO_AS_C=1 when a state is created,
 	// its debug information calls Go functions "C", with the source "=[C]",
 	// as C Lua's does for its C functions, for scripts and tests that expect
 	// that.

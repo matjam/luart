@@ -6,7 +6,7 @@ import (
 	"math"
 	"unsafe"
 
-	. "github.com/matjam/luart/internal/jit/arm64"
+	. "github.com/matjam/apogee/internal/jit/arm64"
 )
 
 // intrinsics are the unary number functions compiled inline, by the

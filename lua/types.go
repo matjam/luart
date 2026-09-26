@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"unsafe"
 
-	"github.com/matjam/luart/internal/bytecode"
+	"github.com/matjam/apogee/internal/bytecode"
 )
 
 // value is a Lua value in two words. p is nil for nil, a sentinel address
@@ -146,7 +146,7 @@ func objectValue(x any) value {
 }
 
 // valueOf converts a Go value into a Lua value. nil, float64, bool and
-// string become the matching Lua values, luart's own objects are stored as
+// string become the matching Lua values, apogee's own objects are stored as
 // themselves, and any other value becomes light userdata.
 func (l *State) valueOf(x any) value {
 	switch x := x.(type) {
@@ -342,7 +342,7 @@ func (v value) isFunction() bool {
 }
 
 // obj returns v as a Go value for switching on its type: nil, float64,
-// bool, string, a luart object, or *lightUserData. Strings allocate, so hot
+// bool, string, an apogee object, or *lightUserData. Strings allocate, so hot
 // paths use the typed accessors.
 func (v value) obj() any {
 	switch v.kind() {

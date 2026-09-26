@@ -3,8 +3,8 @@ package lua_test
 import (
 	"testing"
 
-	"github.com/matjam/luart/lua"
-	"github.com/matjam/luart/stdlib"
+	"github.com/matjam/apogee/lua"
+	"github.com/matjam/apogee/stdlib"
 )
 
 func TestValueSemantics(t *testing.T) {

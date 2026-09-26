@@ -96,7 +96,7 @@ func TestDebugDebug(t *testing.T) {
 }
 
 // Debug information calls Go functions "Go", or "C" as C Lua does with
-// LUART_GO_AS_C=1.
+// APOGEE_GO_AS_C=1.
 func TestDebugGoName(t *testing.T) {
 	run(t, `
 		local t = debug.getinfo(print, "S")
@@ -105,7 +105,7 @@ func TestDebugGoName(t *testing.T) {
 		local ok, tb = xpcall(error, debug.traceback)
 		assert(tb:find("\n\t[Go]: in function 'error'", 1, true), tb)
 	`)
-	t.Setenv("LUART_GO_AS_C", "1")
+	t.Setenv("APOGEE_GO_AS_C", "1")
 	run(t, `
 		local t = debug.getinfo(print, "S")
 		assert(t.what == "C" and t.source == "=[C]" and t.short_src == "[C]")

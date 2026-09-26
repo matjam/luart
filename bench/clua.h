@@ -1,5 +1,5 @@
 // The C side of the C Lua interpreters the benchmarks compare with: the
-// same Go functions the suite registers in luart and go-lua, written in C,
+// same Go functions the suite registers in apogee and go-lua, written in C,
 // and calls that cgo can make where the Lua API has macros.
 
 #include <stdlib.h>

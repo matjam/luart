@@ -179,7 +179,7 @@ type tui struct {
 }
 
 func newTUI(t *testing.T) *tui {
-	t.Setenv("LUART_HISTORY", "")
+	t.Setenv("APOGEE_HISTORY", "")
 	c := &cli{l: newState(), progName: ""}
 	u := &tui{t: t}
 	u.m = newModel(c, newTheme(true))

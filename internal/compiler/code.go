@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/matjam/luart/internal/bytecode"
+	"github.com/matjam/apogee/internal/bytecode"
 )
 
 const (

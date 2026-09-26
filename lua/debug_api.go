@@ -3,8 +3,8 @@ package lua
 import (
 	"strings"
 
-	"github.com/matjam/luart/internal/bytecode"
-	"github.com/matjam/luart/internal/compiler"
+	"github.com/matjam/apogee/internal/bytecode"
+	"github.com/matjam/apogee/internal/compiler"
 )
 
 // A Frame identifies an activation record. It is returned by State.Frame and

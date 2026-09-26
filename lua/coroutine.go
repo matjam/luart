@@ -3,7 +3,7 @@ package lua
 import (
 	"errors"
 
-	"github.com/matjam/luart/internal/bytecode"
+	"github.com/matjam/apogee/internal/bytecode"
 )
 
 // Coroutines work as C Lua 5.2's do (ldo.c's lua_resume and lua_yieldk,
@@ -289,7 +289,7 @@ func (l *State) finishOp() {
 		frame[i.A()] = l.stack[l.top]
 	case bytecode.OpSelf:
 		l.top--
-		frame[i.A()+1] = frame[i.B()] // luart stores self after the lookup
+		frame[i.A()+1] = frame[i.B()] // apogee stores self after the lookup
 		frame[i.A()] = l.stack[l.top]
 	case bytecode.OpLessOrEqual, bytecode.OpLessThan, bytecode.OpEqual:
 		result := !isFalse(l.stack[l.top-1])

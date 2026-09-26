@@ -3,7 +3,7 @@ package lua_test
 import (
 	"fmt"
 
-	"github.com/matjam/luart/lua"
+	"github.com/matjam/apogee/lua"
 )
 
 // averageAndSum receives a variable number of numerical arguments and returns their average and sum.

@@ -8,7 +8,7 @@ import (
 	"io"
 	"slices"
 
-	"github.com/matjam/luart/internal/bytecode"
+	"github.com/matjam/apogee/internal/bytecode"
 )
 
 var (

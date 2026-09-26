@@ -6,9 +6,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/matjam/luart/internal/bytecode"
-	"github.com/matjam/luart/internal/chunk"
-	"github.com/matjam/luart/internal/compiler"
+	"github.com/matjam/apogee/internal/bytecode"
+	"github.com/matjam/apogee/internal/chunk"
+	"github.com/matjam/apogee/internal/compiler"
 )
 
 // parse compiles the source read from r and pushes a closure of its main

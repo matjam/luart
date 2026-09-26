@@ -12,10 +12,10 @@ import (
 	"time"
 )
 
-// With LUART_CLI_MAIN=1 the test binary is the command, so the tests below
+// With APOGEE_CLI_MAIN=1 the test binary is the command, so the tests below
 // run it as a user would.
 func TestMain(m *testing.M) {
-	if os.Getenv("LUART_CLI_MAIN") == "1" {
+	if os.Getenv("APOGEE_CLI_MAIN") == "1" {
 		os.Exit(run(os.Args, os.Stdin, os.Stdout, os.Stderr, false))
 	}
 	os.Exit(m.Run())
@@ -26,8 +26,8 @@ type result struct {
 	status         int
 }
 
-// luart runs the command with args, stdin and extra environment.
-func luart(t *testing.T, stdin string, env []string, args ...string) result {
+// apogee runs the command with args, stdin and extra environment.
+func apogee(t *testing.T, stdin string, env []string, args ...string) result {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], args...)
 	for _, e := range os.Environ() {
@@ -35,8 +35,8 @@ func luart(t *testing.T, stdin string, env []string, args ...string) result {
 			cmd.Env = append(cmd.Env, e)
 		}
 	}
-	cmd.Env = append(cmd.Env, append([]string{"LUART_CLI_MAIN=1"}, env...)...)
-	cmd.Args[0] = "luart"
+	cmd.Env = append(cmd.Env, append([]string{"APOGEE_CLI_MAIN=1"}, env...)...)
+	cmd.Args[0] = "apogee"
 	cmd.Stdin = strings.NewReader(stdin)
 	var out, errs bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errs
@@ -66,19 +66,19 @@ func TestCommandLine(t *testing.T) {
 		stderr string // a substring of stderr, or ""
 		status int
 	}{
-		{"version", "", nil, []string{"-v"}, "Lua 5.5  Copyright (C) 1994-2026 Lua.org, PUC-Rio; luart", "", 0},
+		{"version", "", nil, []string{"-v"}, "Lua 5.5  Copyright (C) 1994-2026 Lua.org, PUC-Rio; apogee", "", 0},
 		{"execute", "", nil, []string{"-e", "print(1 + 1)"}, "2\n", "", 0},
 		{"execute joined", "", nil, []string{"-eprint('joined')"}, "joined\n", "", 0},
 		{"executes in order", "", nil, []string{"-e", "x = 2", "-e", "print(x * 3)"}, "6\n", "", 0},
 		{"script and arg", "", nil, []string{script, "one", "two"}, "script\t" + script + "\ttrue\tone\ttwo\t2\n", "", 0},
 		{"stdin script", `print("stdin", ...)`, nil, []string{"-", "a"}, "stdin\ta\n", "", 0},
 		{"stdin without a tty", `print("piped")`, nil, nil, "piped\n", "", 0},
-		{"error", "", nil, []string{"-e", "error('bad')"}, "", "luart: (command line):1: bad\nstack traceback:", 1},
-		{"syntax error", "", nil, []string{"-e", "x = )"}, "", "luart: (command line):1: unexpected symbol near ')'", 1},
-		{"error object", "", nil, []string{"-e", "error(setmetatable({}, {__tostring = function() return 'custom' end}))"}, "", "luart: custom", 1},
+		{"error", "", nil, []string{"-e", "error('bad')"}, "", "apogee: (command line):1: bad\nstack traceback:", 1},
+		{"syntax error", "", nil, []string{"-e", "x = )"}, "", "apogee: (command line):1: unexpected symbol near ')'", 1},
+		{"error object", "", nil, []string{"-e", "error(setmetatable({}, {__tostring = function() return 'custom' end}))"}, "", "apogee: custom", 1},
 		{"missing script", "", nil, []string{filepath.Join(dir, "none.lua")}, "", "cannot open", 1},
-		{"bad option", "", nil, []string{"-z"}, "", "luart: unrecognized option '-z'\nusage: luart [options]", 1},
-		{"option needs argument", "", nil, []string{"-e"}, "", "luart: '-e' needs argument", 1},
+		{"bad option", "", nil, []string{"-z"}, "", "apogee: unrecognized option '-z'\nusage: apogee [options]", 1},
+		{"option needs argument", "", nil, []string{"-e"}, "", "apogee: '-e' needs argument", 1},
 		{"require", "", nil, []string{"-l", "string", "-e", "print(type(string.rep))"}, "function\n", "", 0},
 		{"LUA_INIT", "", []string{"LUA_INIT=print('init')"}, []string{"-e", "print('after')"}, "init\nafter\n", "", 0},
 		{"LUA_INIT file", "", []string{"LUA_INIT=@" + init}, []string{"-e", "print(initialised)"}, "from file\n", "", 0},
@@ -92,7 +92,7 @@ func TestCommandLine(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := luart(t, tt.stdin, tt.env, tt.args...)
+			r := apogee(t, tt.stdin, tt.env, tt.args...)
 			if r.status != tt.status {
 				t.Errorf("status %d, want %d; stderr %q", r.status, tt.status, r.stderr)
 			}
@@ -127,13 +127,13 @@ func TestPlainREPL(t *testing.T) {
 		`_PROMPT = "lua$ "`,
 		"'still running'",
 	}, "\n") + "\n"
-	r := luart(t, stdin, nil, "-i")
+	r := apogee(t, stdin, nil, "-i")
 	for _, want := range []string{"> 2\n", ">> > 15\n", ">> >> > 42\n", "lua$ still running\n"} {
 		if !strings.Contains(r.stdout, want) {
 			t.Errorf("stdout %q, want it to contain %q", r.stdout, want)
 		}
 	}
-	if !strings.Contains(r.stderr, "stdin:1: boom\nstack traceback:") || strings.Contains(r.stderr, "luart:") {
+	if !strings.Contains(r.stderr, "stdin:1: boom\nstack traceback:") || strings.Contains(r.stderr, "apogee:") {
 		t.Errorf("stderr %q, want the error without the program name", r.stderr)
 	}
 	if r.status != 0 {
@@ -144,7 +144,7 @@ func TestPlainREPL(t *testing.T) {
 // SIGINT interrupts a running script, as it does in lua.c.
 func TestInterruptScript(t *testing.T) {
 	cmd := exec.Command(os.Args[0], "-e", "io.write('running\\n'); io.flush(); while true do end")
-	cmd.Env = append(os.Environ(), "LUART_CLI_MAIN=1")
+	cmd.Env = append(os.Environ(), "APOGEE_CLI_MAIN=1")
 	var errs bytes.Buffer
 	cmd.Stderr = &errs
 	out, err := cmd.StdoutPipe()

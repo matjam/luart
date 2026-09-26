@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/matjam/luart/lua"
+	"github.com/matjam/apogee/lua"
 )
 
 func TestPushFStringPointer(t *testing.T) {

@@ -12,8 +12,8 @@ import (
 // unmodified. Each file runs as all.lua runs it: with _soft, _port and
 // _nomsg set, through string.dump and load, and checking what it returns.
 //
-// pending lists the files luart does not pass yet, with the reason; the
-// list shrinks as luart approaches 5.5. LUART_SUITE_PROGRESS=1 runs them
+// pending lists the files apogee does not pass yet, with the reason; the
+// list shrinks as apogee approaches 5.5. APOGEE_SUITE_PROGRESS=1 runs them
 // anyway and logs where each stops, without failing.
 var suite55 = []struct {
 	name    string
@@ -29,7 +29,7 @@ var suite55 = []struct {
 	{name: "big", wrapped: true},
 	{name: "bitwise"},
 	{name: "bwcoercion", skip: "a module bitwise.lua loads"},
-	{name: "calls", returns: "deep", pending: "checks C Lua's binary chunk header byte for byte; luart's chunks are its own format"},
+	{name: "calls", returns: "deep", pending: "checks C Lua's binary chunk header byte for byte; apogee's chunks are its own format"},
 	{name: "closure"},
 	{name: "code", skip: "needs C Lua's internal test library (T)"},
 	{name: "constructs"},
@@ -60,7 +60,7 @@ var suite55 = []struct {
 }
 
 func TestLua55(t *testing.T) {
-	progress := os.Getenv("LUART_SUITE_PROGRESS") == "1"
+	progress := os.Getenv("APOGEE_SUITE_PROGRESS") == "1"
 	dir, err := filepath.Abs("../lua-5.5-tests")
 	if err != nil {
 		t.Fatal(err)
@@ -97,7 +97,7 @@ func runSuiteFile(t *testing.T, dir, name, returns string, strip, wrapped bool) 
 	}
 	defer os.Chdir(cwd)
 	l := NewState()
-	l.global.goName = "C" // the suite expects C Lua's names, as LUART_GO_AS_C=1 gives
+	l.global.goName = "C" // the suite expects C Lua's names, as APOGEE_GO_AS_C=1 gives
 	openLibraries(l)
 	for _, g := range []string{"_soft", "_port", "_nomsg"} {
 		l.PushBoolean(g != "_soft" || !wrapped)

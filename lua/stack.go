@@ -3,7 +3,7 @@ package lua
 import (
 	"log"
 
-	"github.com/matjam/luart/internal/bytecode"
+	"github.com/matjam/apogee/internal/bytecode"
 )
 
 func (l *State) push(v value) {

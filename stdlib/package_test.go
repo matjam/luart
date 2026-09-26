@@ -7,7 +7,7 @@ import (
 )
 
 // The package library has 5.2's fields and four searchers. C modules are
-// found on package.cpath but cannot load: luart has no dynamic libraries.
+// found on package.cpath but cannot load: apogee has no dynamic libraries.
 func TestPackage(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "cmod.so"), nil, 0o644); err != nil {
@@ -16,9 +16,9 @@ func TestPackage(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "lmod.lua"), []byte("return {name = ..., file = select(2, ...)}"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("LUART_TEST_DIR", dir)
+	t.Setenv("APOGEE_TEST_DIR", dir)
 	run(t, `
-		local dir = os.getenv("LUART_TEST_DIR")
+		local dir = os.getenv("APOGEE_TEST_DIR")
 		assert(type(package.path) == "string" and type(package.cpath) == "string")
 		assert(package.cpath:find("./?.so", 1, true))
 		assert(#package.searchers == 4)

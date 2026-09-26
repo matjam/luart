@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/matjam/luart/lua"
+	"github.com/matjam/apogee/lua"
 )
 
 // The conversions os.date accepts, as loslib.c's LUA_STRFTIMEOPTIONS for
@@ -162,7 +162,7 @@ func strftime(b *strings.Builder, c byte, t time.Time) {
 
 var localeCategories = []string{"all", "collate", "ctype", "monetary", "numeric", "time"}
 
-// osSetlocale is os.setlocale([locale [, category]]). luart has only the
+// osSetlocale is os.setlocale([locale [, category]]). apogee has only the
 // C locale, also called POSIX; "" asks for the native locale, which is C
 // too. Any other locale fails, returning nil.
 func osSetlocale(l *lua.State) int {

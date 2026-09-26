@@ -24,7 +24,7 @@ type capture struct {
 }
 
 // syncMark separates output written before Sync from output after it.
-var syncMark = []byte("\x00luart-sync\x00")
+var syncMark = []byte("\x00apogee-sync\x00")
 
 func startCapture() (*capture, error) {
 	r, w, err := os.Pipe()

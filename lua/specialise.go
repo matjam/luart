@@ -1,6 +1,6 @@
 package lua
 
-import "github.com/matjam/luart/internal/bytecode"
+import "github.com/matjam/apogee/internal/bytecode"
 
 // Opcodes that exist only in a prototype's exec code. They follow the
 // compiler's opcodes and fit the 6-bit opcode field. Each is an arithmetic instruction

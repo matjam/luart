@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/matjam/luart/internal/jitvm"
+	"github.com/matjam/apogee/internal/jitvm"
 )
 
 func main() {

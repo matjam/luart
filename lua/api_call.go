@@ -4,7 +4,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/matjam/luart/internal/chunk"
+	"github.com/matjam/apogee/internal/chunk"
 )
 
 // Context is called by a continuation function to retrieve the status of the

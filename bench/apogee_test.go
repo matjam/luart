@@ -3,11 +3,11 @@ package luabench
 import (
 	"testing"
 
-	"github.com/matjam/luart/lua"
-	"github.com/matjam/luart/stdlib"
+	"github.com/matjam/apogee/lua"
+	"github.com/matjam/apogee/stdlib"
 )
 
-func newLuart(b *testing.B, src string, options ...lua.Option) *lua.State {
+func newApogee(b *testing.B, src string, options ...lua.Option) *lua.State {
 	b.Helper()
 	l := lua.NewState(options...)
 	stdlib.Open(l)
@@ -24,7 +24,7 @@ func newLuart(b *testing.B, src string, options ...lua.Option) *lua.State {
 	return l
 }
 
-func runLuartFrames(b *testing.B, l *lua.State) {
+func runApogeeFrames(b *testing.B, l *lua.State) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		l.Global("frame")
@@ -33,14 +33,14 @@ func runLuartFrames(b *testing.B, l *lua.State) {
 	}
 }
 
-func BenchmarkLuart(b *testing.B) { runLuartFrames(b, newLuart(b, luaSrc)) }
+func BenchmarkApogee(b *testing.B) { runApogeeFrames(b, newApogee(b, luaSrc)) }
 
-// BenchmarkLuartNumberFunction registers set as a number function, which
+// BenchmarkApogeeNumberFunction registers set as a number function, which
 // the VM calls without a call frame.
-func BenchmarkLuartNumberFunction(b *testing.B) {
-	l := newLuart(b, luaSrc)
+func BenchmarkApogeeNumberFunction(b *testing.B) {
+	l := newApogee(b, luaSrc)
 	l.RegisterNumberFunction("set", func(x, y, v float64) { set(int(x), int(y), v) })
-	runLuartFrames(b, l)
+	runApogeeFrames(b, l)
 }
 
-func BenchmarkLuartNoCall(b *testing.B) { runLuartFrames(b, newLuart(b, luaNoCall)) }
+func BenchmarkApogeeNoCall(b *testing.B) { runApogeeFrames(b, newApogee(b, luaNoCall)) }

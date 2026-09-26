@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/matjam/luart/internal/bytecode"
+	"github.com/matjam/apogee/internal/bytecode"
 )
 
 // Dump writes p, and the functions nested in it, to w as a binary chunk.

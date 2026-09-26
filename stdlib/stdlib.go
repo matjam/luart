@@ -1,6 +1,6 @@
-// Package stdlib holds Lua's standard libraries for luart: basic, package,
+// Package stdlib holds Lua's standard libraries for apogee: basic, package,
 // coroutine, string, utf8, table, math, io, os and debug. They are
-// written against luart's public API only.
+// written against apogee's public API only.
 //
 // Open opens them all. A host can instead open some of them with
 // State.Require and OpenBase, OpenPackage, OpenCoroutine, OpenString,
@@ -9,7 +9,7 @@
 // a global table or as methods of its objects.
 package stdlib
 
-import "github.com/matjam/luart/lua"
+import "github.com/matjam/apogee/lua"
 
 // Open opens all the standard libraries in l, and adds each of preloaded
 // to package.preload under its Name, for require to open on first use.

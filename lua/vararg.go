@@ -3,7 +3,7 @@ package lua
 import (
 	"math"
 
-	"github.com/matjam/luart/internal/bytecode"
+	"github.com/matjam/apogee/internal/bytecode"
 )
 
 // Lua 5.5's named vararg tables, function f(...t). When t is only

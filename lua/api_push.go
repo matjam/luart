@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/matjam/luart/internal/bytecode"
+	"github.com/matjam/apogee/internal/bytecode"
 )
 
 // PushString pushes a string onto the stack.

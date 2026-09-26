@@ -6,8 +6,8 @@ import (
 	"math"
 	"time"
 
-	"github.com/matjam/luart/lua"
-	"github.com/matjam/luart/stdlib"
+	"github.com/matjam/apogee/lua"
+	"github.com/matjam/apogee/stdlib"
 )
 
 // A host registers Go functions, loads a script, and calls the script's

@@ -3,8 +3,8 @@ package lua
 import (
 	"fmt"
 
-	"github.com/matjam/luart/internal/bytecode"
-	"github.com/matjam/luart/internal/compiler"
+	"github.com/matjam/apogee/internal/bytecode"
+	"github.com/matjam/apogee/internal/compiler"
 )
 
 func (l *State) runtimeError(message string) {

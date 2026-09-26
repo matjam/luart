@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/matjam/luart/lua"
+	"github.com/matjam/apogee/lua"
 )
 
 // field is loslib.c's getfield: the integer field key of the table on top

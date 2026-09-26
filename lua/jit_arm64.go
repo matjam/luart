@@ -3,8 +3,8 @@
 package lua
 
 import (
-	"github.com/matjam/luart/internal/bytecode"
-	. "github.com/matjam/luart/internal/jit/arm64"
+	"github.com/matjam/apogee/internal/bytecode"
+	. "github.com/matjam/apogee/internal/jit/arm64"
 )
 
 const jitSupported = true

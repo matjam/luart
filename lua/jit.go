@@ -5,9 +5,9 @@ import (
 	"runtime"
 	"unsafe"
 
-	"github.com/matjam/luart/internal/bytecode"
-	"github.com/matjam/luart/internal/jit/call"
-	"github.com/matjam/luart/internal/jit/execmem"
+	"github.com/matjam/apogee/internal/bytecode"
+	"github.com/matjam/apogee/internal/jit/call"
+	"github.com/matjam/apogee/internal/jit/execmem"
 )
 
 // An Option configures a State created by NewState.
@@ -16,7 +16,7 @@ type Option func(*State)
 // A new State compiles hot Lua functions to machine code on platforms that
 // support it: linux and darwin on arm64 and amd64. Elsewhere it
 // interprets them. Compiled code runs only while no debug hook is set.
-// Setting the environment variable LUART_JIT=off disables compilation for
+// Setting the environment variable APOGEE_JIT=off disables compilation for
 // every State.
 
 // WithoutJIT turns the JIT off, so the State only interprets.
@@ -24,7 +24,7 @@ func WithoutJIT() Option {
 	return func(l *State) { l.global.jit = false }
 }
 
-var jitDisabled = os.Getenv("LUART_JIT") == "off"
+var jitDisabled = os.Getenv("APOGEE_JIT") == "off"
 
 // jitDefault is whether a new State compiles.
 var jitDefault = true

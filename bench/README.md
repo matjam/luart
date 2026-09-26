@@ -1,7 +1,7 @@
 # Benchmarks
 
-Two benchmarks run the same Lua source in every interpreter: luart without
-the JIT (`WithoutJIT`), luart with it (the default), Shopify/go-lua, and C
+Two benchmarks run the same Lua source in every interpreter: apogee without
+the JIT (`WithoutJIT`), apogee with it (the default), Shopify/go-lua, and C
 Lua 5.4 or LuaJIT when built with their tag (see
 [C interpreters](#c-interpreters)).
 
@@ -34,7 +34,7 @@ Each cell is the median time, and in brackets that time divided by native
 Go's.
 
 <!-- suite-table amd64 -->
-| Workload | Native Go | Luart (JIT) | Luart (no JIT) | go-lua | Lua 5.4 | LuaJIT |
+| Workload | Native Go | Apogee (JIT) | Apogee (no JIT) | go-lua | Lua 5.4 | LuaJIT |
 |---|---:|---:|---:|---:|---:|---:|
 | fib(25), recursive calls | 0.21 ms | 1.58 ms (7.4×) | 5.66 ms (27×) | 9.16 ms (43×) | 2.34 ms (11×) | 0.28 ms (1.3×) |
 | numeric loop, 1M iterations | 0.79 ms | 0.95 ms (1.2×) | 9.22 ms (12×) | 185 ms (235×) | 4.52 ms (5.7×) | 0.78 ms (0.99×) |
@@ -58,7 +58,7 @@ Each cell is the median time, and in brackets that time divided by C Lua
 5.4's.
 
 <!-- suite-table standard-amd64 -->
-| Benchmark | Lua 5.4 | Luart (JIT) | Luart (no JIT) | go-lua | LuaJIT |
+| Benchmark | Lua 5.4 | Apogee (JIT) | Apogee (no JIT) | go-lua | LuaJIT |
 |---|---:|---:|---:|---:|---:|
 | Bounce | 0.28 ms | 0.16 ms (0.57×) | 0.53 ms (1.9×) | 2.16 ms (7.6×) | 0.03 ms (0.10×) |
 | CD | 36.9 ms | 37.0 ms (1.0×) | 45.7 ms (1.2×) | 156 ms (4.2×) | 14.3 ms (0.39×) |
@@ -80,12 +80,12 @@ Each cell is the median time, and in brackets that time divided by C Lua
 | **geometric mean** |  | **0.78×** | **1.8×** | **5.9×** | **0.18×** |
 <!-- /suite-table -->
 
-- luart with the JIT takes 0.78 times as long as C Lua 5.4 on the
+- apogee with the JIT takes 0.78 times as long as C Lua 5.4 on the
   geometric mean. It is faster on 13 of the 17, most on numeric code and
   method calls (spectral-norm, Bounce, Queens and NBody), within 1% on
   CD, Havlak and Json, and 1.1 times as long on binary-trees, which
   allocates most.
-- Without the JIT, luart takes 1.8 times as long as C Lua 5.4.
+- Without the JIT, apogee takes 1.8 times as long as C Lua 5.4.
 - LuaJIT is 5.5 times faster than C Lua 5.4 on the geometric mean.
 - go-lua takes six times as long as C Lua 5.4, and 70 times on
   DeltaBlue. It does not finish Havlak in ten minutes, so it has no result
@@ -107,7 +107,7 @@ Each cell is the median time, and in brackets that time divided by native
 Go's.
 
 <!-- suite-table arm64-m1 -->
-| Workload | Native Go | Luart (JIT) | Luart (no JIT) | go-lua | Lua 5.4 | LuaJIT |
+| Workload | Native Go | Apogee (JIT) | Apogee (no JIT) | go-lua | Lua 5.4 | LuaJIT |
 |---|---:|---:|---:|---:|---:|---:|
 | fib(25), recursive calls | 0.26 ms | 2.80 ms (11×) | 8.34 ms (32×) | 14.2 ms (55×) | 4.13 ms (16×) | 0.51 ms (2.0×) |
 | numeric loop, 1M iterations | 1.18 ms | 1.79 ms (1.5×) | 14.6 ms (12×) | 291 ms (247×) | 11.5 ms (9.7×) | 1.06 ms (0.89×) |
@@ -137,7 +137,7 @@ Each cell is the median time, and in brackets that time divided by C Lua
 5.4's.
 
 <!-- suite-table standard-arm64-m1 -->
-| Benchmark | Lua 5.4 | Luart (JIT) | Luart (no JIT) | go-lua | LuaJIT |
+| Benchmark | Lua 5.4 | Apogee (JIT) | Apogee (no JIT) | go-lua | LuaJIT |
 |---|---:|---:|---:|---:|---:|
 | Bounce | 0.51 ms | 0.35 ms (0.69×) | 0.88 ms (1.7×) | 3.00 ms (5.9×) | 0.09 ms (0.18×) |
 | CD | 57.6 ms | 58.5 ms (1.0×) | 65.7 ms (1.1×) | 236 ms (4.1×) | 329 ms (5.7×) |
@@ -159,11 +159,11 @@ Each cell is the median time, and in brackets that time divided by C Lua
 | **geometric mean** |  | **0.75×** | **1.5×** | **4.8×** | **0.20×** |
 <!-- /suite-table -->
 
-- luart with the JIT takes 0.75 times as long as C Lua 5.4 on the
+- apogee with the JIT takes 0.75 times as long as C Lua 5.4 on the
   geometric mean, and is faster on 15 of the 17; CD takes as long, and
   binary-trees, which allocates most, 1.1 times as long.
-- Without the JIT, luart takes 1.5 times as long as C Lua 5.4.
-- Relative to C Lua 5.4, both luart and LuaJIT do better here than on
+- Without the JIT, apogee takes 1.5 times as long as C Lua 5.4.
+- Relative to C Lua 5.4, both apogee and LuaJIT do better here than on
   amd64. The two machines' C Lua 5.4 are different builds (Homebrew and
   Arch Linux), so compare their ratios with care.
 
@@ -172,7 +172,7 @@ Each cell is the median time, and in brackets that time divided by C Lua
 The JIT allocates exactly what the interpreter does. Allocations are per
 run of each suite workload.
 
-| Workload | luart allocations | go-lua allocations |
+| Workload | apogee allocations | go-lua allocations |
 |---|---|---|
 | fib(25) | 0 | 318,000 |
 | numeric loop | 0 | 4,857,000 |
@@ -193,7 +193,7 @@ run of each suite workload.
   and draws them.
 - `TestNumericFrameDoesNotAllocate` keeps numeric code and calls into Go
   allocation-free.
-- Numbers, booleans and calls allocate nothing in luart. The remaining
+- Numbers, booleans and calls allocate nothing in apogee. The remaining
   allocations are the Lua objects the script creates, one per table,
   closure or string.
 - go-lua's numeric loop is slow because its `%` fast path calls
@@ -201,11 +201,11 @@ run of each suite workload.
 - The string scan walks 11,000 characters with `s:byte(i)` and
   `s:sub(i, i)`: two calls into Go a character, which the native Go
   version replaces with indexing its compiler folds into a tight loop. It
-  shows what calls into Go cost; luart with the JIT runs it faster than C
+  shows what calls into Go cost; apogee with the JIT runs it faster than C
   Lua 5.4. It is the suite's newest workload, so its geometric means are
   not comparable with those of earlier runs.
 - go-lua's string build is quadratic: its `table.concat` appends with
-  `s += str`. luart's uses a `strings.Builder`.
+  `s += str`. apogee's uses a `strings.Builder`.
 - The JIT gains least where scripts cross between compiled code and Go
   every few instructions: creating closures, Go calling Lua (the sort
   comparator), and calls into Go. It is fastest on numeric loops and Lua
@@ -219,8 +219,8 @@ run of each suite workload.
   in particles, so the gap to Go is widest where Go inlines most.
 - Plasma here registers `set` as an ordinary Go function. Registered as a
   number function, which compiled code calls without a Go frame, it takes
-  0.71 ms with the JIT (`BenchmarkLuartNumberFunction`), against 0.76 ms
-  (`BenchmarkLuart`).
+  0.71 ms with the JIT (`BenchmarkApogeeNumberFunction`), against 0.76 ms
+  (`BenchmarkApogee`).
 - The C interpreters' calls into Go are calls to C functions, and their
   plasma draws into a C array; the suite's other workloads are the same
   Lua in every interpreter. Their results use integers where Lua 5.4 does,
@@ -232,8 +232,8 @@ C Lua 5.5, C Lua 5.4 and LuaJIT are linked with cgo, so they need a C
 compiler and their development packages, found with pkg-config (`lua5.5`,
 `lua5.4` and `luajit`). All define the Lua C API, so a test binary can
 link only one. Each has a build tag: `clua55`, `clua54` or `luajit`.
-Without one, the benchmarks build with `CGO_ENABLED=0` and run luart and
-go-lua only. C Lua 5.5, the language luart speaks, is the reference: the
+Without one, the benchmarks build with `CGO_ENABLED=0` and run apogee and
+go-lua only. C Lua 5.5, the language apogee speaks, is the reference: the
 charts compare with it when a results file has it, and with 5.4
 otherwise. On macOS, Homebrew's `lua` is 5.5; for 5.4 install `lua@5.4`,
 which is keg-only, and set
@@ -241,7 +241,7 @@ which is keg-only, and set
 
 ## Reproducing
 
-From this directory, on an idle machine, run luart, go-lua and native Go,
+From this directory, on an idle machine, run apogee, go-lua and native Go,
 then each C interpreter, into one file:
 
 ```sh

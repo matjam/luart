@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Notes for anyone, human or agent, changing luart. The README describes the
+Notes for anyone, human or agent, changing apogee. The README describes the
 project's goals and API; this file describes how the implementation works
 today, the rules it depends on, and where performance work should go next.
 
@@ -16,20 +16,20 @@ today, the rules it depends on, and where performance work should go next.
     `lua/vm_jit.go`.
   - `go vet ./...`.
   - `go test ./...`, which runs with the JIT at its normal threshold;
-    again with `LUART_JIT_TEST=1`, which compiles every function on first
-    use; again with `LUART_JIT=off`, which only interprets; and
+    again with `APOGEE_JIT_TEST=1`, which compiles every function on first
+    use; again with `APOGEE_JIT=off`, which only interprets; and
     `-race -run JIT`.
-  - `cd bench && LUART_JIT_TEST=1 go test -run 'TestSuiteAgrees|TestStandardAgrees' .`,
+  - `cd bench && APOGEE_JIT_TEST=1 go test -run 'TestSuiteAgrees|TestStandardAgrees' .`,
     and with `-tags clua54` or `-tags luajit` where those are installed.
 - On an Apple silicon Mac, `GOARCH=amd64 go test ./...` runs the amd64 JIT
   under Rosetta. A `GOAMD64=v3` binary cannot run there; CI covers it on
   linux/amd64.
 - On linux/amd64 with qemu-user's binfmt handler installed,
   `GOARCH=arm64 go test ./...` runs the arm64 JIT under emulation.
-- luart targets Lua 5.5. The official Lua 5.5.1 suite, unmodified, is
+- apogee targets Lua 5.5. The official Lua 5.5.1 suite, unmodified, is
   `lua-5.5-tests/`, run by
   `TestLua55` (lua/lua55_test.go). Its pending list says what each file
-  still needs; `LUART_SUITE_PROGRESS=1` runs pending files and logs where
+  still needs; `APOGEE_SUITE_PROGRESS=1` runs pending files and logs where
   they stop. Take a file off the list once it passes. The Lua 5.2 suite
   (the `lua-tests` submodule, `TestLua`) still runs the files whose
   semantics 5.5 kept; retire one, with a comment, when it tests 5.2
@@ -68,7 +68,7 @@ today, the rules it depends on, and where performance work should go next.
   `prototype` from a Proto (`prototypeOf`, compile.go), keeping runtime
   state beside it: the specialised code, field caches and JIT state.
 - `internal/chunk` reads and writes binary chunks as Protos (`Load`,
-  `Dump`), in luart's own format, which C Lua's luac cannot read. `Load` returns malformed chunks as errors and bounds each
+  `Dump`), in apogee's own format, which C Lua's luac cannot read. `Load` returns malformed chunks as errors and bounds each
   allocation, but, like Lua, trusts the code of a well-formed chunk.
   `protoOf` (compile.go) converts a prototype back for `Dump`.
 - `stdlib` holds the standard libraries and uses only `lua`'s public API.
@@ -80,15 +80,15 @@ today, the rules it depends on, and where performance work should go next.
   with `openLibraries` from export_test.go, which libs_test.go, an
   external test file in the same binary, sets to `stdlib.Open`.
 
-## The luart command
+## The apogee command
 
-- `cmd/luart` is its own module, so the library's go.mod stays free of
+- `cmd/apogee` is its own module, so the library's go.mod stays free of
   its dependencies (Bubble Tea v2, Bubbles, Lip Gloss, Chroma). It
-  requires a released luart pseudo-version; `go install ...@latest`
+  requires a released apogee pseudo-version; `go install ...@latest`
   refuses replace directives. To use a newer library, bump it with
-  `cd cmd/luart && go get github.com/matjam/luart@<commit on main>`.
+  `cd cmd/apogee && go get github.com/matjam/apogee@<commit on main>`.
 - For local development against this checkout, make an untracked
-  workspace: `go work init . ./cmd/luart` (go.work is gitignored; a
+  workspace: `go work init . ./cmd/apogee` (go.work is gitignored; a
   committed one would put the root's `go test ./...` and bench/ in
   workspace mode).
 - `standalone.go` ports lua.c: options, `LUA_INIT`, `arg`, `docall` with
@@ -103,7 +103,7 @@ today, the rules it depends on, and where performance work should go next.
   print, io.write and child processes land in the transcript; each
   evaluation ends with `capture.Sync`, so no output is in flight when the
   program exits.
-- Tests run the test binary as the command (`LUART_CLI_MAIN=1`) for lua.c
+- Tests run the test binary as the command (`APOGEE_CLI_MAIN=1`) for lua.c
   behaviour, and drive the TUI model with key messages.
 
 ## Interpreter
@@ -213,7 +213,7 @@ GETVARG instruction.
 
 ## Garbage collection
 
-Go's collector frees luart's memory. A Lua collection (gc.go) adds what
+Go's collector frees apogee's memory. A Lua collection (gc.go) adds what
 Lua defines beyond freeing memory: weak tables and `__gc` finalizers. It
 follows lgc.c's atomic phase.
 
@@ -264,7 +264,7 @@ follows lgc.c's atomic phase.
 
 ## JIT
 
-On by default; `NewState(WithoutJIT())` or `LUART_JIT=off` turns it off.
+On by default; `NewState(WithoutJIT())` or `APOGEE_JIT=off` turns it off.
 It runs on linux and darwin, arm64 and amd64. Elsewhere `jit_none.go`
 makes it a no-op. JIT tests call `skipWithoutJIT`, which skips them where
 nothing compiles.
@@ -412,7 +412,7 @@ nothing compiles.
 bench/README.md has the current tables and charts, generated from the raw
 results: AMD Ryzen 9 9900X3D (linux/amd64) and Apple M1 Pro (arm64). On
 the standard benchmarks (Are We Fast Yet and three from the Benchmarks
-Game) luart with the JIT takes 0.78 times as long as C Lua 5.4 on amd64
+Game) apogee with the JIT takes 0.78 times as long as C Lua 5.4 on amd64
 and 0.75 times on the M1, and 1.8 and 1.5 times without it.
 
 To find where a workload leaves compiled code, count exits: log

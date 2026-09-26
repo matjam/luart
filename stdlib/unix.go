@@ -5,7 +5,7 @@ package stdlib
 import (
 	"syscall"
 
-	"github.com/matjam/luart/lua"
+	"github.com/matjam/apogee/lua"
 )
 
 func clock(l *lua.State) int {

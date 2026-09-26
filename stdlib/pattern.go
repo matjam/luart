@@ -3,7 +3,7 @@ package stdlib
 import (
 	"strings"
 
-	"github.com/matjam/luart/lua"
+	"github.com/matjam/apogee/lua"
 )
 
 // Lua 5.2's pattern matching, ported from lstrlib.c. Positions are byte

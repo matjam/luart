@@ -115,7 +115,7 @@ func (m *model) banner() tea.Cmd {
 	}
 	m.bannered = true
 	th := m.th
-	title := lipgloss.NewStyle().Bold(true).Foreground(th.accent).Render("luart")
+	title := lipgloss.NewStyle().Bold(true).Foreground(th.accent).Render("apogee")
 	banner := []string{
 		title + th.faint.Render("  "+m.describe()),
 		th.faint.Render("/help for commands · tab completes · ctrl+d exits"),
@@ -136,7 +136,7 @@ func (m *model) describe() string {
 // jitCompiles reports whether the state compiles: it has the JIT and the
 // platform runs it.
 func jitCompiles(c *cli) bool {
-	return !c.noJIT && os.Getenv("LUART_JIT") != "off" && jitPlatform()
+	return !c.noJIT && os.Getenv("APOGEE_JIT") != "off" && jitPlatform()
 }
 
 func jitPlatform() bool {

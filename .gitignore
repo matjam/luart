@@ -1,8 +1,8 @@
 .DS_[sS]tore
 *.test
 *.prof
-# A workspace joining cmd/luart to this checkout, for local development
+# A workspace joining cmd/apogee to this checkout, for local development
 go.work
 go.work.sum
-/cmd/luart/luart
-/cmd/luart/luart.exe
+/cmd/apogee/apogee
+/cmd/apogee/apogee.exe

@@ -5,8 +5,8 @@ package lua
 import (
 	"unsafe"
 
-	"github.com/matjam/luart/internal/bytecode"
-	. "github.com/matjam/luart/internal/jit/arm64"
+	"github.com/matjam/apogee/internal/bytecode"
+	. "github.com/matjam/apogee/internal/jit/arm64"
 )
 
 // Table access and calls. Each hit path mirrors the interpreter's fast

@@ -4,7 +4,7 @@ package lua
 
 import "fmt"
 import "math"
-import "github.com/matjam/luart/internal/bytecode"
+import "github.com/matjam/apogee/internal/bytecode"
 
 // executeSwitchJIT is executeSwitch for states that compile. It runs
 // compiled code when it reaches an instruction the JIT patched in.

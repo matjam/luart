@@ -16,7 +16,7 @@ import (
 	"github.com/matjam/luart/stdlib"
 )
 
-const progName = "luart"
+const progName = "apogee"
 
 // A cli is one run of the command line.
 type cli struct {

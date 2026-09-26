@@ -4,7 +4,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/matjam/luart/lua"
+	"github.com/matjam/apogee/lua"
 )
 
 // The table library, after Lua 5.5's ltablib.c. Its functions take a
@@ -49,7 +49,7 @@ func tableLen(l *lua.State, arg, what int) int64 {
 }
 
 // tableCreate is table.create(nseq [, nrest]): a table with room for them.
-// The sizes are hints; beyond maxPrealloc luart allocates as the table
+// The sizes are hints; beyond maxPrealloc apogee allocates as the table
 // grows, as Go aborts the process when an allocation fails.
 func tableCreate(l *lua.State) int {
 	const maxHash, maxPrealloc = 1 << 30, 1 << 24
