@@ -180,6 +180,14 @@ func (a *Asm) Store(base Reg, disp uint32, rs Reg) { a.opRM(true, []byte{0x89}, 
 // Load32 loads the 32-bit word at base+disp into rd, zero-extended.
 func (a *Asm) Load32(rd, base Reg, disp uint32) { a.opRM(false, []byte{0x8b}, uint8(rd), base, disp) }
 
+// Load32S loads the 32-bit word at base+disp into rd, sign-extended.
+func (a *Asm) Load32S(rd, base Reg, disp uint32) { a.opRM(true, []byte{0x63}, uint8(rd), base, disp) }
+
+// Store32 stores the low 32 bits of rs at base+disp.
+func (a *Asm) Store32(base Reg, disp uint32, rs Reg) {
+	a.opRM(false, []byte{0x89}, uint8(rs), base, disp)
+}
+
 // Load8 loads the byte at base+disp into rd, zero-extended.
 func (a *Asm) Load8(rd, base Reg, disp uint32) {
 	a.opRM(false, []byte{0x0f, 0xb6}, uint8(rd), base, disp)
@@ -388,6 +396,15 @@ func (a *Asm) LoadSD(xd XReg, base Reg, disp uint32) { a.sseMem(0xf2, 0x10, uint
 
 // StoreSD stores the double in xs at base+disp.
 func (a *Asm) StoreSD(base Reg, disp uint32, xs XReg) { a.sseMem(0xf2, 0x11, uint8(xs), base, disp) }
+
+// LoadSSToSD loads the float32 at base+disp into xd as a double.
+func (a *Asm) LoadSSToSD(xd XReg, base Reg, disp uint32) { a.sseMem(0xf3, 0x5a, uint8(xd), base, disp) }
+
+// StoreSS stores the float32 in the low bits of xs at base+disp.
+func (a *Asm) StoreSS(base Reg, disp uint32, xs XReg) { a.sseMem(0xf3, 0x11, uint8(xs), base, disp) }
+
+// Cvtsd2ss rounds the double in xs to a float32 in xd.
+func (a *Asm) Cvtsd2ss(xd, xs XReg) { a.sse(0xf2, false, []byte{0x5a}, uint8(xd), uint8(xs)) }
 
 // MovSD copies xs to xd, all 128 bits.
 func (a *Asm) MovSD(xd, xs XReg) { a.sse(0x66, false, []byte{0x28}, uint8(xd), uint8(xs)) }

@@ -21,6 +21,8 @@ func (l *State) tableAt(t value, key value) value {
 			}
 		} else if t.p == varArgView.p { // a named vararg table, only indexed
 			return varArgAt(l, l.callInfo, key)
+		} else if u := t.userData(); u != nil && u.buf != nil {
+			return u.buf.at(key)
 		} else if tm = l.tagMethodByObject(t, tmIndex); tm.isNil() {
 			l.typeError(t, "index")
 		}
@@ -47,6 +49,9 @@ func (l *State) setTableAt(t value, key value, val value) {
 				table.invalidateTagMethodCache()
 				return
 			}
+		} else if u := t.userData(); u != nil && u.buf != nil {
+			l.putBuffer(u.buf, key, val)
+			return
 		} else if tm = l.tagMethodByObject(t, tmNewIndex); tm.isNil() {
 			l.typeError(t, "index")
 		}
@@ -67,6 +72,8 @@ func (l *State) objectLength(v value) value {
 		}
 	} else if s, ok := v.str(); ok {
 		return integerValue(int64(len(s)))
+	} else if u := v.userData(); u != nil && u.buf != nil {
+		return integerValue(int64(u.buf.len))
 	} else {
 		if tm = l.tagMethodByObject(v, tmLen); tm.isNil() {
 			l.typeError(v, "get length of")

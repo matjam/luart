@@ -3,8 +3,12 @@
 package lua
 
 import (
+	"fmt"
 	"math"
 	"math/rand/v2"
+	"runtime"
+	"runtime/debug"
+	"strconv"
 	"testing"
 
 	"github.com/matjam/apogee/internal/bytecode"
@@ -42,5 +46,41 @@ func TestDivideByConstant(t *testing.T) {
 	}
 	if planned < 600 {
 		t.Fatalf("only %d divisors planned", planned)
+	}
+}
+
+// % and // by constants, which compiled code computes with a multiply or a
+// shift, in ordinary code and in kernels, agree with the interpreter across
+// the integers' range.
+func TestJITDivideByConstant(t *testing.T) {
+	skipWithoutJIT(t)
+	runtime.GC()
+	defer debug.SetGCPercent(debug.SetGCPercent(-1)) // kernels run while the barrier is off
+	divisors := []string{"1", "2", "3", "-3", "5", "7", "-7", "10", "16", "-16", "641", "1024", "12345", "-65536",
+		"1000000007", "2147483647", "-2147483648", "2147483648", "-1", "4611686018427387904"}
+	for _, d := range divisors {
+		src := fmt.Sprintf(`
+			local ns = {0, 1, -1, 2, -2, 6, -6, 7, -7, 8, -9, 1000, -1001, 2^31 | 0, -(2^31 | 0), 123456789012, -98765432109,
+				math.maxinteger, math.mininteger, math.maxinteger - 1, math.mininteger + 1, math.maxinteger // 3, math.mininteger // 7}
+			function run()
+				local s = 0
+				for _, n in ipairs(ns) do s = s ~ (n %% %[1]s) ~ (n // %[1]s) * 3 end -- ordinary code
+				local k = 0 -- kernels
+				for n = -3000, 3000 do k = k + (n %% %[1]s) * 3 + (n // %[1]s) end
+				for n = math.maxinteger - 300, math.maxinteger do k = k + (n %% %[1]s) * 3 + (n // %[1]s) end
+				for n = math.mininteger, math.mininteger + 300 do k = k + (n %% %[1]s) * 3 + (n // %[1]s) end
+				return s, k
+			end`, d)
+		jit, interp, lj := runBoth(t, src)
+		if jit != interp {
+			t.Fatalf("divisor %s: JIT %q, interpreter %q", d, jit, interp)
+		}
+		lj.Global("run")
+		if p := lj.ToValue(-1).(*luaClosure).prototype; p.jit == nil {
+			t.Fatalf("divisor %s: run was not compiled", d)
+		}
+		if n, _ := strconv.ParseInt(d, 10, 64); kernelDivisor(integerValue(n)) && lj.jitCtx.kernels[1] == 0 {
+			t.Fatalf("divisor %s: no integer kernel ran", d)
+		}
 	}
 }

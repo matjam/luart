@@ -355,27 +355,101 @@ func (c *amd64Compiler) arrayIndex(field, ip int) bool {
 	return true
 }
 
-// upTableOf puts the table in upvalue n in rT, exiting at ip unless it
-// holds one.
-func (c *amd64Compiler) upTableOf(n, ip int) {
-	c.upValueAddr(n)
-	c.tableOf(operand{rAddr, 0}, ip)
+// indexedObject puts in rT the table the value in register or upvalue n
+// holds, or branches to buf with the userdata it holds there, and exits at
+// ip for anything else.
+func (c *amd64Compiler) indexedObject(n int, up bool, ip int, buf Label) {
+	a := &c.a
+	o := reg(n)
+	if up {
+		c.upValueAddr(n)
+		o = operand{rAddr, 0}
+	}
+	notTable := a.NewLabel()
+	a.Load(rTmp, o.base, o.off+offN)
+	a.MovImm(rTmp2, tagOf(vkTable))
+	a.Cmp(rTmp, rTmp2)
+	a.J(NE, notTable)
+	a.Load(rT, o.base, o.off+offP)
+	c.branchNumber(rT, c.exit(ip)) // a number whose bits match the tag
+	c.bufferPaths = append(c.bufferPaths, func() {
+		a.Bind(notTable)
+		a.MovImm(rTmp2, tagOf(vkUserData))
+		a.Cmp(rTmp, rTmp2)
+		a.J(NE, c.exit(ip))
+		a.Load(rT, o.base, o.off+offP)
+		c.branchNumber(rT, c.exit(ip))
+		a.Jmp(buf)
+	})
+}
+
+// bufferElement checks that the userdata in rT is a buffer, with element
+// rIdx+1 in range, as arrayIndex leaves the key less one. It leaves the
+// element's address in rSlot for an element of size 1 << shift, the kind
+// in rTmp, and exits at ip otherwise, for Go to read nil or raise the error.
+// The branch to each kind's code follows.
+func (c *amd64Compiler) bufferElement(ip int) (f64, f32, i32, u8 Label) {
+	a := &c.a
+	exit := c.exit(ip)
+	a.Load(rT2, rT, offUDBuf)
+	a.Test(rT2, rT2)
+	a.J(E, exit) // a userdata that is not a buffer
+	a.AddImm(rIdx, 1)
+	a.Load(rLen, rT2, offBufLen)
+	a.Cmp(rIdx, rLen)
+	a.J(AE, exit) // unsigned: below 0 too
+	a.Load(rSlot, rT2, offBufPtr)
+	a.Load8(rTmp, rT2, offBufKind)
+	f64, f32, i32, u8 = a.NewLabel(), a.NewLabel(), a.NewLabel(), a.NewLabel()
+	a.Test(rTmp, rTmp)
+	a.J(E, f64)
+	a.CmpImm(rTmp, int32(bufferFloat32))
+	a.J(E, f32)
+	a.CmpImm(rTmp, int32(bufferInt32))
+	a.J(E, i32)
+	a.Jmp(u8)
+	return
 }
 
 // getIndex compiles GETTABLE, or GETTABUP when up is set, for an integer
-// key: an array element, or nil past the array of a table without a hash
-// part or a metatable. Other keys exit.
+// key: an array element, nil past the array of a table without a hash
+// part or a metatable, or a buffer's element. Other keys exit.
 func (c *amd64Compiler) getIndex(ip int, i bytecode.Instruction, up bool) {
 	a := &c.a
-	if up {
-		c.upTableOf(i.B(), ip)
-	} else {
-		c.tableOf(reg(i.B()), ip)
-	}
 	if !c.arrayIndex(i.C(), ip) {
 		c.exitAlways(ip)
 		return
 	}
+	buf, store, stored := a.NewLabel(), a.NewLabel(), a.NewLabel()
+	dst := reg(i.A())
+	c.indexedObject(i.B(), up, ip, buf)
+	c.bufferPaths = append(c.bufferPaths, func() {
+		a.Bind(buf)
+		f64, f32, i32, u8 := c.bufferElement(ip)
+		a.Bind(f64)
+		a.Lea(rSlot, rSlot, rIdx, 3, 0)
+		a.Load(rN, rSlot, 0)
+		a.Mov(rP, rNumber)
+		a.Jmp(store)
+		a.Bind(f32) // stored from X0: see setIndex
+		a.Lea(rSlot, rSlot, rIdx, 2, 0)
+		a.LoadSSToSD(0, rSlot, 0)
+		c.guardStore(dst, noReg, ip)
+		c.storeNumber(dst, 0)
+		a.Jmp(stored)
+		integer := a.NewLabel()
+		a.Bind(i32)
+		a.Lea(rSlot, rSlot, rIdx, 2, 0)
+		a.Load32S(rN, rSlot, 0)
+		a.Jmp(integer)
+		a.Bind(u8)
+		a.Lea(rSlot, rSlot, rIdx, 0, 0)
+		a.Load8(rN, rSlot, 0)
+		a.Bind(integer)
+		a.Mov(rP, rNumber)
+		a.AddImm(rP, 1) // integerPtr, the next byte
+		a.Jmp(store)
+	})
 	outside, done := a.NewLabel(), a.NewLabel()
 	a.Load(rLen, rT, offTArray+offSliceLen)
 	a.Cmp(rIdx, rLen)
@@ -397,28 +471,81 @@ func (c *amd64Compiler) getIndex(ip int, i bytecode.Instruction, up bool) {
 	a.MovImm(rP, 0)
 	a.MovImm(rN, 0)
 	a.Bind(done)
-	dst := reg(i.A())
+	a.Bind(store)
 	c.guardStore(dst, rP, ip)
 	c.store(dst)
+	a.Bind(stored)
 }
 
 // setIndex compiles SETTABLE, or SETTABUP when up is set, for an array
-// element; other keys exit.
+// element or a buffer's element; other keys exit.
 func (c *amd64Compiler) setIndex(ip int, i bytecode.Instruction, up bool) {
 	a := &c.a
 	if !c.loadRK(i.C(), ip, false) {
 		c.exitAlways(ip)
 		return
 	}
-	if up {
-		c.upTableOf(i.A(), ip)
-	} else {
-		c.tableOf(reg(i.A()), ip)
-	}
 	if !c.arrayIndex(i.B(), ip) {
 		c.exitAlways(ip)
 		return
 	}
+	buf, done := a.NewLabel(), a.NewLabel()
+	src, _ := c.rk(i.C()) // loadRK reached it
+	c.indexedObject(i.A(), up, ip, buf)
+	c.bufferPaths = append(c.bufferPaths, func() {
+		exit := c.exit(ip)
+		a.Bind(buf)
+		f64, f32, i32, u8 := c.bufferElement(ip)
+		// A float buffer takes any number; an integer buffer an integer,
+		// and Go converts a float with an integer value. A float's bits
+		// are stored from rN, or loaded again from src into X0: moving
+		// them from rN to an SSE register before the store measured three
+		// times slower in plasma, fed by sin.
+		isInteger := func() {
+			a.Mov(rTmp, rP)
+			a.Sub(rTmp, rNumber)
+			a.CmpImm(rTmp, 1)
+			a.J(NE, exit)
+		}
+		stored := a.NewLabel()
+		a.Bind(f64)
+		a.Lea(rSlot, rSlot, rIdx, 3, 0)
+		integer64 := a.NewLabel()
+		a.Cmp(rP, rNumber)
+		a.J(NE, integer64)
+		a.Store(rSlot, 0, rN)
+		a.Jmp(stored)
+		a.Bind(integer64)
+		isInteger()
+		a.Cvtsi2sd(0, rN)
+		a.StoreSD(rSlot, 0, 0)
+		a.Jmp(stored)
+		a.Bind(f32)
+		integer32, convert := a.NewLabel(), a.NewLabel()
+		a.Cmp(rP, rNumber)
+		a.J(NE, integer32)
+		a.LoadSD(0, src.base, src.off+offN)
+		a.Jmp(convert)
+		a.Bind(integer32)
+		isInteger()
+		a.Cvtsi2sd(0, rN)
+		a.Bind(convert)
+		a.Cvtsd2ss(0, 0)
+		a.Lea(rSlot, rSlot, rIdx, 2, 0)
+		a.StoreSS(rSlot, 0, 0)
+		a.Jmp(stored)
+		a.Bind(i32)
+		isInteger()
+		a.Lea(rSlot, rSlot, rIdx, 2, 0)
+		a.Store32(rSlot, 0, rN)
+		a.Jmp(stored)
+		a.Bind(u8)
+		isInteger()
+		a.Lea(rSlot, rSlot, rIdx, 0, 0)
+		a.Store8(rSlot, 0, rN)
+		a.Bind(stored)
+		a.Jmp(done)
+	})
 	c.element(rT, offTArray, rIdx, rSlot, ip)
 	slot, present := operand{rSlot, 0}, a.NewLabel()
 	a.Load(rTmp, rSlot, offP)
@@ -431,6 +558,7 @@ func (c *amd64Compiler) setIndex(ip int, i bytecode.Instruction, up bool) {
 	c.guardStore(slot, rP, ip)
 	c.store(slot)
 	a.StoreZero8(rT, offTFlags) // invalidateTagMethodCache
+	a.Bind(done)
 }
 
 // setList compiles SETLIST of a fixed count of values, as a constructor

@@ -118,6 +118,23 @@ func TestDivideByConstant(t *testing.T) {
 	check(t, &a, "4969d378563412 4c69d0bbdcfeff 49f7ed 48f7e9 48c1fa03 49c1fc3f 4981e100100000 4881e20000ffff")
 }
 
+// Buffer elements: 32-bit and float32 loads and stores.
+func TestNarrowElements(t *testing.T) {
+	var a Asm
+	a.Load32S(AX, R12, 0x1000)   // movsxd rax, dword ptr [r12 + 0x1000]
+	a.Load32S(R9, DX, 0x1000)    // movsxd r9, dword ptr [rdx + 0x1000]
+	a.Store32(SI, 0x1000, R10)   // mov dword ptr [rsi + 0x1000], r10d
+	a.Store32(R13, 0x1000, AX)   // mov dword ptr [r13 + 0x1000], eax
+	a.LoadSSToSD(3, R11, 0x1000) // cvtss2sd xmm3, dword ptr [r11 + 0x1000]
+	a.LoadSSToSD(9, AX, 0x1000)  // cvtss2sd xmm9, dword ptr [rax + 0x1000]
+	a.StoreSS(DX, 0x1000, 2)     // movss dword ptr [rdx + 0x1000], xmm2
+	a.StoreSS(R8, 0x1000, 12)    // movss dword ptr [r8 + 0x1000], xmm12
+	a.Cvtsd2ss(1, 0)             // cvtsd2ss xmm1, xmm0
+	a.Cvtsd2ss(10, 3)            // cvtsd2ss xmm10, xmm3
+	check(t, &a, "4963842400100000 4c638a00100000 44899600100000 41898500100000 f3410f5a9b00100000"+
+		"f3440f5a8800100000 f30f119200100000 f3450f11a000100000 f20f5ac8 f2440f5ad3")
+}
+
 func TestShl(t *testing.T) {
 	var a Asm
 	a.Shl(R13, 4) // shl r13, 4

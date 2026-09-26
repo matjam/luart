@@ -54,7 +54,10 @@ type arm64Compiler struct {
 	numCall []Label // exits at a CALL of a number function, created on demand
 	notLua  []Label // a CALL's out-of-line code for callees other than Lua closures
 	strSelf []Label // a SELF's out-of-line code for receivers other than tables
-	always  []bool  // instructions compiled as an unconditional exit
+	// bufferPaths emit table instructions' out-of-line code for buffers
+	// and other userdata, after the function's code.
+	bufferPaths []func()
+	always      []bool // instructions compiled as an unconditional exit
 }
 
 func compileJIT(p *prototype, g *globalState) (code []byte, offsets []int32, entries []int, kernels int) {
@@ -148,6 +151,9 @@ func (c *arm64Compiler) stubs() {
 			c.selfString(ip, c.code[ip])
 			a.B(c.pcs[ip+1])
 		}
+	}
+	for _, emit := range c.bufferPaths {
+		emit()
 	}
 	for ip, l := range c.exits {
 		if l >= 0 {

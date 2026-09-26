@@ -26,6 +26,19 @@ function frame(t)
 end
 `
 
+// The same maths, storing results straight into the canvas, a buffer.
+const luaBuffer = `
+local sin = math.sin
+function frame(t)
+  local canvas = canvas
+  for y = 0, 99 do
+    for x = 0, 199 do
+      canvas[y * 200 + x] = sin(x*0.1+t) + sin(y*0.07+t) + sin((x+y)*0.05+t)
+    end
+  end
+end
+`
+
 // The same maths, storing results in a Lua table instead of calling Go.
 const luaNoCall = `
 local sin = math.sin

@@ -343,29 +343,101 @@ func (c *arm64Compiler) arrayIndex(field, ip int) bool {
 	return true
 }
 
-// getIndex compiles GETTABLE with a number key in the table's array part.
-// upTableOf puts the table in upvalue n in rT, exiting at ip unless it
-// holds one.
-func (c *arm64Compiler) upTableOf(n, ip int) {
-	c.upValueAddr(n)
-	c.tableOf(operand{rAddr, 0}, ip)
+// indexedObject puts in rT the table the value in register or upvalue n
+// holds, or branches to buf with the userdata it holds there, and exits at
+// ip for anything else.
+func (c *arm64Compiler) indexedObject(n int, up bool, ip int, buf Label) {
+	a := &c.a
+	o := reg(n)
+	if up {
+		c.upValueAddr(n)
+		o = operand{rAddr, 0}
+	}
+	notTable := a.NewLabel()
+	a.Ldr(rTmp, o.base, o.off+offN)
+	a.MovImm(rTmp2, tagOf(vkTable))
+	a.Cmp(rTmp, rTmp2)
+	a.BCond(NE, notTable)
+	a.Ldr(rT, o.base, o.off+offP)
+	c.branchNumber(rT, c.exit(ip)) // a number whose bits match the tag
+	c.bufferPaths = append(c.bufferPaths, func() {
+		a.Bind(notTable)
+		a.MovImm(rTmp2, tagOf(vkUserData))
+		a.Cmp(rTmp, rTmp2)
+		a.BCond(NE, c.exit(ip))
+		a.Ldr(rT, o.base, o.off+offP)
+		c.branchNumber(rT, c.exit(ip))
+		a.B(buf)
+	})
 }
 
-// getIndex compiles GETTABLE, or GETTABUP when up is set, for an array
-// element; other keys exit.
+// bufferElement checks that the userdata in rT is a buffer, with element
+// rIdx+1 in range, as arrayIndex leaves the key less one, and exits at ip
+// otherwise, for Go to read nil or raise the error. It leaves the index in
+// rIdx and the first element's address in rSlot, and branches to the code
+// for the buffer's kind.
+func (c *arm64Compiler) bufferElement(ip int) (f64, f32, i32, u8 Label) {
+	a := &c.a
+	exit := c.exit(ip)
+	a.Ldr(rT2, rT, offUDBuf)
+	a.Cbz(rT2, exit) // a userdata that is not a buffer
+	a.AddImm(rIdx, rIdx, 1)
+	a.Ldr(rLen, rT2, offBufLen)
+	a.Cmp(rIdx, rLen)
+	a.BCond(HS, exit) // unsigned: below 0 too
+	a.Ldr(rSlot, rT2, offBufPtr)
+	a.Ldrb(rTmp, rT2, offBufKind)
+	f64, f32, i32, u8 = a.NewLabel(), a.NewLabel(), a.NewLabel(), a.NewLabel()
+	a.Cbz(rTmp, f64)
+	a.CmpImm(rTmp, uint32(bufferFloat32))
+	a.BCond(EQ, f32)
+	a.CmpImm(rTmp, uint32(bufferInt32))
+	a.BCond(EQ, i32)
+	a.B(u8)
+	return
+}
+
+// getIndex compiles GETTABLE, or GETTABUP when up is set, for an integer
+// key: an array element, nil past the array of a table without a hash
+// part or a metatable, or a buffer's element. Other keys exit.
 func (c *arm64Compiler) getIndex(ip int, i bytecode.Instruction, up bool) {
-	if up {
-		c.upTableOf(i.B(), ip)
-	} else {
-		c.tableOf(reg(i.B()), ip)
-	}
+	a := &c.a
 	if !c.arrayIndex(i.C(), ip) {
 		c.exitAlways(ip)
 		return
 	}
+	buf, store, stored := a.NewLabel(), a.NewLabel(), a.NewLabel()
+	dst := reg(i.A())
+	c.indexedObject(i.B(), up, ip, buf)
+	c.bufferPaths = append(c.bufferPaths, func() {
+		a.Bind(buf)
+		f64, f32, i32, u8 := c.bufferElement(ip)
+		integer := a.NewLabel()
+		a.Bind(f64)
+		a.AddShifted(rSlot, rSlot, rIdx, 3)
+		a.Ldr(rN, rSlot, 0)
+		a.Mov(rP, rNumber)
+		a.B(store)
+		a.Bind(f32) // stored from D0: see setIndex
+		a.AddShifted(rSlot, rSlot, rIdx, 2)
+		a.LdrS(0, rSlot, 0)
+		a.FcvtSD(0, 0)
+		c.guardStore(dst, noReg, ip)
+		c.storeNumber(dst, 0)
+		a.B(stored)
+		a.Bind(i32)
+		a.AddShifted(rSlot, rSlot, rIdx, 2)
+		a.Ldrsw(rN, rSlot, 0)
+		a.B(integer)
+		a.Bind(u8)
+		a.AddShifted(rSlot, rSlot, rIdx, 0)
+		a.Ldrb(rN, rSlot, 0)
+		a.Bind(integer)
+		a.Mov(rP, rInteger)
+		a.B(store)
+	})
 	// An array element, or nil past the array of a table without a hash
 	// part or a metatable.
-	a := &c.a
 	outside, done := a.NewLabel(), a.NewLabel()
 	a.Ldr(rLen, rT, offTArray+offSliceLen)
 	a.Cmp(rIdx, rLen)
@@ -383,30 +455,77 @@ func (c *arm64Compiler) getIndex(ip int, i bytecode.Instruction, up bool) {
 	a.Mov(rP, ZR)
 	a.Mov(rN, ZR)
 	a.Bind(done)
-	dst := reg(i.A())
+	a.Bind(store)
 	c.guardStore(dst, rP, ip)
 	c.store(dst)
+	a.Bind(stored)
 }
 
-// setIndex compiles SETTABLE storing a value to an element of the table's
-// array part, as tryPut, or put for a table without a metatable, does.
-// setIndex compiles SETTABLE, or SETTABUP when up is set, for an array
-// element; other keys exit.
+// setIndex compiles SETTABLE, or SETTABUP when up is set, storing to an
+// element of a table's array part, as tryPut, or put for a table without a
+// metatable, does, or to a buffer's element. Other keys exit.
 func (c *arm64Compiler) setIndex(ip int, i bytecode.Instruction, up bool) {
 	a := &c.a
 	if !c.loadRK(i.C(), ip, false) {
 		c.exitAlways(ip)
 		return
 	}
-	if up {
-		c.upTableOf(i.A(), ip)
-	} else {
-		c.tableOf(reg(i.A()), ip)
-	}
 	if !c.arrayIndex(i.B(), ip) {
 		c.exitAlways(ip)
 		return
 	}
+	buf, done := a.NewLabel(), a.NewLabel()
+	src, _ := c.rk(i.C()) // loadRK reached it
+	c.indexedObject(i.A(), up, ip, buf)
+	c.bufferPaths = append(c.bufferPaths, func() {
+		exit := c.exit(ip)
+		a.Bind(buf)
+		f64, f32, i32, u8 := c.bufferElement(ip)
+		// A float buffer takes any number; an integer buffer an integer,
+		// and Go converts a float with an integer value. A float's bits
+		// are stored from rN, or loaded again from src, rather than moved
+		// between register files before the store, as on amd64.
+		a.Bind(f64)
+		a.AddShifted(rSlot, rSlot, rIdx, 3)
+		integer64 := a.NewLabel()
+		a.Cmp(rP, rNumber)
+		a.BCond(NE, integer64)
+		a.Str(rN, rSlot, 0)
+		a.B(done)
+		a.Bind(integer64)
+		a.Cmp(rP, rInteger)
+		a.BCond(NE, exit)
+		a.Scvtf(0, rN)
+		a.StrD(0, rSlot, 0)
+		a.B(done)
+		a.Bind(f32)
+		integer32, convert := a.NewLabel(), a.NewLabel()
+		a.Cmp(rP, rNumber)
+		a.BCond(NE, integer32)
+		a.LdrD(0, src.base, src.off+offN)
+		a.B(convert)
+		a.Bind(integer32)
+		a.Cmp(rP, rInteger)
+		a.BCond(NE, exit)
+		a.Scvtf(0, rN)
+		a.Bind(convert)
+		a.FcvtDS(0, 0)
+		a.AddShifted(rSlot, rSlot, rIdx, 2)
+		a.StrS(0, rSlot, 0)
+		a.B(done)
+		a.Bind(i32)
+		a.Cmp(rP, rInteger)
+		a.BCond(NE, exit)
+		a.AddShifted(rSlot, rSlot, rIdx, 2)
+		a.StrW(rN, rSlot, 0)
+		a.B(done)
+		a.Bind(u8)
+		a.Cmp(rP, rInteger)
+		a.BCond(NE, exit)
+		a.AddShifted(rSlot, rSlot, rIdx, 0)
+		a.Strb(rN, rSlot, 0)
+		a.B(done)
+	})
 	c.element(rT, offTArray, rIdx, rSlot, ip)
 	// A nil element: setTableAt stores over it when there is no
 	// metatable to consult for __newindex.
@@ -419,6 +538,7 @@ func (c *arm64Compiler) setIndex(ip int, i bytecode.Instruction, up bool) {
 	c.guardStore(slot, rP, ip)
 	c.store(slot)
 	a.Strb(ZR, rT, offTFlags) // invalidateTagMethodCache
+	a.Bind(done)
 }
 
 // call compiles CALL. A unary intrinsic applied to a number runs here, and
