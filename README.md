@@ -60,7 +60,7 @@ JIT compiler. Quite far, it turns out.
   every file that does not need C Lua's internal test library passes,
   but for `calls.lua`, which checks C Lua's binary chunk header byte for
   byte ([lua/lua55_test.go](lua/lua55_test.go)).
-- With the JIT it is faster than C Lua 5.4 on the standard benchmarks; see
+- With the JIT it is faster than C Lua 5.5 on the standard benchmarks; see
   [Performance](#performance).
 
 Differences from C Lua:
@@ -84,24 +84,25 @@ Differences from C Lua:
 ## Performance
 
 [`bench/`](bench) runs the same Lua in apogee with and without the JIT,
-Shopify/go-lua, C Lua 5.4 and LuaJIT, and checks that they all compute
+Shopify/go-lua, C Lua 5.5 and LuaJIT, and checks that they all compute
 the same results. With the JIT, apogee runs the standard benchmarks (Are
-We Fast Yet and three from the Benchmarks Game) faster than C Lua 5.4,
+We Fast Yet and three from the Benchmarks Game) faster than C Lua 5.5,
 and everything several times faster than go-lua. Each cell is the
-geometric mean of each benchmark's time divided by C Lua 5.4's or native
+geometric mean of each benchmark's time divided by C Lua's or native
 Go's; below 1× is faster. The two machines were measured at different
-commits, which [`bench/README.md`](bench/README.md) gives.
+commits, which [`bench/README.md`](bench/README.md) gives; the M1's
+results predate the port to Lua 5.5 and are against C Lua 5.4.
 
 <!-- suite-table summary -->
-| Geometric mean | Apogee (JIT) | Apogee (no JIT) | go-lua | Lua 5.4 | LuaJIT |
-|---|---:|---:|---:|---:|---:|
-| Standard benchmarks against C Lua 5.4, AMD Ryzen 9 9900X3D | **0.78×** | 1.8× | 5.9× | 1× | 0.18× |
-| Standard benchmarks against C Lua 5.4, Apple M1 Pro | **0.75×** | 1.5× | 4.8× | 1× | 0.20× |
-| Embedding workloads against native Go, AMD Ryzen 9 9900X3D | **5.8×** | 12× | 54× | 8.3× | 2.4× |
-| Embedding workloads against native Go, Apple M1 Pro | **6.9×** | 13× | 51× | 9.6× | 2.6× |
+| Geometric mean | Apogee (JIT) | Apogee (no JIT) | go-lua | Lua 5.5 | Lua 5.4 | LuaJIT |
+|---|---:|---:|---:|---:|---:|---:|
+| Standard benchmarks against C Lua 5.5, AMD Ryzen 9 9900X3D | **0.79×** | 1.8× | 5.9× | 1× | – | 0.18× |
+| Standard benchmarks against C Lua 5.4, Apple M1 Pro | **0.75×** | 1.5× | 4.8× | – | 1× | 0.20× |
+| Embedding workloads against native Go, AMD Ryzen 9 9900X3D | **6.4×** | 13× | 52× | 7.7× | – | 2.3× |
+| Embedding workloads against native Go, Apple M1 Pro | **6.9×** | 13× | 51× | – | 9.6× | 2.6× |
 <!-- /suite-table -->
 
-![Each interpreter's time on each standard benchmark divided by C Lua 5.4's, on AMD Ryzen 9 9900X3D](bench/standard-amd64.svg)
+![Each interpreter's time on each standard benchmark divided by C Lua 5.5's, on AMD Ryzen 9 9900X3D](bench/standard-amd64.svg)
 
 apogee allocates nothing for numbers, booleans or calls, only the tables,
 closures and strings a script creates; go-lua allocates up to millions of

@@ -20,7 +20,7 @@ today, the rules it depends on, and where performance work should go next.
     use; again with `APOGEE_JIT=off`, which only interprets; and
     `-race -run JIT`.
   - `cd bench && APOGEE_JIT_TEST=1 go test -run 'TestSuiteAgrees|TestStandardAgrees' .`,
-    and with `-tags clua54` or `-tags luajit` where those are installed.
+    and with `-tags clua55` or `-tags luajit` where those are installed.
 - On an Apple silicon Mac, `GOARCH=amd64 go test ./...` runs the amd64 JIT
   under Rosetta. A `GOAMD64=v3` binary cannot run there; CI covers it on
   linux/amd64.
@@ -444,10 +444,11 @@ remains follows from running on Go.
     last bit.
 - **The JIT compiles only on linux and darwin, arm64 and amd64.**
   Elsewhere, Windows included, states interpret.
-- **Speed.** With the JIT, apogee takes about 0.75 times C Lua 5.4's
-  time on the standard benchmarks; without it, about 1.5 times. The
-  tables are still against 5.4; re-measure against 5.5
-  (bench/README.md, "Reproducing", with `-tags clua55`).
+- **Speed.** With the JIT, apogee takes 0.79 times C Lua 5.5's time on
+  the standard benchmarks on the 9900X3D; without it, 1.8 times. It is
+  slower on CD and binary-trees (1.2 times). The M1's results are still
+  against 5.4; re-measure there with `-tags clua55` (bench/README.md,
+  "Reproducing").
 
 ### LuaJIT
 
@@ -506,8 +507,16 @@ Windows. apogee's JIT covers linux and darwin on arm64 and amd64.
 bench/README.md has the current tables and charts, generated from the raw
 results: AMD Ryzen 9 9900X3D (linux/amd64) and Apple M1 Pro (arm64). On
 the standard benchmarks (Are We Fast Yet and three from the Benchmarks
-Game) apogee with the JIT takes 0.78 times as long as C Lua 5.4 on amd64
-and 0.75 times on the M1, and 1.8 and 1.5 times without it.
+Game) apogee with the JIT takes 0.79 times as long as C Lua 5.5 on amd64,
+and 1.8 times without it. The M1's results (0.75 and 1.5 times) are still
+against C Lua 5.4, from before the port to 5.5.
+
+The amd64 run at 3d3b49e is the first since the port to 5.5 (#86–#101).
+Against the run before it (e5ed0e4), with the JIT, the numeric loop is
+0.95 to 1.53 ms, closures 4.7 to 7.9 ms (now slower than interpreted),
+plasma 0.75 to 0.87 ms, and CD 37 to 41 ms; interpreted, the numeric loop
+is 9.2 to 11.3 ms and plasma 1.37 to 1.74 ms. The cause is not yet
+known.
 
 To find where a workload leaves compiled code, count exits: log
 `p.jitOrig[ip]` and `l.jitCtx.reason` after each `enterJIT` in `runJIT`
@@ -549,7 +558,7 @@ Measured on the 9900X3D with the JIT on (bench/README.md):
   keys that are not constant strings or array indices, LEN of a table,
   CONCAT, and the sort comparator's return to Go. Havlak exits 24 million
   times an iteration, most of them at NEWTABLE, CALL and TAILCALL.
-- binary-trees, the one standard benchmark still slower than C Lua 5.4,
+- binary-trees, one of the two standard benchmarks slower than C Lua 5.5,
   is allocation: a NEWTABLE exit and Go's allocator for every node.
 - Plasma takes about 37 ns a pixel against Go's 15: about 12 ns for the
   call to `set`, about 6 ns for each of three `sin`s (Go's `math.Sin` is

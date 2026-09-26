@@ -12,7 +12,7 @@ import (
 // as the base) to its time divided by the base's, on a log scale. Colors
 // are the reference palette's categorical slots 1 to 4 and 7 (violet, as
 // magenta is too close to aqua for deuteranopes in dark mode, adjacent
-// when Lua 5.4 is the base), light and dark, which pass its colorblind
+// when C Lua is the base), light and dark, which pass its colorblind
 // checks in the bars' order in both charts; every bar is labelled with its
 // value, so no color is read alone.
 //

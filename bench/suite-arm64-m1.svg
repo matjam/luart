@@ -26,10 +26,10 @@ text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 <text class="title" x="24" y="32">Time relative to native Go</text>
 <text class="sub" x="24" y="52">Apple M1 Pro, darwin/arm64. Median time of each workload divided by that of native Go; log scale, left of 1× is faster.</text>
 <rect class="s1" x="24" y="70" width="12" height="12" rx="2"/><text class="label" x="42" y="80">Apogee (JIT)</text>
-<rect class="s0" x="142.6" y="70" width="12" height="12" rx="2"/><text class="label" x="160.6" y="80">Apogee (no JIT)</text>
-<rect class="s2" x="281" y="70" width="12" height="12" rx="2"/><text class="label" x="299" y="80">go-lua</text>
-<rect class="s3" x="366.6" y="70" width="12" height="12" rx="2"/><text class="label" x="384.6" y="80">Lua 5.4</text>
-<rect class="s4" x="458.8" y="70" width="12" height="12" rx="2"/><text class="label" x="476.8" y="80">LuaJIT</text>
+<rect class="s0" x="149.2" y="70" width="12" height="12" rx="2"/><text class="label" x="167.2" y="80">Apogee (no JIT)</text>
+<rect class="s2" x="294.2" y="70" width="12" height="12" rx="2"/><text class="label" x="312.2" y="80">go-lua</text>
+<rect class="s3" x="379.79999999999995" y="70" width="12" height="12" rx="2"/><text class="label" x="397.79999999999995" y="80">Lua 5.4</text>
+<rect class="s4" x="471.99999999999994" y="70" width="12" height="12" rx="2"/><text class="label" x="489.99999999999994" y="80">LuaJIT</text>
 <line class="grid" x1="220.0" x2="220.0" y1="98" y2="1004"/><text class="tick" x="220.0" y="1022" text-anchor="middle">0.5×</text>
 <line class="base" x1="279.8" x2="279.8" y1="98" y2="1004"/><text class="tick" x="279.8" y="1022" text-anchor="middle">1×</text>
 <line class="grid" x1="339.6" x2="339.6" y1="98" y2="1004"/><text class="tick" x="339.6" y="1022" text-anchor="middle">2×</text>

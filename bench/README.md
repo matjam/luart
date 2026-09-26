@@ -2,7 +2,7 @@
 
 Two benchmarks run the same Lua source in every interpreter: apogee without
 the JIT (`WithoutJIT`), apogee with it (the default), Shopify/go-lua, and C
-Lua 5.4 or LuaJIT when built with their tag (see
+Lua 5.5 or LuaJIT when built with their tag (see
 [C interpreters](#c-interpreters)).
 
 - **`BenchmarkSuite`** ([`suite_test.go`](suite_test.go)) runs eleven
@@ -13,7 +13,8 @@ Lua 5.4 or LuaJIT when built with their tag (see
 - **`BenchmarkStandard`** ([`standard_test.go`](standard_test.go)) runs the
   14 benchmarks of Are We Fast Yet and three from the Computer Language
   Benchmarks Game, which other language implementations are measured with
-  ([`standard/`](standard)). The interpreters are compared with C Lua 5.4.
+  ([`standard/`](standard)). The interpreters are compared with C Lua 5.5,
+  the language apogee speaks.
 
 `TestSuiteAgrees` and `TestStandardAgrees` check that every interpreter
 computes the same results. The tables and charts come from the raw output
@@ -22,7 +23,7 @@ by [`chart`](chart) (see [Reproducing](#reproducing)).
 ## amd64
 
 AMD Ryzen 9 9900X3D, linux, Go 1.27.1, `-count 6`,
-`-ldflags=-funcalign=64`, medians, 2026-09-25, at commit e5ed0e4. Lua 5.4.9
+`-ldflags=-funcalign=64`, medians, 2026-09-25, at commit 3d3b49e. Lua 5.5.1
 and LuaJIT 2.1.1788460057 from Arch Linux's packages. Raw output:
 [`suite-results-amd64.txt`](suite-results-amd64.txt).
 
@@ -34,60 +35,60 @@ Each cell is the median time, and in brackets that time divided by native
 Go's.
 
 <!-- suite-table amd64 -->
-| Workload | Native Go | Apogee (JIT) | Apogee (no JIT) | go-lua | Lua 5.4 | LuaJIT |
+| Workload | Native Go | Apogee (JIT) | Apogee (no JIT) | go-lua | Lua 5.5 | LuaJIT |
 |---|---:|---:|---:|---:|---:|---:|
-| fib(25), recursive calls | 0.21 ms | 1.58 ms (7.4×) | 5.66 ms (27×) | 9.16 ms (43×) | 2.34 ms (11×) | 0.28 ms (1.3×) |
-| numeric loop, 1M iterations | 0.79 ms | 0.95 ms (1.2×) | 9.22 ms (12×) | 185 ms (235×) | 4.52 ms (5.7×) | 0.78 ms (0.99×) |
-| array fill and sum, 100k | 0.47 ms | 1.03 ms (2.2×) | 2.59 ms (5.5×) | 5.92 ms (12×) | 0.77 ms (1.6×) | 0.20 ms (0.42×) |
-| records, 10k tables | 0.09 ms | 0.62 ms (6.9×) | 0.88 ms (9.8×) | 2.82 ms (31×) | 0.87 ms (9.7×) | 0.28 ms (3.1×) |
-| closures, 100k | 0.22 ms | 4.74 ms (21×) | 5.31 ms (24×) | 9.65 ms (43×) | 6.75 ms (30×) | 3.44 ms (15×) |
-| sort 10k with comparator | 1.29 ms | 3.59 ms (2.8×) | 3.71 ms (2.9×) | 11.1 ms (8.6×) | 3.28 ms (2.5×) | 3.36 ms (2.6×) |
-| string build, 10k pieces | 0.37 ms | 0.56 ms (1.5×) | 0.69 ms (1.9×) | 78.8 ms (212×) | 0.95 ms (2.5×) | 0.37 ms (0.99×) |
-| string scan, 11k characters | 0.007 ms | 0.57 ms (84×) | 1.51 ms (224×) | 2.76 ms (409×) | 0.71 ms (105×) | 0.06 ms (8.9×) |
-| calls into Go, 100k | 0.22 ms | 1.30 ms (5.8×) | 1.79 ms (8.0×) | 5.43 ms (24×) | 1.09 ms (4.9×) | 0.71 ms (3.2×) |
-| plasma frame | 0.30 ms | 0.75 ms (2.5×) | 1.37 ms (4.6×) | 4.20 ms (14×) | 1.48 ms (5.0×) | 0.54 ms (1.8×) |
-| particles frame | 0.005 ms | 0.08 ms (16×) | 0.26 ms (50×) | 1.25 ms (239×) | 0.14 ms (27×) | 0.03 ms (5.6×) |
-| **geometric mean** |  | **5.8×** | **12×** | **54×** | **8.3×** | **2.4×** |
+| fib(25), recursive calls | 0.21 ms | 1.56 ms (7.3×) | 5.72 ms (27×) | 9.30 ms (43×) | 2.36 ms (11×) | 0.27 ms (1.3×) |
+| numeric loop, 1M iterations | 0.78 ms | 1.53 ms (2.0×) | 11.3 ms (15×) | 186 ms (240×) | 4.29 ms (5.5×) | 0.76 ms (0.98×) |
+| array fill and sum, 100k | 0.61 ms | 1.09 ms (1.8×) | 2.93 ms (4.8×) | 6.49 ms (11×) | 0.58 ms (0.95×) | 0.22 ms (0.35×) |
+| records, 10k tables | 0.09 ms | 0.64 ms (6.9×) | 0.91 ms (9.8×) | 3.15 ms (34×) | 0.77 ms (8.3×) | 0.28 ms (3.0×) |
+| closures, 100k | 0.22 ms | 7.90 ms (36×) | 5.71 ms (26×) | 12.4 ms (56×) | 7.03 ms (32×) | 3.45 ms (16×) |
+| sort 10k with comparator | 1.28 ms | 3.84 ms (3.0×) | 3.82 ms (3.0×) | 9.82 ms (7.7×) | 3.26 ms (2.5×) | 3.33 ms (2.6×) |
+| string build, 10k pieces | 0.38 ms | 0.61 ms (1.6×) | 0.73 ms (1.9×) | 58.1 ms (154×) | 0.77 ms (2.1×) | 0.25 ms (0.67×) |
+| string scan, 11k characters | 0.007 ms | 0.57 ms (83×) | 1.48 ms (215×) | 2.49 ms (363×) | 0.71 ms (104×) | 0.06 ms (8.6×) |
+| calls into Go, 100k | 0.22 ms | 1.29 ms (5.9×) | 1.91 ms (8.7×) | 5.40 ms (25×) | 1.07 ms (4.9×) | 0.69 ms (3.1×) |
+| plasma frame | 0.29 ms | 0.87 ms (3.0×) | 1.74 ms (6.0×) | 4.20 ms (14×) | 1.42 ms (4.9×) | 0.53 ms (1.8×) |
+| particles frame | 0.005 ms | 0.09 ms (17×) | 0.29 ms (57×) | 1.21 ms (237×) | 0.15 ms (30×) | 0.03 ms (5.6×) |
+| **geometric mean** |  | **6.4×** | **13×** | **52×** | **7.7×** | **2.3×** |
 <!-- /suite-table -->
 
 ### The standard benchmarks
 
-![Each interpreter's time on each standard benchmark divided by C Lua 5.4's, on amd64](standard-amd64.svg)
+![Each interpreter's time on each standard benchmark divided by C Lua 5.5's, on amd64](standard-amd64.svg)
 
 Each cell is the median time, and in brackets that time divided by C Lua
-5.4's.
+5.5's.
 
 <!-- suite-table standard-amd64 -->
-| Benchmark | Lua 5.4 | Apogee (JIT) | Apogee (no JIT) | go-lua | LuaJIT |
+| Benchmark | Lua 5.5 | Apogee (JIT) | Apogee (no JIT) | go-lua | LuaJIT |
 |---|---:|---:|---:|---:|---:|
-| Bounce | 0.28 ms | 0.16 ms (0.57×) | 0.53 ms (1.9×) | 2.16 ms (7.6×) | 0.03 ms (0.10×) |
-| CD | 36.9 ms | 37.0 ms (1.0×) | 45.7 ms (1.2×) | 156 ms (4.2×) | 14.3 ms (0.39×) |
-| DeltaBlue | 20.8 ms | 19.9 ms (0.96×) | 32.5 ms (1.6×) | 1414 ms (68×) | 9.55 ms (0.46×) |
-| Havlak | 1727 ms | 1744 ms (1.0×) | 2184 ms (1.3×) | – | 1037 ms (0.60×) |
-| Json | 4.31 ms | 4.32 ms (1.0×) | 7.78 ms (1.8×) | 20.8 ms (4.8×) | 0.91 ms (0.21×) |
-| List | 0.23 ms | 0.17 ms (0.72×) | 0.43 ms (1.9×) | 1.07 ms (4.7×) | 0.07 ms (0.29×) |
-| Mandelbrot | 128 ms | 110 ms (0.85×) | 211 ms (1.6×) | 683 ms (5.3×) | 23.7 ms (0.18×) |
-| NBody | 1.18 ms | 0.70 ms (0.59×) | 2.19 ms (1.9×) | 11.2 ms (9.4×) | 0.08 ms (0.07×) |
-| Permute | 0.39 ms | 0.23 ms (0.61×) | 1.07 ms (2.8×) | 2.44 ms (6.3×) | 0.01 ms (0.04×) |
-| Queens | 0.30 ms | 0.17 ms (0.59×) | 0.64 ms (2.2×) | 1.36 ms (4.6×) | 0.03 ms (0.12×) |
-| Richards | 16.3 ms | 16.0 ms (0.98×) | 27.2 ms (1.7×) | 99.8 ms (6.1×) | 5.65 ms (0.35×) |
-| Sieve | 0.12 ms | 0.09 ms (0.78×) | 0.30 ms (2.5×) | 0.60 ms (5.2×) | 0.02 ms (0.15×) |
-| Storage | 0.81 ms | 0.61 ms (0.75×) | 0.90 ms (1.1×) | 3.17 ms (3.9×) | 0.33 ms (0.41×) |
-| Towers | 0.75 ms | 0.48 ms (0.64×) | 1.54 ms (2.0×) | 4.17 ms (5.6×) | 0.09 ms (0.12×) |
-| binary-trees | 118 ms | 130 ms (1.1×) | 160 ms (1.3×) | 218 ms (1.8×) | 34.9 ms (0.29×) |
-| fannkuch-redux | 69.2 ms | 63.5 ms (0.92×) | 182 ms (2.6×) | 318 ms (4.6×) | 18.0 ms (0.26×) |
-| spectral-norm | 35.7 ms | 20.6 ms (0.58×) | 65.9 ms (1.8×) | 169 ms (4.7×) | 1.29 ms (0.04×) |
-| **geometric mean** |  | **0.78×** | **1.8×** | **5.9×** | **0.18×** |
+| Bounce | 0.29 ms | 0.16 ms (0.55×) | 0.55 ms (1.9×) | 2.05 ms (7.0×) | 0.03 ms (0.10×) |
+| CD | 35.1 ms | 41.4 ms (1.2×) | 45.4 ms (1.3×) | 162 ms (4.6×) | 14.3 ms (0.41×) |
+| DeltaBlue | 21.1 ms | 21.9 ms (1.0×) | 33.2 ms (1.6×) | 1449 ms (69×) | 9.46 ms (0.45×) |
+| Havlak | 2218 ms | 2031 ms (0.92×) | 2511 ms (1.1×) | – | 1458 ms (0.66×) |
+| Json | 4.34 ms | 4.34 ms (1.0×) | 7.13 ms (1.6×) | 20.0 ms (4.6×) | 0.86 ms (0.20×) |
+| List | 0.25 ms | 0.17 ms (0.68×) | 0.45 ms (1.8×) | 1.05 ms (4.2×) | 0.06 ms (0.25×) |
+| Mandelbrot | 126 ms | 110 ms (0.87×) | 236 ms (1.9×) | 688 ms (5.4×) | 23.2 ms (0.18×) |
+| NBody | 1.23 ms | 0.74 ms (0.60×) | 2.20 ms (1.8×) | 11.0 ms (8.9×) | 0.08 ms (0.06×) |
+| Permute | 0.40 ms | 0.24 ms (0.59×) | 0.98 ms (2.5×) | 2.38 ms (6.0×) | 0.02 ms (0.04×) |
+| Queens | 0.29 ms | 0.17 ms (0.59×) | 0.64 ms (2.2×) | 1.34 ms (4.7×) | 0.03 ms (0.12×) |
+| Richards | 16.7 ms | 17.3 ms (1.0×) | 26.8 ms (1.6×) | 95.9 ms (5.7×) | 5.42 ms (0.32×) |
+| Sieve | 0.10 ms | 0.08 ms (0.75×) | 0.32 ms (3.2×) | 0.61 ms (6.1×) | 0.02 ms (0.17×) |
+| Storage | 0.76 ms | 0.57 ms (0.74×) | 0.91 ms (1.2×) | 3.09 ms (4.1×) | 0.33 ms (0.43×) |
+| Towers | 0.82 ms | 0.50 ms (0.61×) | 1.49 ms (1.8×) | 4.00 ms (4.9×) | 0.10 ms (0.12×) |
+| binary-trees | 115 ms | 141 ms (1.2×) | 174 ms (1.5×) | 235 ms (2.0×) | 34.5 ms (0.30×) |
+| fannkuch-redux | 65.0 ms | 56.8 ms (0.87×) | 184 ms (2.8×) | 316 ms (4.9×) | 17.9 ms (0.28×) |
+| spectral-norm | 33.6 ms | 19.7 ms (0.59×) | 76.4 ms (2.3×) | 170 ms (5.1×) | 1.27 ms (0.04×) |
+| **geometric mean** |  | **0.79×** | **1.8×** | **5.9×** | **0.18×** |
 <!-- /suite-table -->
 
-- apogee with the JIT takes 0.78 times as long as C Lua 5.4 on the
-  geometric mean. It is faster on 13 of the 17, most on numeric code and
-  method calls (spectral-norm, Bounce, Queens and NBody), within 1% on
-  CD, Havlak and Json, and 1.1 times as long on binary-trees, which
-  allocates most.
-- Without the JIT, apogee takes 1.8 times as long as C Lua 5.4.
-- LuaJIT is 5.5 times faster than C Lua 5.4 on the geometric mean.
-- go-lua takes six times as long as C Lua 5.4, and 70 times on
+- apogee with the JIT takes 0.79 times as long as C Lua 5.5 on the
+  geometric mean. It is faster on 12 of the 17, most on numeric code and
+  method calls (Bounce, Permute, Queens, spectral-norm and NBody), within
+  4% on DeltaBlue, Json and Richards, and 1.2 times as long on CD and on
+  binary-trees, which allocates most.
+- Without the JIT, apogee takes 1.8 times as long as C Lua 5.5.
+- LuaJIT is about 5.5 times faster than C Lua 5.5 on the geometric mean.
+- go-lua takes six times as long as C Lua 5.5, and 69 times on
   DeltaBlue. It does not finish Havlak in ten minutes, so it has no result
   there, and its geometric mean is of the other 16.
 
@@ -95,8 +96,9 @@ Each cell is the median time, and in brackets that time divided by C Lua
 
 Apple M1 Pro, macOS, Go 1.27.1, `-count 6`, `-ldflags=-funcalign=64`,
 medians, 2026-09-25, at commit d5dba73. Lua 5.4.9 and LuaJIT 2.1.1788856981
-from Homebrew (`lua@5.4`, `luajit`). The machine was not idle, so single
-results vary more than on amd64. Raw output:
+from Homebrew (`lua@5.4`, `luajit`). These results predate the port to
+Lua 5.5 and are still against C Lua 5.4. The machine was not idle, so
+single results vary more than on amd64. Raw output:
 [`suite-results.txt`](suite-results.txt).
 
 ### The suite

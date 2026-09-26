@@ -2,7 +2,7 @@
 
 Programs that other language implementations are measured with, so that
 apogee's results can be set beside theirs. `standard_test.go` runs each one
-in apogee with and without the JIT, in go-lua, and in C Lua 5.4 or LuaJIT
+in apogee with and without the JIT, in go-lua, and in C Lua 5.5 or LuaJIT
 when built with their tag (see [../README.md](../README.md)).
 
 ## Are We Fast Yet
